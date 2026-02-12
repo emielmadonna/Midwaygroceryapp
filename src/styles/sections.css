@@ -534,6 +534,85 @@
     display: block;
 }
 
+/* ─── Store Live Section ─── */
+.store__live-section {
+    margin-bottom: var(--space-12);
+    padding: var(--space-8) var(--space-6);
+    background: linear-gradient(135deg, rgba(212, 149, 58, 0.05) 0%, rgba(212, 149, 58, 0.02) 100%);
+    border-radius: var(--radius-2xl);
+    border: 1px solid rgba(212, 149, 58, 0.15);
+}
+
+.store__live-title {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--color-charcoal);
+    margin-bottom: var(--space-6);
+    text-align: center;
+}
+
+.store__live-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-4);
+}
+
+@media (min-width: 640px) {
+    .store__live-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+}
+
+.store__live-item {
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    border: 1px solid rgba(212, 149, 58, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    transition: all var(--duration-normal) var(--ease-out);
+}
+
+.store__live-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(212, 149, 58, 0.15);
+    border-color: var(--color-amber);
+}
+
+.store__live-emoji {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.store__live-name {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-charcoal);
+    text-align: center;
+}
+
+.store__live-price {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--color-amber-dark);
+    background: var(--color-amber-glow);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+}
+
+.store__loading {
+    text-align: center;
+    padding: var(--space-8);
+    color: var(--color-gray-400);
+    font-size: var(--text-sm);
+}
+
 /* ─── HOURS & LOCATION ─── */
 .hours {
     height: 100dvh;
@@ -552,13 +631,13 @@
 .hours__layout {
     display: grid;
     grid-template-columns: 1fr;
-    gap: var(--space-10);
+    gap: var(--space-8);
 }
 
 @media (min-width: 768px) {
     .hours__layout {
-        grid-template-columns: 1fr 1fr;
-        gap: var(--space-12);
+        grid-template-columns: 1.1fr 1fr;
+        gap: var(--space-10);
         align-items: start;
     }
 }
@@ -684,21 +763,21 @@
 }
 
 .footer__logo-img {
-    height: 120px;
+    height: 80px;
     width: auto;
-    margin-bottom: var(--space-4);
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+    margin-bottom: var(--space-3);
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
 }
 
 .hours__address,
 .hours__phone {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-4);
-    padding: var(--space-5);
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: var(--space-4);
     background: var(--color-cream);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-lg);
     border: 1px solid rgba(44, 42, 38, 0.05);
     transition: transform var(--duration-normal);
 }
@@ -1027,27 +1106,22 @@
 
 /* ─── FOOTER ─── */
 .footer {
-    height: 100dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: var(--space-16) 0 var(--space-8);
     background: var(--color-gray-900);
     color: var(--color-gray-300);
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
 }
 
 .footer__inner {
     display: grid;
     grid-template-columns: 1fr;
-    gap: var(--space-10);
-    margin-bottom: var(--space-12);
+    gap: var(--space-8);
+    margin-bottom: var(--space-8);
 }
 
 @media (min-width: 640px) {
     .footer__inner {
         grid-template-columns: 1.5fr 1fr 1fr;
-        gap: var(--space-8);
+        gap: var(--space-6);
     }
 }
 
@@ -1127,7 +1201,7 @@
 
 .footer__bottom {
     border-top: 1px solid var(--color-gray-800);
-    padding-top: var(--space-6);
+    padding-top: var(--space-4);
     text-align: center;
 }
 
