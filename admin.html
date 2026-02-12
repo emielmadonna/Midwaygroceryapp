@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Midway Admin — Manage Your Store</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@600&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles/variables.css" />
+    <link rel="stylesheet" href="/src/styles/admin.css" />
+</head>
+
+<body>
+
+    <!-- Login Gate -->
+    <div class="admin-login" id="loginScreen">
+        <div class="admin-login__card">
+            <h1 class="admin-login__title">🔐 Midway Admin</h1>
+            <p class="admin-login__desc">Enter your password to manage the store</p>
+            <form id="loginForm" class="admin-login__form">
+                <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
+                <button type="submit" class="btn btn--primary">Sign In</button>
+            </form>
+            <p class="admin-login__hint">Default: midway2025</p>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div class="admin" id="adminDashboard" style="display:none;">
+
+        <header class="admin__header">
+            <div class="admin__header-inner">
+                <h1 class="admin__logo">Midway Admin</h1>
+                <div class="admin__header-actions">
+                    <a href="/" class="admin__view-site" target="_blank">View Site →</a>
+                    <button id="logoutBtn" class="admin__logout">Log Out</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="admin__main">
+
+            <!-- ─── Smart Command Center ─── -->
+            <section class="admin__section admin__section--smart">
+                <div class="admin__section-header">
+                    <div class="admin__section-title-wrap">
+                        <h2 class="admin__smart-title">⚡ Smart Command Center</h2>
+                        <span class="admin__status-badge">AI Assistant Online</span>
+                    </div>
+                    <p class="admin__smart-subtitle">Control the whole site with natural language or scans</p>
+                </div>
+                <div class="admin__smart-input-wrap">
+                    <div class="admin__smart-controls">
+                        <input type="text" id="smartCommandInput"
+                            placeholder="Try: 'Gas is 4.10' or snap a photo of the price board" />
+                        <label for="visionUpload" class="admin__vision-btn" title="AI Vision: Scan Photo">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path
+                                    d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                                <circle cx="12" cy="13" r="4" />
+                            </svg>
+                        </label>
+                        <input type="file" id="visionUpload" accept="image/*" style="display:none;" />
+                    </div>
+                    <button id="smartCommandBtn" class="btn btn--primary">Update Site</button>
+                </div>
+                <div id="smartCommandFeedback" class="admin__smart-feedback"></div>
+            </section>
+
+            <!-- ─── Fuel Prices ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>⛽ Fuel Prices</h2>
+                    <p>Update gas prices — changes show immediately on the website</p>
+                </div>
+                <div class="admin__form-grid">
+                    <div class="admin__field">
+                        <label for="adminUnleaded">Unleaded ($/gal)</label>
+                        <input type="text" id="adminUnleaded" placeholder="3.89" inputmode="decimal" />
+                    </div>
+                    <div class="admin__field">
+                        <label for="adminDiesel">Diesel ($/gal)</label>
+                        <input type="text" id="adminDiesel" placeholder="4.29" inputmode="decimal" />
+                    </div>
+                </div>
+                <button id="saveFuelBtn" class="btn btn--primary">Save & Notify ⛽</button>
+            </section>
+
+            <!-- ─── Fuel Management ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>⛽ Fuel Inventory & Orders</h2>
+                    <p>Track tank levels and configure AI re-ordering</p>
+                </div>
+                <div class="admin__fuel-grid">
+                    <div class="admin__fuel-card">
+                        <label>Unleaded Tank</label>
+                        <div class="admin__fuel-gauge-wrap">
+                            <div id="gaugeUnleaded" class="admin__fuel-gauge" style="height: 60\%;"></div>
+                        </div>
+                        <input type="number" id="invUnleaded" value="3000" />
+                        <span>/ 5000 gal</span>
+                    </div>
+                    <div class="admin__fuel-card">
+                        <label>Diesel Tank</label>
+                        <div class="admin__fuel-gauge-wrap">
+                            <div id="gaugeDiesel" class="admin__fuel-gauge" style="height: 40\%;"></div>
+                        </div>
+                        <input type="number" id="invDiesel" value="2000" />
+                        <span>/ 5000 gal</span>
+                    </div>
+                </div>
+                <div class="admin__field">
+                    <label>Order Alert Threshold (Gallons)</label>
+                    <input type="number" id="fuelThreshold" value="1000" style="max-width: 150px;" />
+                </div>
+                <button id="saveFuelInvBtn" class="btn btn--primary">Save Inventory ✨</button>
+            </section>
+
+            <!-- ─── Rentals & RV Hookups ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>🏘️ Rentals & RV Hookups</h2>
+                    <p>Manage availability and photos for cabins and RV spots</p>
+                </div>
+                <div class="admin__rentals-grid">
+                    <div class="admin__rental-card">
+                        <div class="admin__rental-header">
+                            <span class="admin__rental-icon">🏠</span>
+                            <h3>Cabins</h3>
+                        </div>
+                        <div class="admin__field">
+                            <label>Available / Total</label>
+                            <div class="admin__rental-inputs">
+                                <input type="number" id="rentCabinsAvail" value="2" min="0" />
+                                <span>/</span>
+                                <input type="number" id="rentCabinsTotal" value="2" min="0" />
+                            </div>
+                        </div>
+                        <div class="admin__rental-photo-preview" id="previewCabin">
+                            <img src="/images/exterior-wide.jpg" alt="Cabin preview" />
+                        </div>
+                        <button class="btn btn--secondary btn--sm">Update Photo</button>
+                    </div>
+
+                    <div class="admin__rental-card">
+                        <div class="admin__rental-header">
+                            <span class="admin__rental-icon">🚐</span>
+                            <h3>RV Hookups</h3>
+                        </div>
+                        <div class="admin__field">
+                            <label>Available / Total</label>
+                            <div class="admin__rental-inputs">
+                                <input type="number" id="rentRVAvail" value="4" min="0" />
+                                <span>/</span>
+                                <input type="number" id="rentRVTotal" value="4" min="0" />
+                            </div>
+                        </div>
+                        <div class="admin__rental-photo-preview" id="previewRV">
+                            <img src="/images/exterior-detailed.jpg" alt="RV preview" />
+                        </div>
+                        <button class="btn btn--secondary btn--sm">Update Photo</button>
+                    </div>
+                </div>
+                <button id="saveRentalsBtn" class="btn btn--primary" style="margin-top: var(--space-6);">Save
+                    Availability 🏘️</button>
+            </section>
+
+            <!-- ─── Store Intelligence ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>✨ Store Intelligence</h2>
+                    <p>Notes the AI uses to answer customer questions or write Slack updates</p>
+                </div>
+                <div class="admin__field">
+                    <textarea id="adminAINotes"
+                        placeholder="e.g. We have local huckleberry jam in stock. Hot pizza every Friday at 4pm. We have chains for snow in winter."
+                        rows="4"
+                        style="width:100\%; padding:15px; border-radius:12px; border:1px solid #E5E2DB; font-family:inherit;"></textarea>
+                </div>
+                <button id="saveAINotesBtn" class="btn btn--primary">Save Intelligence ✨</button>
+            </section>
+
+            <!-- ─── Store Hours ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>🕐 Store Hours</h2>
+                    <p>Set your opening and closing times for each day</p>
+                </div>
+                <div class="admin__hours-grid" id="adminHoursGrid">
+                    <!-- Rendered by JS -->
+                </div>
+                <button id="saveHoursBtn" class="btn btn--primary">Save & Notify 🕐</button>
+            </section>
+
+            <!-- ─── Products / What We Carry ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>📦 What We Carry</h2>
+                    <p>Add or remove store categories that show on the website</p>
+                </div>
+                <div class="admin__products-list" id="adminProductsList">
+                    <!-- Rendered by JS -->
+                </div>
+                <div class="admin__add-product">
+                    <input type="text" id="newProductIcon" placeholder="🍕" maxlength="4" class="admin__emoji-input" />
+                    <input type="text" id="newProductName" placeholder="Product name" />
+                    <button id="addProductBtn" class="btn btn--primary">Add</button>
+                </div>
+            </section>
+
+            <!-- ─── Settings ─── -->
+            <section class="admin__section">
+                <div class="admin__section-header">
+                    <h2>⚙️ Settings</h2>
+                    <p>Configure Slack webhook, address, and other details</p>
+                </div>
+                <div class="admin__form-stack">
+                    <div class="admin__field">
+                        <label for="adminSlackUrl">Slack Webhook URL</label>
+                        <input type="url" id="adminSlackUrl" placeholder="https://hooks.slack.com/services/..." />
+                        <span class="admin__field-hint">Create one at <a href="https://api.slack.com/messaging/webhooks"
+                                target="_blank">api.slack.com/messaging/webhooks</a></span>
+                    </div>
+                    <div class="admin__field">
+                        <label for="adminAddress">Store Address</label>
+                        <input type="text" id="adminAddress" placeholder="14193 US-2, Leavenworth, WA 98826" />
+                    </div>
+                    <div class="admin__field">
+                        <label for="adminPhone">Phone Number</label>
+                        <input type="tel" id="adminPhone" placeholder="(509) 669-9378" />
+                    </div>
+                    <div class="admin__field">
+                        <label for="adminSince">Locally Owned Since (year)</label>
+                        <input type="text" id="adminSince" placeholder="e.g. 1985" maxlength="4" inputmode="numeric" />
+                    </div>
+                    <div class="admin__field">
+                        <label for="adminNewPassword">Change Admin Password</label>
+                        <input type="password" id="adminNewPassword" placeholder="New password" />
+                    </div>
+                </div>
+                <button id="saveSettingsBtn" class="btn btn--primary">Save Settings ⚙️</button>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script type="module" src="/src/admin.js"></script>
+</body>
+
+</html>

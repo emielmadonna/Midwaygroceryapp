@@ -1,0 +1,24 @@
+{
+  "name": "interstellar-aurora",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3000",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.6.0",
+    "@supabase/supabase-js": "^2.95.3",
+    "axios": "^1.13.5",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "openai": "^6.21.0",
+    "square": "^44.0.0"
+  }
+}

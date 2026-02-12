@@ -1,0 +1,106 @@
+/* ═══════════════════════════════════════
+   REUSABLE COMPONENTS
+   ═══════════════════════════════════════ */
+
+/* ─── Buttons ─── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius-full);
+    border: none;
+    cursor: pointer;
+    transition: all var(--duration-normal) var(--ease-out);
+}
+
+.btn--primary {
+    background: var(--color-amber);
+    color: var(--color-white);
+    box-shadow: var(--shadow-warm);
+}
+
+.btn--primary:hover {
+    background: var(--color-amber-dark);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-glow);
+}
+
+/* ─── Cards ─── */
+.card {
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--duration-normal) var(--ease-out);
+    overflow: hidden;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+}
+
+/* ─── Gas Price Sign Style ─── */
+.price-sign {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* ─── Badge ─── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+}
+
+.badge--open {
+    background: var(--color-forest-glow);
+    color: var(--color-forest);
+}
+
+.badge--closed {
+    background: rgba(139, 58, 58, 0.1);
+    color: var(--color-burgundy);
+}
+
+/* ─── Toast notifications ─── */
+.toast {
+    position: fixed;
+    bottom: var(--space-8);
+    left: 50%;
+    transform: translateX(-50%) translateY(120%);
+    background: var(--color-charcoal);
+    color: var(--color-white);
+    padding: var(--space-4) var(--space-6);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    box-shadow: var(--shadow-xl);
+    z-index: var(--z-modal);
+    opacity: 0;
+    transition: all var(--duration-slow) var(--ease-spring);
+    pointer-events: none;
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast--success {
+    background: var(--color-forest);
+}
+
+.toast--error {
+    background: var(--color-burgundy);
+}

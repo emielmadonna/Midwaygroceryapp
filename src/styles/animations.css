@@ -1,0 +1,153 @@
+/* ═══════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════ */
+
+/* ─── Scroll Reveal ─── */
+.reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+        opacity 0.7s var(--ease-out),
+        transform 0.7s var(--ease-out);
+}
+
+.reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Stagger children */
+.reveal:nth-child(2) {
+    transition-delay: 0.08s;
+}
+
+.reveal:nth-child(3) {
+    transition-delay: 0.16s;
+}
+
+.reveal:nth-child(4) {
+    transition-delay: 0.24s;
+}
+
+.reveal:nth-child(5) {
+    transition-delay: 0.32s;
+}
+
+.reveal:nth-child(6) {
+    transition-delay: 0.4s;
+}
+
+/* Store items stagger */
+.store__item.reveal:nth-child(1) {
+    transition-delay: 0s;
+}
+
+.store__item.reveal:nth-child(2) {
+    transition-delay: 0.05s;
+}
+
+.store__item.reveal:nth-child(3) {
+    transition-delay: 0.1s;
+}
+
+.store__item.reveal:nth-child(4) {
+    transition-delay: 0.15s;
+}
+
+.store__item.reveal:nth-child(5) {
+    transition-delay: 0.2s;
+}
+
+.store__item.reveal:nth-child(6) {
+    transition-delay: 0.25s;
+}
+
+.store__item.reveal:nth-child(7) {
+    transition-delay: 0.3s;
+}
+
+.store__item.reveal:nth-child(8) {
+    transition-delay: 0.35s;
+}
+
+/* ─── Hover micro-interactions ─── */
+.fuel__card {
+    will-change: transform;
+}
+
+.store__item {
+    will-change: transform;
+}
+
+/* ─── Price highlight animation ─── */
+@keyframes price-glow {
+
+    0%,
+    100% {
+        text-shadow: none;
+    }
+
+    50% {
+        text-shadow: 0 0 20px rgba(212, 149, 58, 0.3);
+    }
+}
+
+.fuel__amount {
+    animation: price-glow 4s var(--ease-in-out) infinite;
+}
+
+/* ─── Smooth link underline ─── */
+.nav__links a {
+    position: relative;
+}
+
+@media (min-width: 768px) {
+    .nav__links a::after {
+        content: '';
+        position: absolute;
+        bottom: -4px;
+        left: 0;
+        width: 0;
+        height: 2px;
+        background: var(--color-amber);
+        border-radius: 1px;
+        transition: width var(--duration-normal) var(--ease-out);
+    }
+
+    .nav__links a:hover::after {
+        width: 100%;
+    }
+}
+
+/* ─── Hero parallax-lite ─── */
+@media (prefers-reduced-motion: no-preference) {
+    .hero__bg {
+        will-change: transform;
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+
+    .hero__bg {
+        transform: scale(1);
+        transition: none;
+    }
+
+    .fuel__amount {
+        animation: none;
+    }
+
+    .hours__status-dot {
+        animation: none;
+    }
+
+    .hero__cta svg {
+        animation: none;
+    }
+}
