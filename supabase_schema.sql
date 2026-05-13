@@ -41,12 +41,23 @@ CREATE TABLE store_intelligence (
 CREATE TABLE store_inventory (
   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   square_id TEXT UNIQUE NOT NULL,
+  square_item_id TEXT NOT NULL,
+  square_variation_id TEXT UNIQUE NOT NULL,
+  sku TEXT,
   name TEXT NOT NULL,
   description TEXT,
+  price_cents INTEGER NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  category TEXT NOT NULL DEFAULT 'Store',
+  active BOOLEAN NOT NULL DEFAULT true,
+  hidden BOOLEAN NOT NULL DEFAULT false,
+  source TEXT NOT NULL DEFAULT 'square',
   price DECIMAL(10,2),
-  emoji TEXT DEFAULT '🛒',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX store_inventory_visibility_idx
+  ON store_inventory (active, hidden, category, name);
 
 -- 6. RV Sites
 CREATE TABLE rv_sites (

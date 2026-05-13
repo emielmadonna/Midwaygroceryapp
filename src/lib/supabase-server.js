@@ -133,6 +133,51 @@ export async function loadTenantRuntimeConfig(supabase, { tenantId, locationId }
   });
 }
 
+export async function updateTenantRuntimeConfig(supabase, config, input = {}) {
+  assertSupabaseClient(supabase);
+  assertTenantId(config?.tenantId);
+
+  const now = new Date().toISOString();
+
+  const siteSettings = {
+    tenant_id: config.tenantId,
+    location_id: config.locationId,
+    business_name: config.business.name,
+    public_brand_name: config.business.publicBrandName,
+    address: config.business.address,
+    phone: config.business.phone,
+    email: config.business.email,
+    instagram_handle: config.business.instagramHandle,
+    instagram_url: config.business.instagramUrl,
+    instagram_posts: config.publicSite.instagramPosts ?? [],
+    timezone: config.business.timezone,
+    public_site_url: config.publicSite.url,
+    theme_key: config.publicSite.theme,
+    updated_at: now,
+  };
+  const frontendConfig = {
+    tenant_id: config.tenantId,
+    location_id: config.locationId,
+    theme_key: config.publicSite.theme,
+    business_profile: config.frontend.businessProfile || config.tenant.businessProfile || 'convenience_store_rv',
+    sections: config.publicSite.sections ?? [],
+    published_config: config.frontend.publishedConfig ?? {},
+    draft_config: config.frontend.draftConfig ?? {},
+    updated_at: now,
+  };
+
+  const [{ error: settingsError }, { error: frontendError }] = await Promise.all([
+    supabase
+      .from('site_settings')
+      .upsert(siteSettings, { onConflict: 'tenant_id,location_id' }),
+    supabase
+      .from('frontend_configs')
+      .upsert(frontendConfig, { onConflict: 'tenant_id,location_id' }),
+  ]);
+  if (settingsError) throw settingsError;
+  if (frontendError) throw frontendError;
+}
+
 function readEnv(env, name) {
   const value = env[name];
   return typeof value === 'string' ? value.trim() : value;

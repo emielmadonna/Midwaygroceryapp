@@ -10,6 +10,7 @@ import {
   createSquareRefund,
   createSquareWebPayment,
   listSquareCatalogItems,
+  normalizeSquareCatalogItemsForInventory,
   verifySquareWebhookSignature,
 } from '../lib/square-api.js';
 import { normalizeSquareWebhookEvent } from '../lib/square-webhooks.js';
@@ -71,9 +72,13 @@ export function createApiRouter({
   router.get('/public/bootstrap', async (req, res) => {
     try {
       const squareConfig = await squareProviderConfig();
-      if (squareConfig.accessToken) {
+      const persistedProducts = await resolvedStore.listStoreInventory?.({ activeOnly: true }) ?? [];
+      if (persistedProducts.length) {
+        resolvedStore.state.squareProducts = persistedProducts;
+      } else if (squareConfig.accessToken) {
         try {
-          resolvedStore.state.squareProducts = await listSquareCatalogItems({ env: squareConfig, fetchImpl });
+          const items = await listSquareCatalogItems({ env: squareConfig, fetchImpl });
+          resolvedStore.state.squareProducts = normalizeSquareCatalogItemsForInventory(items);
         } catch (error) {
           console.warn('[Square] Product sync unavailable:', error.message);
           resolvedStore.state.squareProducts = [];
@@ -574,26 +579,64 @@ export function createApiRouter({
     try {
       resolvedStore.requireFeature?.('booking.site_status_management', { role: req.adminUser.role });
       requireAdminRole(req.adminUser, ['owner']);
-      const status = req.body.status;
-      if (!['active', 'inactive', 'maintenance'].includes(status)) {
-        return res.status(400).json(apiError('INVALID_SITE_STATUS', 'Site status must be active, inactive, or maintenance.'));
+      const patch = pickSitePatch(req.body);
+      if (patch.squareCatalogObjectId) {
+        const inventory = await resolvedStore.listStoreInventory?.() ?? [];
+        if (inventory.length && !inventory.some(item => item.squareVariationId === patch.squareCatalogObjectId)) {
+          return res.status(400).json(apiError('INVALID_SQUARE_VARIATION', 'Square catalog variation was not found in the synced catalog.'));
+        }
       }
-      const site = await resolvedStore.updateSiteStatus({
+      const site = await resolvedStore.updateSiteDetails({
         siteId: req.params.siteId,
-        status,
+        patch,
         actor: req.adminUser,
       });
       if (!site) return res.status(404).json(apiError('RV_SITE_NOT_FOUND', 'RV site was not found.'));
       await resolvedStore.recordAuditLog?.({
-        action: 'rv_site.update_status',
+        action: Object.keys(patch).length === 1 && patch.status ? 'rv_site.update_status' : 'rv_site.update_details',
         actor: req.adminUser,
         targetType: 'rv_site',
         targetId: site.id,
-        metadata: { status },
+        metadata: { fields: Object.keys(patch) },
       });
       res.json({ ok: true, data: site });
     } catch (error) {
       sendApiError(res, error, 'ADMIN_RV_SITE_UPDATE_FAILED');
+    }
+  });
+
+  router.get('/admin/square/catalog', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await resolvedStore.listStoreInventory?.() ?? [];
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_SQUARE_CATALOG_UNAVAILABLE');
+    }
+  });
+
+  router.post('/admin/square/catalog/sync', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const squareConfig = await squareProviderConfig();
+      const items = await listSquareCatalogItems({ env: squareConfig, fetchImpl });
+      const inventory = normalizeSquareCatalogItemsForInventory(items);
+      const data = await resolvedStore.upsertStoreInventory?.(inventory) ?? [];
+      await resolvedStore.recordAuditLog?.({
+        action: 'square.catalog_sync',
+        actor: req.adminUser,
+        targetType: 'store_inventory',
+        targetId: 'square',
+        metadata: {
+          itemCount: items.length,
+          variationCount: data.length,
+        },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_SQUARE_CATALOG_SYNC_FAILED', 409);
     }
   });
 
@@ -695,6 +738,34 @@ function safeSettingsFields(body = {}) {
     business: Object.keys(body.business || {}).filter(key => !/secret|token|password|key/i.test(key)),
     publicSite: Object.keys(body.publicSite || {}).filter(key => !/secret|token|password|key/i.test(key)),
   };
+}
+
+function pickSitePatch(body = {}) {
+  const allowed = [
+    'displayName',
+    'status',
+    'nightlyPriceCents',
+    'maxRvLengthFeet',
+    'amp',
+    'type',
+    'siteType',
+    'shade',
+    'sku',
+    'squareCatalogObjectId',
+    'customerNotes',
+    'adminNotes',
+    'amenities',
+    'mapX',
+    'mapY',
+    'mapWidth',
+    'mapHeight',
+    'rotation',
+  ];
+  return Object.fromEntries(
+    allowed
+      .filter(key => key in body)
+      .map(key => [key, body[key]]),
+  );
 }
 
 async function refundBookingRecord(store, input) {

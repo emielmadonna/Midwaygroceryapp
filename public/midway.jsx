@@ -19,6 +19,39 @@ const DAY_LABELS = {
   friday: 'Fri',
   saturday: 'Sat',
 };
+const FALLBACK_SETTINGS = {
+  businessName: 'Midway Gas & Grocery',
+  phone: '(509) 669-9378',
+  address: '14193 US-2, Leavenworth, WA 98826',
+  timezone: 'America/Los_Angeles',
+  instagramHandle: 'midwayplain',
+  instagramUrl: 'https://www.instagram.com/midwayplain/',
+};
+const FALLBACK_HOURS = [
+  { day: 'monday', open: '6:00 AM', close: '9:00 PM' },
+  { day: 'tuesday', open: '6:00 AM', close: '9:00 PM' },
+  { day: 'wednesday', open: '6:00 AM', close: '9:00 PM' },
+  { day: 'thursday', open: '6:00 AM', close: '9:00 PM' },
+  { day: 'friday', open: '6:00 AM', close: '9:00 PM' },
+  { day: 'saturday', open: '7:00 AM', close: '9:00 PM' },
+  { day: 'sunday', open: '8:00 AM', close: '8:00 PM' },
+];
+const FALLBACK_RV_SITES = [
+  { id: 'rv-03', siteNumber: '03', displayName: 'Site 03', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 884, mapY: 210, mapWidth: 88, mapHeight: 38, rotation: -1, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-03-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig', 'Walk to store'], customerNotes: 'Upper right-row full-hookup site close to the store approach.' },
+  { id: 'rv-04', siteNumber: '04', displayName: 'Site 04', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 884, mapY: 252, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-04-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig'], customerNotes: 'Right-row full-hookup site with partial shade near the upper drive.' },
+  { id: 'rv-05', siteNumber: '05', displayName: 'Site 05', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 864, mapY: 314, mapWidth: 88, mapHeight: 38, rotation: 18, amp: '50A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-05-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Easy entry'], customerNotes: 'Angled right-row full-hookup site with an easy approach from the loop.' },
+  { id: 'rv-06', siteNumber: '06', displayName: 'Site 06', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 848, mapY: 352, mapWidth: 88, mapHeight: 38, rotation: 18, amp: '30A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-06-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly'], customerNotes: 'Angled right-row full-hookup site with sunny exposure.' },
+  { id: 'rv-07', siteNumber: '07', displayName: 'Site 07', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 432, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-07-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Quiet'], customerNotes: 'Quiet forest-edge back-in site with full shade.' },
+  { id: 'rv-08', siteNumber: '08', displayName: 'Site 08', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 486, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-08-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Deep shade'], customerNotes: 'Full-shade right-row back-in site along the forest edge.' },
+  { id: 'rv-09', siteNumber: '09', displayName: 'Site 09', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 540, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-09-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Pet-friendly'], customerNotes: 'Right-row back-in site with partial shade near the lower loop.' },
+  { id: 'rv-10', siteNumber: '10', displayName: 'Site 10', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 592, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-10-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'End site', 'Picnic table'], customerNotes: 'Lower right-row end site with partial shade and a picnic table.' },
+  { id: 'rv-11', siteNumber: '11', displayName: 'Site 11', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 224, mapY: 652, mapWidth: 88, mapHeight: 38, rotation: -1, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-11-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Quiet side', 'Forest edge'], customerNotes: 'Lower left-row full-hookup site on the quieter side of the loop.' },
+  { id: 'rv-12', siteNumber: '12', displayName: 'Site 12', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 224, mapY: 604, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-12-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly', 'Forest edge'], customerNotes: 'Left-row back-in site with partial shade near the lower loop.' },
+  { id: 'rv-13', siteNumber: '13', displayName: 'Site 13', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 222, mapY: 552, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-13-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Family-size'], customerNotes: 'Left-row family-size full-hookup site with partial shade.' },
+  { id: 'rv-14', siteNumber: '14', displayName: 'Site 14', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 224, mapY: 500, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-14-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Big rig'], customerNotes: 'Premium 50 amp full-hookup site on the left row.' },
+  { id: 'rv-15', siteNumber: '15', displayName: 'Site 15', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 242, mapY: 448, mapWidth: 88, mapHeight: 38, rotation: -2, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-15-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Road edge'], customerNotes: 'Premium 50 amp left-row site with partial shade.' },
+  { id: 'rv-16', siteNumber: '16', displayName: 'Site 16', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 258, mapY: 386, mapWidth: 88, mapHeight: 38, rotation: -1, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-16-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'End site', 'Walk to store'], customerNotes: 'Upper left-row premium end site closest to the store side.' },
+];
 
 const toMapSite = (site, availableIds = null) => ({
   id: site.id,
@@ -39,22 +72,24 @@ const toMapSite = (site, availableIds = null) => ({
 });
 
 const emptyBootstrap = {
-  settings: {},
+  settings: FALLBACK_SETTINGS,
   fuelPrices: [],
   products: [],
   events: EVENTS,
+  hours: FALLBACK_HOURS,
   coffeeMenu: COFFEE,
-  rvSites: [],
+  rvSites: FALLBACK_RV_SITES,
   rvAvailability: [],
   featureFlags: {
     fuel: false,
     products: false,
-    rvBooking: false,
+    rvBooking: true,
     events: false,
     coffee: false,
-    hours: false,
-    instagram: false,
+    hours: true,
+    instagram: true,
   },
+  source: 'static-fallback',
 };
 
 const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(0)}`;
@@ -141,6 +176,13 @@ const Ph = ({ g, label, dark }) => (
   </div>
 );
 
+const Photo = ({ src, alt, label }) => (
+  <>
+    <img src={src} alt={alt} loading="lazy" />
+    <span className="photo-label">{label}</span>
+  </>
+);
+
 // ─── Scroll reveal hook ────────────────────────────────────────────────────
 const useReveal = () => {
   useEffect(() => {
@@ -163,8 +205,8 @@ const Nav = ({ visible = {}, phone = '', address = '' }) => {
   return (
     <nav className={`nav${scrolled ? ' scrolled' : ''}`}>
       <a href="#top" aria-label="Midway home" className="nav-brand">
-        <span className="nav-brand-name">Midway</span>
-        <span className="nav-brand-sub">Gas & Grocery · Plain, WA</span>
+        <img src="/assets/midway-logo.png" alt="Midway Gas & Grocery" className="nav-logo" />
+        <span className="nav-brand-sub">Plain, Washington</span>
       </a>
       <div className="nav-links">
         <a href="#today">Today</a>
@@ -193,8 +235,8 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
         {today && <div className="hero-route"><i /> Open today {hourLabel(today)}</div>}
-        <h1>Fuel, coffee, groceries, RV sites.</h1>
-        <p>Midway is the Plain stop for road basics, camp supplies, bait, tackle, firewood, ice, and a place to pull in for the night.</p>
+        <h1>Midway Gas &amp; Grocery</h1>
+        <p>Fuel, espresso, camp provisions, bait, tackle, ice, firewood, and fourteen full-hookup RV sites at the Plain turnoff outside Leavenworth.</p>
         <div className="hero-actions">
           {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book RV Site <span>→</span></a>}
           {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="hero-link hero-secondary">Directions <span>↗</span></a>}
@@ -202,10 +244,10 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
         </div>
       </div>
       <div className="hero-board" aria-label="Midway essentials">
-        <span><b>01</b> Gas & Diesel</span>
-        <span><b>02</b> Espresso</span>
-        <span><b>03</b> Bait & Tackle</span>
-        <span><b>14</b> RV Sites</span>
+        <span><b>01</b> Non-ethanol &amp; diesel</span>
+        <span><b>02</b> Espresso &amp; groceries</span>
+        <span><b>03</b> Bait, tackle, ice</span>
+        <span><b>14</b> Full-hookup RV sites</span>
       </div>
     </header>
   );
@@ -248,28 +290,34 @@ const Marquee = () => (
 const About = () => (
   <section className="section reveal" id="about">
     <div className="head">
-      <h2>The store at <em>the fork</em> in the road.</h2>
-      <p>Midway is the practical stop outside Leavenworth: fuel and diesel, espresso, groceries, ice, bait, tackle, firewood, and RV sites close to Plain.</p>
+      <h2>The stop before <em>the road gets quiet.</em></h2>
+      <p>Pull in for fuel, coffee, ice, firewood, bait, tackle, beer, snacks, and a clean full-hookup RV site close to Plain, Lake Wenatchee, and the Leavenworth backroads.</p>
     </div>
     <div className="about">
       <div className="lead">
-        <span className="drop">M</span>idway should feel like the useful stop you remember: easy fuel, real coffee, road basics, and a place to stay.
+        <span className="drop">M</span>idway is built for the people actually moving through the valley: early drivers, weekend campers, anglers, families, and rigs that need an easy place to plug in.
       </div>
       <div className="body">
-        <p>Check whether the store is open, book an RV site, call ahead, or get directions without hunting through a menu.</p>
-        <p>If you need fuel, coffee, groceries, ice, bait, tackle, or a place to plug in for the night, this page should get you there without hunting.</p>
+        <p>Use the site the same way you use the store: check today’s hours, scan open RV sites, call ahead, get directions, and keep moving.</p>
+        <p>The inventory changes with the season, but the essentials stay simple: fuel, espresso, groceries, cold drinks, ice cream, camp supplies, and a practical overnight stop.</p>
         <dl className="meta">
           <div><dt>Fuel</dt><dd>Non-ethanol & diesel</dd></div>
           <div><dt>Store</dt><dd>Espresso, groceries, ice cream</dd></div>
-          <div><dt>Stay</dt><dd>RV sites</dd></div>
+          <div><dt>Stay</dt><dd>Sites 03-16</dd></div>
           <div><dt>Location</dt><dd>Plain / Leavenworth, WA</dd></div>
         </dl>
       </div>
     </div>
     <div className="about-photos">
-      <div className="p wide"><Ph g="coffee" label="STORE INTERIOR  /  MORNING LIGHT" /></div>
-      <div className="p"><Ph g="jar" label="GROCERIES  /  CAMP BASICS" /></div>
-      <div className="p"><Ph g="pump" label="PUMP 3, FACING WEST" /></div>
+      <div className="p wide">
+        <Photo src="/images/store-interior.jpg" alt="Inside Midway Gas & Grocery with stocked shelves and warm store lighting" label="STORE INTERIOR  /  MORNING LIGHT" />
+      </div>
+      <div className="p">
+        <Photo src="/images/store-exterior.jpg" alt="Midway Gas & Grocery exterior and fuel stop in Plain, Washington" label="MIDWAY EXTERIOR  /  PLAIN, WA" />
+      </div>
+      <div className="p">
+        <Photo src="/images/exterior-wide.jpg" alt="Wide view of Midway Gas & Grocery and the surrounding mountain road setting" label="HIGHWAY 2  /  FACING WEST" />
+      </div>
     </div>
   </section>
 );
@@ -700,8 +748,8 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   return (
     <section className="section reveal" id="stay" style={{ background: 'var(--paper)' }}>
       <div className="head">
-        <h2>Book an RV site. <em>Stay awhile.</em></h2>
-        <p>Pick an open site, add your dates and contact info, and Midway will hold the spot while the secure Square payment form opens. Payment confirms the booking.</p>
+        <h2>Fourteen full-hookup RV sites. <em>Right behind the store.</em></h2>
+        <p>Sites 03-16 include water, sewer, and 30A or 50A service with shade options and short-walk access to fuel, coffee, ice, firewood, and groceries.</p>
       </div>
 
       <div className="book-wrap">
@@ -997,7 +1045,7 @@ const Foot = ({ visible = {}, phone = '', address = '' }) => (
       </div>
       <div>
         <h4>Local stop</h4>
-        <p>Fuel, coffee, bait, tackle, ice, firewood, snacks, drinks, and RV sites in Plain, Washington.</p>
+        <p>Fuel, espresso, bait, tackle, ice, firewood, groceries, and full-hookup RV sites in Plain, Washington.</p>
       </div>
     </div>
     <div className="foot-bot">

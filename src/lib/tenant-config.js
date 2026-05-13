@@ -16,6 +16,7 @@ export function createTenantConfig({
   const themeKey = publicSite.theme || frontend.themeKey || '';
   const businessName = business.name || location.name || tenant.name || '';
   const publicBrandName = business.publicBrandName || businessName;
+  const sections = normalizeSections(publicSite.sections ?? frontend.sections);
 
   return {
     tenantId,
@@ -46,11 +47,12 @@ export function createTenantConfig({
       url: publicSite.url || '',
       theme: themeKey,
       instagramPosts,
+      sections,
     },
     frontend: {
       themeKey,
       businessProfile: frontend.businessProfile || tenant.businessProfile || '',
-      sections: Array.isArray(frontend.sections) ? frontend.sections : [],
+      sections,
       draftConfig: isPlainObject(frontend.draftConfig) ? frontend.draftConfig : {},
       publishedConfig: isPlainObject(frontend.publishedConfig) ? frontend.publishedConfig : {},
     },
@@ -131,6 +133,7 @@ export function publicSettingsFromTenantConfig(config) {
     instagramHandle: config.business.instagramHandle,
     instagramUrl: config.business.instagramUrl,
     instagramPosts: config.publicSite.instagramPosts,
+    sections: config.publicSite.sections,
     googleMapsUrl: config.business.googleMapsUrl,
     logoUrl: config.business.logoUrl,
     theme: config.publicSite.theme,
@@ -155,6 +158,7 @@ export function adminSettingsFromTenantConfig(config, { featureFlags = {} } = {}
       url: config.publicSite.url,
       theme: config.publicSite.theme,
       instagramPosts: config.publicSite.instagramPosts,
+      sections: config.publicSite.sections,
     },
     providers: featureFlags['core.provider_adapters'] === false
       ? []
@@ -185,6 +189,10 @@ export function updateTenantConfigSettings(config, input = {}) {
   assignString(config.publicSite, 'theme', publicSite.theme, { required: true });
   if ('instagramPosts' in publicSite) {
     config.publicSite.instagramPosts = normalizeInstagramPosts(publicSite.instagramPosts);
+  }
+  if ('sections' in publicSite) {
+    config.publicSite.sections = normalizeSections(publicSite.sections);
+    config.frontend.sections = config.publicSite.sections;
   }
 
   return config;
@@ -348,6 +356,19 @@ function normalizeInstagramPost(value) {
   const url = String(value || '').trim();
   if (!/^https:\/\/(www\.)?instagram\.com\/(p|reel|tv)\//.test(url)) return null;
   return url;
+}
+
+function normalizeSections(value) {
+  const sections = Array.isArray(value) ? value : [];
+  return sections
+    .map(section => ({
+      key: String(section?.key || '').trim(),
+      enabled: section?.enabled !== false,
+      title: String(section?.title || '').trim(),
+      copy: String(section?.copy || '').trim(),
+      items: Array.isArray(section?.items) ? section.items : [],
+    }))
+    .filter(section => section.key);
 }
 
 function buildInstagramUrl(handle) {

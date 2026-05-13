@@ -20,12 +20,14 @@ export function createMemoryBookingStore({
   bookings = [],
   holds = [],
   providerConnections = [],
+  storeInventory = [],
   now = () => new Date(),
 } = {}) {
   const state = {
     sites: sites.map(clone),
     bookings: bookings.map(clone),
     holds: holds.map(clone),
+    storeInventory: storeInventory.map(normalizeInventoryRecord).filter(Boolean),
     squareEvents: [],
     auditLogs: [],
     notifications: [],
@@ -244,12 +246,55 @@ export function createMemoryBookingStore({
       return clone(booking);
     },
     async updateSiteStatus({ siteId, status, actor = null } = {}) {
+      return this.updateSiteDetails({ siteId, patch: { status }, actor });
+    },
+    async updateSiteDetails({ siteId, patch = {}, actor = null } = {}) {
       const site = state.sites.find(candidate => candidate.id === siteId);
       if (!site) return null;
-      site.status = status;
+      const update = normalizeSitePatch(patch);
+      Object.assign(site, update);
       site.updatedAt = resolveNow(null, now).toISOString();
       site.updatedBy = actor?.id ?? null;
       return clone(site);
+    },
+    async listStoreInventory({ activeOnly = false } = {}) {
+      return state.storeInventory
+        .filter(item => !activeOnly || (item.active && !item.hidden))
+        .sort(compareInventoryItems)
+        .map(clone);
+    },
+    async upsertStoreInventory(items = []) {
+      const normalized = items.map(normalizeInventoryRecord).filter(Boolean);
+      const updated = [];
+      for (const item of normalized) {
+        const existing = state.storeInventory.find(candidate => (
+          candidate.squareVariationId === item.squareVariationId
+          || candidate.squareId === item.squareId
+        ));
+        if (existing) {
+          Object.assign(existing, item, {
+            id: existing.id,
+            createdAt: existing.createdAt,
+            updatedAt: item.updatedAt || resolveNow(null, now).toISOString(),
+          });
+          updated.push(clone(existing));
+        } else {
+          const record = {
+            ...item,
+            id: crypto.randomUUID(),
+            createdAt: resolveNow(null, now).toISOString(),
+            updatedAt: item.updatedAt || resolveNow(null, now).toISOString(),
+          };
+          state.storeInventory.push(record);
+          updated.push(clone(record));
+        }
+      }
+      return updated.sort(compareInventoryItems);
+    },
+    async findStoreInventoryByVariationId(variationId) {
+      if (!variationId) return null;
+      const item = state.storeInventory.find(candidate => candidate.squareVariationId === variationId);
+      return item ? clone(item) : null;
     },
     async recordSquareEvent({ event = {}, payload = {} } = {}) {
       const squareEventId = event.eventId ?? null;
@@ -659,18 +704,96 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date() } 
       if (error) throw error;
       return data ? fromSupabaseBooking(data) : null;
     },
-    async updateSiteStatus({ siteId, status } = {}) {
-      const { data, error } = await supabase
-        .from('rv_sites')
-        .update({
-          status,
-          updated_at: resolveNow(null, now).toISOString(),
-        })
-        .eq('id', siteId)
+    async updateSiteStatus({ siteId, status, actor = null } = {}) {
+      return this.updateSiteDetails({ siteId, patch: { status }, actor });
+    },
+    async updateSiteDetails({ siteId, patch = {} } = {}) {
+      const update = toSupabaseSiteUpdate(normalizeSitePatch(patch), resolveNow(null, now));
+      const amenities = 'amenities' in patch ? normalizeAmenities(patch.amenities) : null;
+      const shouldUpdateRow = Object.keys(update).length > 1;
+
+      let data = null;
+      if (shouldUpdateRow) {
+        const response = await supabase
+          .from('rv_sites')
+          .update(update)
+          .eq('id', siteId)
+          .select('*')
+          .maybeSingle();
+        if (response.error) throw response.error;
+        data = response.data;
+      } else {
+        const response = await supabase
+          .from('rv_sites')
+          .select('*')
+          .eq('id', siteId)
+          .maybeSingle();
+        if (response.error) throw response.error;
+        data = response.data;
+      }
+      if (!data) return null;
+
+      if (amenities) {
+        const { error: deleteError } = await supabase
+          .from('rv_site_amenities')
+          .delete()
+          .eq('rv_site_id', siteId);
+        if (deleteError) throw deleteError;
+
+        if (amenities.length > 0) {
+          const { error: insertError } = await supabase
+            .from('rv_site_amenities')
+            .insert(amenities.map(label => ({
+              rv_site_id: siteId,
+              amenity_key: amenityKey(label),
+              amenity_label: label,
+            })));
+          if (insertError) throw insertError;
+        }
+      }
+
+      let resolvedAmenities = amenities;
+      if (!resolvedAmenities) {
+        const { data: amenityRows, error: amenityError } = await supabase
+          .from('rv_site_amenities')
+          .select('*')
+          .eq('rv_site_id', siteId);
+        if (amenityError) throw amenityError;
+        resolvedAmenities = (amenityRows ?? []).map(row => row.amenity_label || row.amenity_key);
+      }
+
+      return fromSupabaseSite(data, resolvedAmenities);
+    },
+    async listStoreInventory({ activeOnly = false } = {}) {
+      let query = supabase
+        .from('store_inventory')
         .select('*')
+        .order('category', { ascending: true })
+        .order('name', { ascending: true });
+      if (activeOnly) query = query.eq('active', true).eq('hidden', false);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []).map(fromSupabaseInventory);
+    },
+    async upsertStoreInventory(items = []) {
+      const rows = items.map(item => toSupabaseInventoryUpsert(item, resolveNow(null, now))).filter(Boolean);
+      if (rows.length === 0) return [];
+      const { data, error } = await supabase
+        .from('store_inventory')
+        .upsert(rows, { onConflict: 'square_variation_id' })
+        .select('*');
+      if (error) throw error;
+      return (data ?? []).map(fromSupabaseInventory).sort(compareInventoryItems);
+    },
+    async findStoreInventoryByVariationId(variationId) {
+      if (!variationId) return null;
+      const { data, error } = await supabase
+        .from('store_inventory')
+        .select('*')
+        .eq('square_variation_id', variationId)
         .maybeSingle();
       if (error) throw error;
-      return data ? fromSupabaseSite(data) : null;
+      return data ? fromSupabaseInventory(data) : null;
     },
     async recordSquareEvent({ event = {}, payload = {} } = {}) {
       const squareEventId = event.eventId ?? null;
@@ -965,6 +1088,81 @@ async function loadSupabaseHold(supabase, holdId) {
   return fromSupabaseHold(data);
 }
 
+function normalizeSitePatch(patch = {}) {
+  const update = {};
+  const stringFields = [
+    'displayName',
+    'status',
+    'amp',
+    'type',
+    'shade',
+    'sku',
+    'squareCatalogObjectId',
+    'shortDescription',
+    'customerNotes',
+    'adminNotes',
+  ];
+  const integerFields = [
+    'nightlyPriceCents',
+    'maxRvLengthFeet',
+    'mapX',
+    'mapY',
+    'mapWidth',
+    'mapHeight',
+    'rotation',
+    'sortOrder',
+  ];
+
+  for (const field of stringFields) {
+    if (!(field in patch)) continue;
+    const value = patch[field];
+    update[field] = value === null ? null : String(value ?? '').trim();
+  }
+  if ('siteType' in patch && !('type' in patch)) {
+    update.type = String(patch.siteType ?? '').trim();
+  }
+  for (const field of integerFields) {
+    if (!(field in patch)) continue;
+    const value = patch[field];
+    update[field] = value === null || value === '' ? null : Number(value);
+  }
+  if ('amenities' in patch) update.amenities = normalizeAmenities(patch.amenities);
+
+  if ('status' in update && !['active', 'inactive', 'maintenance'].includes(update.status)) {
+    throw new Error('Site status must be active, inactive, or maintenance.');
+  }
+  if ('nightlyPriceCents' in update && (!Number.isInteger(update.nightlyPriceCents) || update.nightlyPriceCents < 0)) {
+    throw new Error('Nightly price must be a non-negative whole-cent amount.');
+  }
+  for (const field of integerFields.filter(field => field !== 'nightlyPriceCents')) {
+    if (field in update && update[field] !== null && !Number.isInteger(update[field])) {
+      throw new Error(`${field} must be a whole number.`);
+    }
+  }
+  if ('squareCatalogObjectId' in update && !update.squareCatalogObjectId) update.squareCatalogObjectId = null;
+  if ('sku' in update && !update.sku) update.sku = null;
+  return update;
+}
+
+function normalizeAmenities(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\n,]+/);
+  return [...new Set(values
+    .map(item => String(item || '').trim())
+    .filter(Boolean))];
+}
+
+function amenityKey(label) {
+  return String(label || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || 'amenity';
+}
+
 function assertHoldCanConvert({ state, hold, now }) {
   assertActiveHold(hold, now);
 
@@ -1078,6 +1276,37 @@ function toSupabaseAdminBookingInsert({ input, site, quote, now }) {
   };
 }
 
+function toSupabaseSiteUpdate(update, now) {
+  const row = {
+    updated_at: now.toISOString(),
+  };
+  const fields = {
+    displayName: 'display_name',
+    status: 'status',
+    nightlyPriceCents: 'nightly_price_cents',
+    maxRvLengthFeet: 'max_rv_length_feet',
+    mapX: 'map_x',
+    mapY: 'map_y',
+    mapWidth: 'map_width',
+    mapHeight: 'map_height',
+    rotation: 'rotation',
+    amp: 'amp',
+    type: 'site_type',
+    shade: 'shade',
+    squareCatalogObjectId: 'square_catalog_object_id',
+    sku: 'sku',
+    sortOrder: 'sort_order',
+    shortDescription: 'short_description',
+    customerNotes: 'customer_notes',
+    adminNotes: 'admin_notes',
+  };
+
+  for (const [field, column] of Object.entries(fields)) {
+    if (field in update) row[column] = update[field];
+  }
+  return row;
+}
+
 function fromSupabaseSite(row, amenities = []) {
   return {
     id: row.id,
@@ -1104,6 +1333,76 @@ function fromSupabaseSite(row, amenities = []) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeInventoryRecord(item = {}) {
+  const squareItemId = item.squareItemId ?? item.square_item_id ?? item.itemId ?? item.item_id ?? null;
+  const squareVariationId = item.squareVariationId ?? item.square_variation_id ?? item.variationId ?? item.variation_id ?? null;
+  const squareId = item.squareId ?? item.square_id ?? squareVariationId ?? squareItemId;
+  const name = String(item.name ?? '').trim();
+  if (!squareId || !squareItemId || !squareVariationId || !name) return null;
+
+  const priceCents = Number(item.priceCents ?? item.price_cents ?? item.price ?? 0);
+  return {
+    id: item.id ?? null,
+    squareId,
+    squareItemId,
+    squareVariationId,
+    variationId: squareVariationId,
+    sku: String(item.sku ?? '').trim(),
+    name,
+    description: String(item.description ?? '').trim(),
+    priceCents: Number.isFinite(priceCents) ? Math.round(priceCents) : 0,
+    currency: String(item.currency ?? 'USD').trim() || 'USD',
+    category: String(item.category ?? 'Store').trim() || 'Store',
+    active: item.active !== false,
+    hidden: item.hidden === true,
+    source: item.source ?? 'square',
+    updatedAt: item.updatedAt ?? item.updated_at ?? null,
+    createdAt: item.createdAt ?? item.created_at ?? null,
+  };
+}
+
+function toSupabaseInventoryUpsert(item, now) {
+  const record = normalizeInventoryRecord(item);
+  if (!record) return null;
+  return {
+    square_id: record.squareId,
+    square_item_id: record.squareItemId,
+    square_variation_id: record.squareVariationId,
+    sku: record.sku,
+    name: record.name,
+    description: record.description,
+    price_cents: record.priceCents,
+    currency: record.currency,
+    category: record.category,
+    active: record.active,
+    hidden: record.hidden,
+    source: record.source,
+    updated_at: record.updatedAt || now.toISOString(),
+  };
+}
+
+function fromSupabaseInventory(row) {
+  return normalizeInventoryRecord({
+    id: row.id,
+    squareId: row.square_id,
+    squareItemId: row.square_item_id,
+    squareVariationId: row.square_variation_id,
+    sku: row.sku,
+    name: row.name,
+    description: row.description,
+    priceCents: row.price_cents ?? (
+      row.price === null || row.price === undefined ? 0 : Number(row.price) * 100
+    ),
+    currency: row.currency,
+    category: row.category,
+    active: row.active,
+    hidden: row.hidden,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
 }
 
 function fromSupabaseHold(row) {
@@ -1275,6 +1574,12 @@ function compareBookings(a, b) {
 function compareProviderConnections(a, b) {
   return String(a.providerKind ?? '').localeCompare(String(b.providerKind ?? ''))
     || String(a.providerKey ?? '').localeCompare(String(b.providerKey ?? ''));
+}
+
+function compareInventoryItems(a, b) {
+  return String(a.category ?? '').localeCompare(String(b.category ?? ''))
+    || String(a.name ?? '').localeCompare(String(b.name ?? ''))
+    || String(a.squareVariationId ?? '').localeCompare(String(b.squareVariationId ?? ''));
 }
 
 function availabilityError(error) {

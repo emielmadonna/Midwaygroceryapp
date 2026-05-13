@@ -108,7 +108,13 @@ test('tenant runtime config loads Supabase tenant, location, site, provider, and
   assert.equal(config.business.instagramHandle, 'demo_market');
   assert.equal(config.publicSite.url, 'https://demo.example');
   assert.equal(config.publicSite.theme, 'frontend_theme');
-  assert.deepEqual(config.frontend.sections, [{ key: 'hero' }]);
+  assert.deepEqual(config.frontend.sections, [{
+    key: 'hero',
+    enabled: true,
+    title: '',
+    copy: '',
+    items: [],
+  }]);
 
   const square = getProviderConfig(config, 'square');
   assert.equal(square.applicationId, 'location-app');

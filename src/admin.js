@@ -8,6 +8,7 @@ const state = {
   dashboard: null,
   settings: null,
   providerStatuses: [],
+  catalogProducts: [],
   notifications: [],
   audit: [],
   selectedDate: todayIso(),
@@ -32,6 +33,8 @@ const els = {
   settingsPanel: document.getElementById('settingsPanel'),
   settingsForm: document.getElementById('businessSettingsForm'),
   settingsRoleNote: document.getElementById('settingsRoleNote'),
+  sectionControlsGrid: document.getElementById('sectionControlsGrid'),
+  sectionStatusSummary: document.getElementById('sectionStatusSummary'),
   providerPanel: document.getElementById('providerPanel'),
   providerStatusGrid: document.getElementById('providerStatusGrid'),
   calendarPanel: document.getElementById('calendarPanel'),
@@ -52,6 +55,7 @@ const els = {
   blockForm: document.getElementById('blockSiteForm'),
   siteSelects: document.querySelectorAll('[data-site-select]'),
   siteStatusList: document.getElementById('siteStatusList'),
+  catalogSyncBtn: document.getElementById('catalogSyncBtn'),
   toast: document.getElementById('toast'),
 };
 
@@ -110,8 +114,19 @@ els.settingsForm?.addEventListener('submit', async event => {
       url: form.get('publicSiteUrl'),
       theme: form.get('theme'),
       instagramPosts: splitTextList(form.get('instagramPosts')),
+      sections: collectSectionSettings(form),
     },
   });
+});
+
+els.catalogSyncBtn?.addEventListener('click', async () => {
+  try {
+    await api('/api/admin/square/catalog/sync', { method: 'POST', body: {} });
+    showToast('Square catalog synced.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 });
 
 els.calendarDate?.addEventListener('change', () => {
@@ -183,7 +198,7 @@ async function boot() {
 }
 
 async function loadAdminData() {
-  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses] = await Promise.all([
+  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts] = await Promise.all([
     api('/api/admin/dashboard/today'),
     api('/api/admin/rv-sites'),
     api('/api/admin/bookings'),
@@ -191,6 +206,7 @@ async function loadAdminData() {
     state.user?.role === 'owner' ? api('/api/admin/audit-log') : Promise.resolve([]),
     featureEnabled('core.tenant_config') ? api('/api/admin/settings') : Promise.resolve(null),
     featureEnabled('core.provider_adapters') ? api('/api/admin/providers') : Promise.resolve([]),
+    state.user?.role === 'owner' && featureEnabled('core.provider_adapters') ? api('/api/admin/square/catalog') : Promise.resolve([]),
   ]);
 
   state.dashboard = dashboard;
@@ -200,6 +216,7 @@ async function loadAdminData() {
   state.audit = audit;
   state.settings = settings;
   state.providerStatuses = providerStatuses;
+  state.catalogProducts = catalogProducts;
 
   render();
 }
@@ -235,6 +252,33 @@ async function updateSiteStatus(siteId, status) {
     body: { status },
   });
   showToast('Site status updated.', 'success');
+  await loadAdminData();
+}
+
+async function updateSiteDetails(siteId, form) {
+  await api(`/api/admin/rv-sites/${encodeURIComponent(siteId)}`, {
+    method: 'PATCH',
+    body: {
+      displayName: form.get('displayName'),
+      status: form.get('status'),
+      nightlyPriceCents: Number(form.get('nightlyPriceCents') || 0),
+      maxRvLengthFeet: nullableNumber(form.get('maxRvLengthFeet')),
+      amp: form.get('amp'),
+      type: form.get('type'),
+      shade: form.get('shade'),
+      sku: form.get('sku'),
+      squareCatalogObjectId: form.get('squareCatalogObjectId') || null,
+      customerNotes: form.get('customerNotes'),
+      adminNotes: form.get('adminNotes'),
+      amenities: splitTextList(form.get('amenities')),
+      mapX: nullableNumber(form.get('mapX')),
+      mapY: nullableNumber(form.get('mapY')),
+      mapWidth: nullableNumber(form.get('mapWidth')),
+      mapHeight: nullableNumber(form.get('mapHeight')),
+      rotation: nullableNumber(form.get('rotation')),
+    },
+  });
+  showToast('RV site updated.', 'success');
   await loadAdminData();
 }
 
@@ -426,6 +470,8 @@ function renderSettings() {
     if (field) field.value = value ?? '';
   }
 
+  renderSectionControls(publicSite.sections ?? []);
+
   els.settingsForm.querySelectorAll('input, textarea, select, button').forEach(control => {
     control.disabled = !canEdit;
   });
@@ -433,6 +479,51 @@ function renderSettings() {
     els.settingsRoleNote.textContent = canEdit ? 'Owner edit access' : 'Read only';
   }
   els.settingsForm.dataset.readonly = canEdit ? 'false' : 'true';
+}
+
+function renderSectionControls(sections = []) {
+  if (!els.sectionControlsGrid) return;
+  const configured = new Map((sections ?? []).map(section => [section.key, section]));
+  const descriptors = [
+    { key: 'instagram', label: 'Instagram', content: (state.settings?.publicSite?.instagramPosts ?? []).length || state.settings?.business?.instagramHandle ? 1 : 0 },
+    { key: 'events', label: 'Events', content: sectionItemCount(configured.get('events')) },
+    { key: 'coffee', label: 'Coffee/menu', content: sectionItemCount(configured.get('coffee')) },
+    { key: 'products', label: 'Store products', content: state.catalogProducts.length },
+    { key: 'gallery', label: 'Gallery', content: sectionItemCount(configured.get('gallery')) },
+  ];
+  const liveCount = descriptors.filter(item => sectionState(configured.get(item.key), item.content) === 'live').length;
+  if (els.sectionStatusSummary) {
+    els.sectionStatusSummary.textContent = `${liveCount} live · ${descriptors.length - liveCount} hidden or disabled`;
+  }
+
+  els.sectionControlsGrid.innerHTML = descriptors.map(item => {
+    const section = configured.get(item.key) ?? {};
+    const status = sectionState(section, item.content);
+    return `
+      <fieldset class="section-control" data-section-state="${escapeHtml(status)}">
+        <legend>
+          <span>${escapeHtml(item.label)}</span>
+          <em>${escapeHtml(status)}</em>
+        </legend>
+        <input type="hidden" name="sectionKey_${escapeHtml(item.key)}" value="${escapeHtml(item.key)}" />
+        <label class="section-control__toggle">
+          <input type="checkbox" name="sectionEnabled_${escapeHtml(item.key)}" ${section.enabled === false ? '' : 'checked'} />
+          Enabled
+        </label>
+        <label>Title
+          <input type="text" name="sectionTitle_${escapeHtml(item.key)}" value="${escapeHtml(section.title || '')}" />
+        </label>
+        <label>Copy
+          <textarea name="sectionCopy_${escapeHtml(item.key)}" rows="2">${escapeHtml(section.copy || '')}</textarea>
+        </label>
+        ${item.key === 'events' || item.key === 'coffee' || item.key === 'gallery' ? `
+          <label>Items
+            <textarea name="sectionItems_${escapeHtml(item.key)}" rows="3">${escapeHtml(sectionItemsText(section.items))}</textarea>
+          </label>
+        ` : ''}
+      </fieldset>
+    `;
+  }).join('');
 }
 
 function renderProviderStatuses() {
@@ -697,21 +788,56 @@ function renderSiteInspector(site, activeForDate) {
 
 function renderSites() {
   renderSimpleList(els.siteStatusList, state.sites, site => `
-    <li class="site-row">
-      <div>
-        <strong>Site ${escapeHtml(site.siteNumber)}</strong>
-        <span>${formatMoney(site.nightlyPriceCents)} · ${escapeHtml(site.amp || '')} · ${escapeHtml(site.type || '')}</span>
-      </div>
-      <select data-site-status="${escapeHtml(site.id)}" ${state.user?.role !== 'owner' || !state.featureFlags['booking.site_status_management'] ? 'disabled' : ''}>
-        ${['active', 'maintenance', 'inactive'].map(status => `
-          <option value="${status}" ${site.status === status ? 'selected' : ''}>${status}</option>
-        `).join('')}
-      </select>
+    <li class="site-row site-editor-row">
+      <form class="site-editor-form" data-site-form="${escapeHtml(site.id)}">
+        <div class="site-editor-form__header">
+          <div>
+            <strong>${escapeHtml(site.displayName || `Site ${site.siteNumber}`)}</strong>
+            <span>${formatMoney(site.nightlyPriceCents)} · ${escapeHtml(site.amp || '')} · ${escapeHtml(site.type || '')}</span>
+          </div>
+          <span class="status-pill" data-status="${escapeHtml(site.squareCatalogObjectId ? 'mapped' : 'unmapped')}">${site.squareCatalogObjectId ? 'mapped' : 'unmapped'}</span>
+        </div>
+        <div class="site-editor-grid">
+          <label>Name<input type="text" name="displayName" value="${escapeHtml(site.displayName || '')}" /></label>
+          <label>Status<select name="status">
+            ${['active', 'maintenance', 'inactive'].map(status => `
+              <option value="${status}" ${site.status === status ? 'selected' : ''}>${status}</option>
+            `).join('')}
+          </select></label>
+          <label>Nightly cents<input type="number" name="nightlyPriceCents" min="0" step="1" value="${escapeHtml(site.nightlyPriceCents ?? 0)}" /></label>
+          <label>Max RV feet<input type="number" name="maxRvLengthFeet" min="0" step="1" value="${escapeHtml(site.maxRvLengthFeet ?? '')}" /></label>
+          <label>Amp<input type="text" name="amp" value="${escapeHtml(site.amp || '')}" /></label>
+          <label>Site type<input type="text" name="type" value="${escapeHtml(site.type || '')}" /></label>
+          <label>Shade<input type="text" name="shade" value="${escapeHtml(site.shade || '')}" /></label>
+          <label>SKU<input type="text" name="sku" value="${escapeHtml(site.sku || '')}" /></label>
+          <label>Square variation<select name="squareCatalogObjectId">
+            <option value="">Unmapped custom amount</option>
+            ${catalogOptions(site.squareCatalogObjectId)}
+          </select></label>
+        </div>
+        <div class="site-editor-grid site-editor-grid--map">
+          ${['mapX', 'mapY', 'mapWidth', 'mapHeight', 'rotation'].map(field => `
+            <label>${escapeHtml(field)}<input type="number" name="${field}" step="1" value="${escapeHtml(site[field] ?? '')}" /></label>
+          `).join('')}
+        </div>
+        <label>Amenities<textarea name="amenities" rows="2">${escapeHtml((site.amenities ?? []).join('\\n'))}</textarea></label>
+        <label>Customer notes<textarea name="customerNotes" rows="2">${escapeHtml(site.customerNotes || '')}</textarea></label>
+        <label>Admin notes<textarea name="adminNotes" rows="2">${escapeHtml(site.adminNotes || '')}</textarea></label>
+        <div class="site-editor-form__actions owner-only">
+          <button type="submit" class="admin-button">Save Site</button>
+        </div>
+      </form>
     </li>
   `, 'No RV sites configured.');
 
-  els.siteStatusList.querySelectorAll('[data-site-status]').forEach(select => {
-    select.addEventListener('change', () => updateSiteStatus(select.dataset.siteStatus, select.value));
+  els.siteStatusList.querySelectorAll('[data-site-form]').forEach(form => {
+    form.querySelectorAll('input, textarea, select, button').forEach(control => {
+      control.disabled = state.user?.role !== 'owner' || !state.featureFlags['booking.site_status_management'];
+    });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      updateSiteDetails(form.dataset.siteForm, new FormData(form)).catch(error => showToast(error.message, 'error'));
+    });
   });
 }
 
@@ -885,6 +1011,67 @@ function splitTextList(value) {
     .split(/[\n,]+/)
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function collectSectionSettings(form) {
+  return ['instagram', 'events', 'coffee', 'products', 'gallery'].map(key => ({
+    key,
+    enabled: form.get(`sectionEnabled_${key}`) === 'on',
+    title: form.get(`sectionTitle_${key}`) || '',
+    copy: form.get(`sectionCopy_${key}`) || '',
+    items: parseSectionItems(form.get(`sectionItems_${key}`)),
+  }));
+}
+
+function parseSectionItems(value) {
+  return String(value || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const [title, dateOrPrice, description] = line.split('|').map(part => part.trim());
+      return {
+        title,
+        name: title,
+        date: dateOrPrice || '',
+        price: dateOrPrice || '',
+        description: description || '',
+      };
+    });
+}
+
+function sectionItemCount(section = {}) {
+  return Array.isArray(section.items) ? section.items.length : 0;
+}
+
+function sectionState(section = {}, contentCount = 0) {
+  if (section.enabled === false) return 'disabled';
+  return contentCount > 0 ? 'live' : 'hidden empty';
+}
+
+function sectionItemsText(items = []) {
+  return (items ?? []).map(item => [
+    item.title || item.name || '',
+    item.date || item.price || '',
+    item.description || item.copy || '',
+  ].filter(Boolean).join(' | ')).join('\n');
+}
+
+function catalogOptions(selectedVariationId) {
+  return state.catalogProducts.map(product => {
+    const variationId = product.squareVariationId || product.variationId;
+    return `
+      <option value="${escapeHtml(variationId)}" ${variationId === selectedVariationId ? 'selected' : ''}>
+        ${escapeHtml(product.name)}${product.sku ? ` · ${escapeHtml(product.sku)}` : ''}${product.priceCents ? ` · ${escapeHtml(formatMoney(product.priceCents))}` : ''}
+      </option>
+    `;
+  }).join('');
 }
 
 function providerDetails(provider = {}) {

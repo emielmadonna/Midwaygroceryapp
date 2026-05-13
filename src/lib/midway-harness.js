@@ -8,6 +8,7 @@ import {
   createSupabaseServerClient,
   loadProviderConnections,
   loadTenantRuntimeConfig,
+  updateTenantRuntimeConfig,
 } from './supabase-server.js';
 import {
   DEFAULT_LOCATION_ID,
@@ -145,6 +146,9 @@ export function createMidwayHarness({
     async updateAdminSettings(input) {
       const resolvedTenantConfig = await resolveTenantConfig();
       updateTenantConfigSettings(resolvedTenantConfig, input);
+      if (resolvedSupabase) {
+        await updateTenantRuntimeConfig(resolvedSupabase, resolvedTenantConfig, input);
+      }
       return adminSettingsFromTenantConfig(resolvedTenantConfig, {
         featureFlags: createFeatureFlagEvaluator({ env, overrides: featureFlagOverrides, role: 'owner' }).all(),
       });
@@ -156,6 +160,7 @@ export function createMidwayHarness({
       const resolvedTenantConfig = await resolveTenantConfig();
       const flags = flagEvaluator.all();
       const sites = await resolvedBookingStore.listSites({ publicOnly: true });
+      const persistedProducts = await resolvedBookingStore.listStoreInventory?.({ activeOnly: true }) ?? [];
       const availability = flags.rvBooking && startDate && endDate
         ? (await resolvedBookingStore.listAvailability({
             startDate,
@@ -168,7 +173,7 @@ export function createMidwayHarness({
         settings: publicSettingsFromTenantConfig(resolvedTenantConfig),
         hours: state.hours,
         fuelPrices: flags.fuel ? state.fuelPrices : [],
-        squareProducts: flags.products ? state.squareProducts : [],
+        squareProducts: flags.products ? (persistedProducts.length ? persistedProducts : state.squareProducts) : [],
         rvSites: flags.rvBooking ? sites : [],
         rvAvailability: availability,
         featureFlags: flags,
@@ -209,6 +214,18 @@ export function createMidwayHarness({
     },
     async updateSiteStatus(input) {
       return resolvedBookingStore.updateSiteStatus(input);
+    },
+    async updateSiteDetails(input) {
+      return resolvedBookingStore.updateSiteDetails(input);
+    },
+    async listStoreInventory(input) {
+      return resolvedBookingStore.listStoreInventory?.(input) ?? [];
+    },
+    async upsertStoreInventory(input) {
+      return resolvedBookingStore.upsertStoreInventory?.(input) ?? [];
+    },
+    async findStoreInventoryByVariationId(input) {
+      return resolvedBookingStore.findStoreInventoryByVariationId?.(input) ?? null;
     },
     async adminDashboard({ from, to } = {}) {
       const [sites, bookings, notifications] = await Promise.all([

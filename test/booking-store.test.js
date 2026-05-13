@@ -134,3 +134,70 @@ test('memory booking store records Square webhook events idempotently', async ()
   assert.equal(duplicate.event.processingStatus, 'processed');
   assert.equal(duplicate.event.bookingCode, 'MW-TEST1');
 });
+
+test('memory booking store updates RV site details and amenities', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  const updated = await store.updateSiteDetails({
+    siteId: 'site-1',
+    patch: {
+      displayName: 'Creekside 01',
+      status: 'maintenance',
+      nightlyPriceCents: 5200,
+      maxRvLengthFeet: 34,
+      amp: '30A',
+      type: 'back',
+      shade: 'partial',
+      sku: 'RV-CREEK-01',
+      squareCatalogObjectId: 'VAR_RV_01',
+      customerNotes: 'Near the trees.',
+      adminNotes: 'Check pedestal.',
+      amenities: ['Water', 'Sewer', 'Water'],
+      mapX: 100,
+      mapY: 200,
+      mapWidth: 80,
+      mapHeight: 40,
+      rotation: -2,
+    },
+    actor: { id: 'owner-1' },
+  });
+
+  assert.equal(updated.displayName, 'Creekside 01');
+  assert.equal(updated.status, 'maintenance');
+  assert.equal(updated.nightlyPriceCents, 5200);
+  assert.equal(updated.squareCatalogObjectId, 'VAR_RV_01');
+  assert.deepEqual(updated.amenities, ['Water', 'Sewer']);
+  assert.equal(updated.updatedBy, 'owner-1');
+});
+
+test('memory booking store upserts Square catalog inventory by variation id', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  await store.upsertStoreInventory([
+    {
+      squareItemId: 'ITEM_1',
+      squareVariationId: 'VAR_1',
+      sku: 'FIREWOOD',
+      name: 'Firewood Bundle',
+      priceCents: 800,
+      category: 'Camping',
+      active: true,
+      hidden: false,
+    },
+  ]);
+  const updated = await store.upsertStoreInventory([
+    {
+      squareItemId: 'ITEM_1',
+      squareVariationId: 'VAR_1',
+      sku: 'FIREWOOD',
+      name: 'Firewood Bundle',
+      priceCents: 900,
+      category: 'Camping',
+      active: true,
+      hidden: false,
+    },
+  ]);
+
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].priceCents, 900);
+  assert.equal((await store.listStoreInventory()).length, 1);
+  assert.equal((await store.findStoreInventoryByVariationId('VAR_1')).name, 'Firewood Bundle');
+});

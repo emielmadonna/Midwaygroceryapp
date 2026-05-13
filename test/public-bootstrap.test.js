@@ -80,3 +80,54 @@ test('Square catalog products are normalized for the landing page', () => {
     },
   ]);
 });
+
+test('persisted Square inventory rows normalize for public products', () => {
+  const products = normalizeSquareProducts([
+    {
+      squareItemId: 'ITEM_1',
+      squareVariationId: 'VAR_1',
+      sku: 'FIREWOOD-BUNDLE',
+      name: 'Firewood Bundle',
+      description: 'Local bundle',
+      priceCents: 800,
+      currency: 'USD',
+      category: 'Camping',
+      active: true,
+      hidden: false,
+    },
+  ]);
+
+  assert.deepEqual(products, [
+    {
+      id: 'ITEM_1',
+      variationId: 'VAR_1',
+      sku: 'FIREWOOD-BUNDLE',
+      name: 'Firewood Bundle',
+      description: 'Local bundle',
+      priceCents: 800,
+      currency: 'USD',
+      category: 'Camping',
+      source: 'square',
+    },
+  ]);
+});
+
+test('disabled public sections stay hidden while enabled empty sections collapse', () => {
+  const bootstrap = buildPublicBootstrap({
+    settings: {
+      instagramHandle: 'midwayplain',
+      sections: [
+        { key: 'instagram', enabled: false },
+        { key: 'events', enabled: true, items: [] },
+      ],
+    },
+    events: [],
+    featureFlags: {
+      instagram: true,
+      events: true,
+    },
+  });
+
+  assert.equal(bootstrap.featureFlags.instagram, false);
+  assert.equal(bootstrap.featureFlags.events, false);
+});

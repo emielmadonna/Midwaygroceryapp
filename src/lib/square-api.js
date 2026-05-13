@@ -92,6 +92,43 @@ export async function listSquareCatalogItems(options = {}) {
   return result.objects ?? [];
 }
 
+export function normalizeSquareCatalogItemsForInventory(objects = []) {
+  const rows = [];
+  for (const object of objects ?? []) {
+    const itemData = object.itemData ?? object.item_data ?? {};
+    const variations = itemData.variations ?? [];
+    const category = itemData.categories?.[0]?.name
+      ?? itemData.category_id
+      ?? object.category
+      ?? 'Store';
+    const hidden = isSquareItemHidden(object, itemData);
+
+    for (const variation of variations) {
+      const variationData = variation.itemVariationData ?? variation.item_variation_data ?? {};
+      const priceMoney = variationData.priceMoney ?? variationData.price_money ?? {};
+      const amount = typeof priceMoney.amount === 'bigint'
+        ? Number(priceMoney.amount)
+        : Number(priceMoney.amount ?? 0);
+      rows.push({
+        squareId: variation.id,
+        squareItemId: object.id,
+        squareVariationId: variation.id,
+        sku: variationData.sku ?? '',
+        name: [itemData.name, variationData.name].filter(Boolean).join(' - ') || itemData.name || variationData.name || '',
+        description: itemData.description ?? '',
+        priceCents: Number.isFinite(amount) ? amount : 0,
+        currency: priceMoney.currency ?? 'USD',
+        category,
+        active: object.is_deleted !== true && variation.is_deleted !== true && itemData.is_archived !== true,
+        hidden,
+        source: 'square',
+        updatedAt: variation.updated_at ?? object.updated_at ?? null,
+      });
+    }
+  }
+  return rows.filter(row => row.squareItemId && row.squareVariationId && row.name);
+}
+
 export async function createRvCheckoutPaymentLink({
   hold,
   bookingCode,
@@ -325,6 +362,16 @@ function createRvLineItem(hold) {
   }
 
   return lineItem;
+}
+
+function isSquareItemHidden(object = {}, itemData = {}) {
+  const visibility = String(
+    itemData.ecom_visibility
+    ?? itemData.visibility
+    ?? object.ecom_visibility
+    ?? '',
+  ).toUpperCase();
+  return visibility === 'HIDDEN' || visibility === 'UNAVAILABLE';
 }
 
 export function verifySquareWebhookSignature({ rawBody, signature, notificationUrl, signatureKey }) {

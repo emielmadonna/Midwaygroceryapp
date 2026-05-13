@@ -577,6 +577,183 @@ test('refund endpoint denies employees and disabled refund flag', async () => {
   }
 });
 
+test('owner can edit RV site details and Square mapping with audit log', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertStoreInventory([
+    {
+      squareItemId: 'ITEM_RV',
+      squareVariationId: 'VAR_RV_03',
+      sku: 'RV-03-SQUARE',
+      name: 'RV Site 03 Night',
+      priceCents: 6100,
+      category: 'RV Sites',
+      active: true,
+      hidden: false,
+    },
+  ]);
+  const server = await createTestServer({ store });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const patched = await api(server, '/api/admin/rv-sites/rv-03', {
+      method: 'PATCH',
+      token: owner.token,
+      body: {
+        displayName: 'Premium Site 03',
+        status: 'maintenance',
+        nightlyPriceCents: 6100,
+        maxRvLengthFeet: 42,
+        amp: '50A',
+        type: 'back',
+        shade: 'partial',
+        sku: 'RV-03-SQUARE',
+        squareCatalogObjectId: 'VAR_RV_03',
+        customerNotes: 'Best for larger rigs.',
+        adminNotes: 'Verify pedestal after repair.',
+        amenities: ['Water', 'Sewer', 'Big rig'],
+        mapX: 900,
+      },
+    });
+
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.data.displayName, 'Premium Site 03');
+    assert.equal(patched.body.data.status, 'maintenance');
+    assert.equal(patched.body.data.squareCatalogObjectId, 'VAR_RV_03');
+    assert.deepEqual(patched.body.data.amenities, ['Water', 'Sewer', 'Big rig']);
+
+    const audit = await api(server, '/api/admin/audit-log', { token: owner.token });
+    assert.equal(audit.body.data[0].action, 'rv_site.update_details');
+    assert.equal(audit.body.data[0].targetId, 'rv-03');
+    assert.equal(audit.body.data[0].metadata.fields.includes('squareCatalogObjectId'), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('Square catalog sync persists variations and bootstrap prefers persisted products', async () => {
+  const env = {
+    ...baseEnv,
+    FEATURE_FLAGS_JSON: JSON.stringify({ 'inventory.cache': true }),
+  };
+  const store = createMidwayHarness({ env, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const server = await createTestServer({
+    env,
+    store,
+    fetchImpl: async (url) => {
+      assert.match(url, /\/v2\/catalog\/list\?types=ITEM$/);
+      return {
+        ok: true,
+        json: async () => ({
+          objects: [
+            {
+              id: 'ITEM_FIREWOOD',
+              updated_at: '2026-05-01T00:00:00Z',
+              item_data: {
+                name: 'Firewood Bundle',
+                description: 'Local bundle',
+                categories: [{ name: 'Camping' }],
+                variations: [
+                  {
+                    id: 'VAR_FIREWOOD',
+                    item_variation_data: {
+                      sku: 'FIREWOOD',
+                      price_money: { amount: 800, currency: 'USD' },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const synced = await api(server, '/api/admin/square/catalog/sync', {
+      method: 'POST',
+      token: owner.token,
+      body: {},
+    });
+    assert.equal(synced.status, 200);
+    assert.equal(synced.body.data[0].squareVariationId, 'VAR_FIREWOOD');
+
+    const listed = await api(server, '/api/admin/square/catalog', { token: owner.token });
+    assert.equal(listed.body.data.length, 1);
+    assert.equal(listed.body.data[0].sku, 'FIREWOOD');
+
+    const bootstrap = await api(server, '/api/public/bootstrap');
+    assert.equal(bootstrap.status, 200);
+    assert.equal(bootstrap.body.data.products[0].variationId, 'VAR_FIREWOOD');
+    assert.equal(bootstrap.body.data.featureFlags.products, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('mapped RV site checkout sends Square catalog variation line item', async () => {
+  const tenantConfig = createTenantConfig({
+    providers: {
+      square: {
+        status: 'connected',
+        locationId: 'sandbox-local-location',
+        environment: 'sandbox',
+        checkoutSurface: 'payment-link',
+      },
+    },
+  });
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig });
+  await store.upsertProviderConnection({
+    ...squareProviderConnection(),
+    publicConfig: {
+      locationId: 'sandbox-local-location',
+      environment: 'sandbox',
+      checkoutSurface: 'payment-link',
+    },
+  });
+  await store.updateSiteDetails({
+    siteId: 'rv-03',
+    patch: {
+      squareCatalogObjectId: 'VAR_RV_03',
+      sku: 'RV-03-SQUARE',
+    },
+  });
+  let requestBody;
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      assert.match(url, /\/v2\/online-checkout\/payment-links$/);
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink', url: 'https://square.test/checkout' },
+          related_resources: { orders: [{ id: 'order-123' }] },
+        }),
+      };
+    },
+  });
+
+  try {
+    const checkout = await api(server, '/api/bookings/checkout', {
+      method: 'POST',
+      body: {
+        siteId: 'rv-03',
+        startDate: '2026-08-01',
+        endDate: '2026-08-03',
+        customer: { name: 'Mapped Guest', phone: '555-0105' },
+      },
+    });
+    assert.equal(checkout.status, 200);
+    assert.equal(requestBody.order.line_items[0].catalog_object_id, 'VAR_RV_03');
+    assert.equal(requestBody.order.line_items[0].metadata.sku, 'RV-03-SQUARE');
+  } finally {
+    await server.close();
+  }
+});
+
 async function createTestServer({
   env = baseEnv,
   store = createMidwayHarness({ env, tenantConfig: createTestTenantConfig() }),

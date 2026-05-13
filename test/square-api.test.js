@@ -7,6 +7,7 @@ import {
   createSquareRefund,
   createSquareWebPayment,
   hasSquareConfig,
+  normalizeSquareCatalogItemsForInventory,
   squareRequest,
   validateSquareCheckoutConfig,
 } from '../src/lib/square-api.js';
@@ -118,6 +119,47 @@ test('Square request helper rejects sandbox defaults in production', async () =>
     }),
     /Square environment must be production/,
   );
+});
+
+test('Square catalog items flatten into persisted inventory rows', () => {
+  const rows = normalizeSquareCatalogItemsForInventory([
+    {
+      id: 'ITEM_1',
+      updated_at: '2026-05-01T00:00:00Z',
+      item_data: {
+        name: 'Firewood Bundle',
+        description: 'Local bundle',
+        categories: [{ name: 'Camping' }],
+        variations: [
+          {
+            id: 'VAR_1',
+            item_variation_data: {
+              sku: 'FIREWOOD',
+              price_money: { amount: 800, currency: 'USD' },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  assert.deepEqual(rows, [
+    {
+      squareId: 'VAR_1',
+      squareItemId: 'ITEM_1',
+      squareVariationId: 'VAR_1',
+      sku: 'FIREWOOD',
+      name: 'Firewood Bundle',
+      description: 'Local bundle',
+      priceCents: 800,
+      currency: 'USD',
+      category: 'Camping',
+      active: true,
+      hidden: false,
+      source: 'square',
+      updatedAt: '2026-05-01T00:00:00Z',
+    },
+  ]);
 });
 
 test('checkout does not synthesize failed Square requests in development', async () => {

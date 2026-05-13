@@ -123,6 +123,16 @@
                     <label class="feature-dynamic-sections">Instagram post URLs
                         <textarea name="instagramPosts" rows="4"></textarea>
                     </label>
+                    <div class="section-controls feature-dynamic-sections">
+                        <div class="section-controls__header">
+                            <div>
+                                <p class="admin-eyebrow">Public Sections</p>
+                                <h3>Content Controls</h3>
+                            </div>
+                            <span id="sectionStatusSummary" class="admin-user"></span>
+                        </div>
+                        <div id="sectionControlsGrid" class="section-controls__grid"></div>
+                    </div>
                     <div class="settings-form__actions owner-only">
                         <button type="submit" class="btn btn--primary">Save Settings</button>
                     </div>
@@ -260,8 +270,9 @@
                 <div class="admin-panel__header">
                     <div>
                         <p class="admin-eyebrow">RV</p>
-                        <h2>Site Status</h2>
+                        <h2>Site Editor</h2>
                     </div>
+                    <button id="catalogSyncBtn" class="admin-button owner-only" type="button">Sync Square</button>
                 </div>
                 <ul class="admin-list admin-list--divided" id="siteStatusList"></ul>
             </section>
