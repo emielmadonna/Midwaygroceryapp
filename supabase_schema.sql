@@ -417,7 +417,7 @@ ON CONFLICT (id) DO UPDATE SET
   updated_at = NOW();
 
 INSERT INTO locations (tenant_id, id, name, address, phone, timezone, status) VALUES
-('midway', 'plain', 'Midway Gas & Grocery', '14193 Chiwawa Loop RD, Leavenworth, WA 98826', '(509) 669-9378', 'America/Los_Angeles', 'active')
+('midway', 'plain', 'Midway Gas & Grocery', '14193 Chiwawa Loop RD, Leavenworth, WA 98826', '(206) 669-5880', 'America/Los_Angeles', 'active')
 ON CONFLICT (tenant_id, id) DO UPDATE SET
   name = EXCLUDED.name,
   address = EXCLUDED.address,
@@ -436,7 +436,7 @@ INSERT INTO site_settings (
   'Midway Gas & Grocery',
   'Midway Gas & Grocery',
   '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
-  '(509) 669-9378',
+  '(206) 669-5880',
   '',
   'midwayplain',
   'https://www.instagram.com/midwayplain/',

@@ -22,7 +22,7 @@ const DAY_LABELS = {
 };
 const FALLBACK_SETTINGS = {
   businessName: 'Midway Gas & Grocery',
-  phone: '(509) 669-9378',
+  phone: '(206) 669-5880',
   address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
   timezone: 'America/Los_Angeles',
   instagramHandle: 'midwayplain',
@@ -264,13 +264,16 @@ const Ticker = ({ onJumpStay, sites, bootstrap }) => {
   const fuel = bootstrap.fuelPrices || [];
   const phone = bootstrap.settings?.phone || '';
   const today = todayHour(bootstrap.hours || []);
+  const hasFuel = Boolean(bootstrap.featureFlags?.fuel && fuel.length);
+  const hasRvBooking = Boolean(bootstrap.featureFlags?.rvBooking && sites.length);
+  if (!today && !hasFuel && !hasRvBooking && !phone) return null;
   return (
     <section id="today" className="ticker today-strip">
       {today && <div><div className="l"><i /> OPEN TODAY</div><div className="v">{hourLabel(today)}</div><div className="s">{dateLabel()}</div></div>}
-      {bootstrap.featureFlags?.fuel && fuel.map(price => (
+      {hasFuel && fuel.map(price => (
         <div key={price.type}><div className="l"><i className="amber" /> {price.label}</div><div className="v">{price.price.toFixed(2)}<small>/GAL</small></div><div className="s">Live store update</div></div>
       ))}
-      {bootstrap.featureFlags?.rvBooking && <div className="open" onClick={onJumpStay}><div className="l"><i /> CAMP SITES</div><div className="v">{openCount}<small>/{sites.length} OPEN</small></div><div className="s">Tap to book →</div></div>}
+      {hasRvBooking && <div className="open" onClick={onJumpStay}><div className="l"><i /> CAMP SITES</div><div className="v">{openCount}<small>/{sites.length} OPEN</small></div><div className="s">Tap to book →</div></div>}
       {phone && <div><div className="l"><i /> CALL AHEAD</div><div className="v" style={{ fontSize: 25, lineHeight: 1.05, paddingTop: 6 }}>{phone}</div><div className="s">Confirm sites, hours, and arrival</div></div>}
     </section>
   );

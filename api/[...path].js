@@ -34,7 +34,7 @@ function createFallbackTenantConfig() {
     business: {
       name: 'Midway Gas & Grocery',
       publicBrandName: 'Midway Gas & Grocery',
-      phone: '(509) 669-9378',
+      phone: '(206) 669-5880',
       address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
       instagramHandle: 'midwayplain',
