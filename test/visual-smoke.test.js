@@ -32,14 +32,15 @@ const env = {
 test('public page keeps responsive shell, assets, and Instagram embed contract', async () => {
   const [indexHtml, appJsx, styles] = await Promise.all([
     readProjectFile('index.html'),
-    readProjectFile('public/midway.jsx'),
+    readProjectFile('src/midway.jsx'),
     readProjectFile('styles.css'),
   ]);
 
   assert.match(indexHtml, /<meta\s+name="viewport"\s+content="width=device-width,\s*initial-scale=1"/);
   assert.match(indexHtml, /<div\s+id="root"><\/div>/);
   assert.match(indexHtml, /href="\/styles\.css"/);
-  assert.match(indexHtml, /src="\/midway\.jsx"/);
+  assert.match(indexHtml, /type="module"\s+src="\/src\/midway\.jsx"/);
+  assert.doesNotMatch(indexHtml, /babel\.min\.js|text\/babel|react\.development\.js|react-dom\.development\.js/);
 
   assert.match(appJsx, /\/public\/bootstrap/);
   assert.match(appJsx, /const Instagram = \(\{ settings = \{\} \}\) =>/);
@@ -55,7 +56,7 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(appJsx, /\/bookings\/pay/);
   assert.doesNotMatch(appJsx, /synthetic-card-token|DEFAULT_SITES|RESERVATION_KEY/);
 
-  await assertAssetExists('public/midway.jsx');
+  await assertAssetExists('src/midway.jsx');
   await assertAssetExists('public/images/exterior-detailed.jpg');
   await assertAssetExists('public/assets/midway-logo.png');
 

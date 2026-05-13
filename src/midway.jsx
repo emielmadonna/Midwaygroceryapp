@@ -1,5 +1,6 @@
-/* global React, ReactDOM, Square */
-const { useState, useEffect, useRef, useMemo } = React;
+/* global Square */
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 
 // ─── Data ───────────────────────────────────────────────────────────────────
 const API_ROOT = ['3000', '3002', '5173'].includes(window.location.port)
@@ -1172,4 +1173,4 @@ function getCustomerSessionId() {
   return id;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<App />);
