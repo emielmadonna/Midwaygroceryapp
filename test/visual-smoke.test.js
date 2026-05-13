@@ -66,7 +66,8 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(styles, /\.square-card-host\s*\{[\s\S]*min-height:\s*96px;/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-links\s*\{\s*display:\s*none;/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.instagram-gallery\s*\{\s*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
-  assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.nav-actions\s*\{\s*display:\s*none;/);
+  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-actions\s*\{\s*display:\s*none;/);
+  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-brand-sub\s*\{[\s\S]*right:\s*var\(--pad\);/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.hero-actions\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*1fr;/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.instagram-gallery,[\s\S]*\.book-form \.row2/);
 });

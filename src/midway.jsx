@@ -246,13 +246,8 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
         {today && <div className="hero-route"><i /> Open today {hourLabel(today)}</div>}
-        <h1>Midway Gas &amp; Grocery</h1>
-        <p>Gas, groceries, espresso, bait, tackle, firewood, and bookable RV and tent sites at 14193 Chiwawa Loop Road.</p>
-        <div className="hero-facts" aria-label="Midway quick facts">
-          <span>Plain, Washington</span>
-          <span>RV 03-16</span>
-          <span>Tent T01-T10</span>
-        </div>
+        <h1 className="sr-only">Midway Gas &amp; Grocery</h1>
+        <p className="hero-lede">Fuel, coffee, groceries, and campsites on Chiwawa Loop Road.</p>
         <div className="hero-actions">
           {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book Site <span>→</span></a>}
           {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="hero-link hero-secondary">Directions <span>↗</span></a>}
