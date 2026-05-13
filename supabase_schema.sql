@@ -549,7 +549,17 @@ INSERT INTO rv_sites (
 ('rv-13', '13', 'Site 13', 'active', 4400, 30, 206, 532, 78, 34, 5, '30A', 'back', 'partial', 'MIDWAY-RV-13-30AMP', 11, 'Left-row family-size full-hookup site with partial shade.', 'Confirm guest/vehicle limits before surfacing family-size upsell.'),
 ('rv-14', '14', 'Site 14', 'active', 5800, 40, 206, 484, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-14-50AMP', 12, 'Premium 50 amp full-hookup site on the left row.', 'Good default recommendation for 50 amp rigs; verify turning radius on the loop.'),
 ('rv-15', '15', 'Site 15', 'active', 5800, 40, 206, 436, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-15-50AMP', 13, 'Premium 50 amp left-row site with partial shade.', 'Reference shows this just below site 16 near the road side.'),
-('rv-16', '16', 'Site 16', 'active', 5800, 40, 206, 388, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-16-50AMP', 14, 'Upper left-row premium end site closest to the store side.', 'Top marked left-side pad; confirm whether this should be held back for staff or owner use.')
+('rv-16', '16', 'Site 16', 'active', 5800, 40, 206, 388, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-16-50AMP', 14, 'Upper left-row premium end site closest to the store side.', 'Top marked left-side pad; confirm whether this should be held back for staff or owner use.'),
+('tent-01', 'T01', 'Tent 01', 'active', 2800, 0, 506, 430, 48, 30, -2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-01', 15, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-02', 'T02', 'Tent 02', 'active', 2800, 0, 566, 420, 48, 30, 2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-02', 16, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-03', 'T03', 'Tent 03', 'active', 2800, 0, 626, 420, 48, 30, -2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-03', 17, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-04', 'T04', 'Tent 04', 'active', 2800, 0, 686, 432, 48, 30, 2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-04', 18, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-05', 'T05', 'Tent 05', 'active', 2800, 0, 486, 484, 48, 30, 2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-05', 19, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-06', 'T06', 'Tent 06', 'active', 2800, 0, 546, 498, 48, 30, -2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-06', 20, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-07', 'T07', 'Tent 07', 'active', 2800, 0, 606, 504, 48, 30, 2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-07', 21, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-08', 'T08', 'Tent 08', 'active', 2800, 0, 666, 498, 48, 30, -2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-08', 22, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-09', 'T09', 'Tent 09', 'active', 2800, 0, 526, 556, 48, 30, -2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-09', 23, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.'),
+('tent-10', 'T10', 'Tent 10', 'active', 2800, 0, 626, 562, 48, 30, 2, 'Tent', 'tent', 'partial', 'MIDWAY-TENT-10', 24, 'Walk-in tent area on the center island with easy access to the store.', 'Center island tent inventory; confirm final site boundaries before peak-season launch.')
 ON CONFLICT (id) DO UPDATE SET
   nightly_price_cents = EXCLUDED.nightly_price_cents,
   max_rv_length_feet = EXCLUDED.max_rv_length_feet,
@@ -581,6 +591,16 @@ INSERT INTO rv_site_amenities (rv_site_id, amenity_key, amenity_label) VALUES
 ('rv-13', 'full_hookup', 'Full hookup'), ('rv-13', 'water', 'Water'), ('rv-13', 'sewer', 'Sewer'), ('rv-13', 'family_size', 'Family-size'),
 ('rv-14', 'full_hookup', 'Full hookup'), ('rv-14', 'water', 'Water'), ('rv-14', 'sewer', 'Sewer'), ('rv-14', 'premium', 'Premium'), ('rv-14', 'big_rig', 'Big rig'),
 ('rv-15', 'full_hookup', 'Full hookup'), ('rv-15', 'water', 'Water'), ('rv-15', 'sewer', 'Sewer'), ('rv-15', 'premium', 'Premium'), ('rv-15', 'road_edge', 'Road edge'),
-('rv-16', 'full_hookup', 'Full hookup'), ('rv-16', 'water', 'Water'), ('rv-16', 'sewer', 'Sewer'), ('rv-16', 'premium', 'Premium'), ('rv-16', 'end_site', 'End site'), ('rv-16', 'walk_to_store', 'Walk to store')
+('rv-16', 'full_hookup', 'Full hookup'), ('rv-16', 'water', 'Water'), ('rv-16', 'sewer', 'Sewer'), ('rv-16', 'premium', 'Premium'), ('rv-16', 'end_site', 'End site'), ('rv-16', 'walk_to_store', 'Walk to store'),
+('tent-01', 'tent_area', 'Tent area'), ('tent-01', 'walk_in', 'Walk-in'), ('tent-01', 'picnic_table', 'Picnic table'), ('tent-01', 'walk_to_store', 'Walk to store'),
+('tent-02', 'tent_area', 'Tent area'), ('tent-02', 'walk_in', 'Walk-in'), ('tent-02', 'picnic_table', 'Picnic table'), ('tent-02', 'walk_to_store', 'Walk to store'),
+('tent-03', 'tent_area', 'Tent area'), ('tent-03', 'walk_in', 'Walk-in'), ('tent-03', 'picnic_table', 'Picnic table'), ('tent-03', 'walk_to_store', 'Walk to store'),
+('tent-04', 'tent_area', 'Tent area'), ('tent-04', 'walk_in', 'Walk-in'), ('tent-04', 'picnic_table', 'Picnic table'), ('tent-04', 'walk_to_store', 'Walk to store'),
+('tent-05', 'tent_area', 'Tent area'), ('tent-05', 'walk_in', 'Walk-in'), ('tent-05', 'picnic_table', 'Picnic table'), ('tent-05', 'walk_to_store', 'Walk to store'),
+('tent-06', 'tent_area', 'Tent area'), ('tent-06', 'walk_in', 'Walk-in'), ('tent-06', 'picnic_table', 'Picnic table'), ('tent-06', 'walk_to_store', 'Walk to store'),
+('tent-07', 'tent_area', 'Tent area'), ('tent-07', 'walk_in', 'Walk-in'), ('tent-07', 'picnic_table', 'Picnic table'), ('tent-07', 'walk_to_store', 'Walk to store'),
+('tent-08', 'tent_area', 'Tent area'), ('tent-08', 'walk_in', 'Walk-in'), ('tent-08', 'picnic_table', 'Picnic table'), ('tent-08', 'walk_to_store', 'Walk to store'),
+('tent-09', 'tent_area', 'Tent area'), ('tent-09', 'walk_in', 'Walk-in'), ('tent-09', 'picnic_table', 'Picnic table'), ('tent-09', 'walk_to_store', 'Walk to store'),
+('tent-10', 'tent_area', 'Tent area'), ('tent-10', 'walk_in', 'Walk-in'), ('tent-10', 'picnic_table', 'Picnic table'), ('tent-10', 'walk_to_store', 'Walk to store')
 ON CONFLICT (rv_site_id, amenity_key) DO UPDATE SET
   amenity_label = EXCLUDED.amenity_label;

@@ -1,6 +1,6 @@
 import { buildPublicBootstrap } from './public-bootstrap.js';
 import { createBookingStore } from './booking-store.js';
-import { denormalizeMapSite, rvMapSites } from './rv-map-data.js';
+import { bookableMapSites, denormalizeMapSite } from './rv-map-data.js';
 import { createFeatureFlagEvaluator } from './feature-flags.js';
 import { quoteBooking } from './rv-booking.js';
 import {
@@ -24,11 +24,15 @@ import {
 } from './provider-connections.js';
 
 export const SEEDED_RV_SITES = withSquareCatalog(
-  rvMapSites.map(site => {
+  bookableMapSites.map(site => {
     const denormalized = denormalizeMapSite(site);
     return {
       ...denormalized,
-      type: denormalized.type === 'pull-through' ? 'pull' : 'back',
+      type: denormalized.type === 'pull-through'
+        ? 'pull'
+        : denormalized.type === 'tent'
+          ? 'tent'
+          : 'back',
     };
   }),
 );

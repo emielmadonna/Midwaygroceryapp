@@ -51,6 +51,16 @@ const FALLBACK_RV_SITES = [
   { id: 'rv-14', siteNumber: '14', displayName: 'Site 14', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 484, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-14-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Big rig'], customerNotes: 'Premium 50 amp full-hookup site on the left row.' },
   { id: 'rv-15', siteNumber: '15', displayName: 'Site 15', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 436, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-15-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Road edge'], customerNotes: 'Premium 50 amp left-row site with partial shade.' },
   { id: 'rv-16', siteNumber: '16', displayName: 'Site 16', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 388, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-16-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'End site', 'Walk to store'], customerNotes: 'Upper left-row premium end site closest to the store side.' },
+  { id: 'tent-01', siteNumber: 'T01', displayName: 'Tent 01', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 506, mapY: 430, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-01', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-02', siteNumber: 'T02', displayName: 'Tent 02', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 566, mapY: 420, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-02', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-03', siteNumber: 'T03', displayName: 'Tent 03', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 626, mapY: 420, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-03', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-04', siteNumber: 'T04', displayName: 'Tent 04', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 686, mapY: 432, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-04', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-05', siteNumber: 'T05', displayName: 'Tent 05', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 486, mapY: 484, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-05', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-06', siteNumber: 'T06', displayName: 'Tent 06', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 546, mapY: 498, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-06', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-07', siteNumber: 'T07', displayName: 'Tent 07', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 606, mapY: 504, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-07', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-08', siteNumber: 'T08', displayName: 'Tent 08', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 666, mapY: 498, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-08', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-09', siteNumber: 'T09', displayName: 'Tent 09', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 526, mapY: 556, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-09', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
+  { id: 'tent-10', siteNumber: 'T10', displayName: 'Tent 10', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 626, mapY: 562, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-10', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
 ];
 
 const toMapSite = (site, availableIds = null) => ({
@@ -220,7 +230,7 @@ const Nav = ({ visible = {}, phone = '', address = '' }) => {
       <div className="nav-actions">
         {phone && <a href={telHref(phone)} className="nav-action">Call</a>}
         {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="nav-action">Directions</a>}
-        {visible.rvBooking && <a href="#stay" className="nav-cta"><span className="dot" /> Book RV Site <span className="arr">→</span></a>}
+        {visible.rvBooking && <a href="#stay" className="nav-cta"><span className="dot" /> Book Site <span className="arr">→</span></a>}
       </div>
     </nav>
   );
@@ -236,9 +246,9 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
       <div className="hero-copy">
         {today && <div className="hero-route"><i /> Open today {hourLabel(today)}</div>}
         <h1>Midway Gas &amp; Grocery</h1>
-        <p>Fuel, espresso, camp provisions, bait, tackle, ice, firewood, and fourteen full-hookup RV sites at the Plain turnoff outside Leavenworth.</p>
+        <p>Fuel, espresso, camp provisions, bait, tackle, ice, firewood, full-hookup RV sites, and walk-in tent areas at the Plain turnoff outside Leavenworth.</p>
         <div className="hero-actions">
-          {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book RV Site <span>→</span></a>}
+          {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book Site <span>→</span></a>}
           {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="hero-link hero-secondary">Directions <span>↗</span></a>}
           {phone && <a href={telHref(phone)} className="hero-link hero-secondary">Call <span>{phone}</span></a>}
         </div>
@@ -259,7 +269,7 @@ const Ticker = ({ onJumpStay, sites, bootstrap }) => {
       {bootstrap.featureFlags?.fuel && fuel.map(price => (
         <div key={price.type}><div className="l"><i className="amber" /> {price.label}</div><div className="v">{price.price.toFixed(2)}<small>/GAL</small></div><div className="s">Live store update</div></div>
       ))}
-      {bootstrap.featureFlags?.rvBooking && <div className="open" onClick={onJumpStay}><div className="l"><i /> RV SITES</div><div className="v">{openCount}<small>/{sites.length} OPEN</small></div><div className="s">Tap to book →</div></div>}
+      {bootstrap.featureFlags?.rvBooking && <div className="open" onClick={onJumpStay}><div className="l"><i /> CAMP SITES</div><div className="v">{openCount}<small>/{sites.length} OPEN</small></div><div className="s">Tap to book →</div></div>}
       {phone && <div><div className="l"><i /> CALL AHEAD</div><div className="v" style={{ fontSize: 25, lineHeight: 1.05, paddingTop: 6 }}>{phone}</div><div className="s">Confirm sites, hours, and arrival</div></div>}
     </section>
   );
@@ -414,6 +424,8 @@ function iconForProduct(product) {
 }
 
 // ─── Site plan SVG ───────────────────────────────────────────────────────
+const MAP_WORLD = { minX: -360, minY: -260, maxX: 1560, maxY: 1060 };
+
 const SitePlan = ({ sel, setSel, sites }) => {
   const [touring, setTouring] = useState(false);
   const stageRef = useRef(null);
@@ -422,12 +434,13 @@ const SitePlan = ({ sel, setSel, sites }) => {
   const zoom = useMemo(() => {
     const s = sites.find(x => x.id === sel);
     if (!s) return { tx: 0, ty: 0, sc: 1 };
-    const sc = 1.55;
+    const sc = 1.28;
     const cx = 600, cy = 400; // viewBox center
-    const tx = clamp(cx - s.x * sc, 1200 - 1200 * sc, 0);
-    const ty = clamp(cy - s.y * sc, 800 - 800 * sc, 0);
+    const tx = clamp(cx - s.x * sc, 1200 - MAP_WORLD.maxX * sc, -MAP_WORLD.minX * sc);
+    const ty = clamp(cy - s.y * sc, 800 - MAP_WORLD.maxY * sc, -MAP_WORLD.minY * sc);
     return { tx, ty, sc };
   }, [sel]);
+  const mapTransform = `matrix(${zoom.sc} 0 0 ${zoom.sc} ${zoom.tx} ${zoom.ty})`;
 
   // Auto-tour through open sites
   useEffect(() => {
@@ -458,8 +471,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
           {touring ? '■ Stop tour' : '▶ Tour open sites'}
         </button>
       </div>
-      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice"
-           style={{ transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.sc})`, transformOrigin: '0 0' }}>
+      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
         <defs>
           <pattern id="forest" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
             <path d="M30 8 L22 28 L26 28 L18 42 L26 42 L22 52 L38 52 L34 42 L42 42 L34 28 L38 28 Z" fill="#4A4936" opacity=".22"/>
@@ -469,8 +481,9 @@ const SitePlan = ({ sel, setSel, sites }) => {
           </pattern>
         </defs>
 
-        <rect width="1200" height="800" fill="#D9D2B4"/>
-        <rect width="1200" height="800" fill="url(#forest)" opacity="0.35"/>
+        <g className="map-world" transform={mapTransform}>
+        <rect x="-360" y="-260" width="1920" height="1320" fill="#D9D2B4"/>
+        <rect x="-360" y="-260" width="1920" height="1320" fill="url(#forest)" opacity="0.35"/>
 
         {/* Store drive and RV loop */}
         <path d="M-80 150 L560 -42" stroke="#2A2925" strokeWidth="56" fill="none" strokeLinecap="round" opacity="0.9"/>
@@ -519,8 +532,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
 
         {/* Common markers */}
         <g>
-          <rect x="512" y="474" width="190" height="92" fill="none" stroke="#11100E" strokeWidth="1.4" strokeDasharray="4 6" rx="5"/>
-          <text x="607" y="524" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1.5" textAnchor="middle" fill="#11100E">CENTER ISLAND</text>
+          <rect x="456" y="392" width="284" height="220" fill="none" stroke="#11100E" strokeWidth="1.4" strokeDasharray="4 6" rx="8"/>
+          <text x="598" y="624" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1.5" textAnchor="middle" fill="#11100E">TENT AREAS T01-T10</text>
         </g>
 
         {/* Trees */}
@@ -554,7 +567,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
           );
         })}
 
-        <text x="1130" y="780" fontFamily="JetBrains Mono" fontSize="9" letterSpacing="2" textAnchor="end" fill="#11100E">RV SITES 03-16</text>
+        <text x="1130" y="780" fontFamily="JetBrains Mono" fontSize="9" letterSpacing="2" textAnchor="end" fill="#11100E">RV 03-16 / TENT T01-T10</text>
+        </g>
       </svg>
 
       <div className="legend">
@@ -708,10 +722,26 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   const siteReady = Boolean(selSite && datesReady);
   const guestReady = Boolean(guest.name.trim() && guest.phone.trim());
   const ready = siteReady && guestReady;
+  const siteKindLabel = selSite?.type === 'tent'
+    ? 'walk-in tent area'
+    : selSite?.type === 'pull'
+      ? 'pull-through'
+      : 'back-in';
+  const siteCapacityLabel = selSite?.type === 'tent'
+    ? 'tent area'
+    : `up to ${selSite?.maxRvLengthFeet || '--'} ft`;
 
   useEffect(() => {
     onDateRangeChange?.(arr, dep);
   }, [arr, dep]);
+
+  useEffect(() => {
+    if (!selSite) return;
+    setRig(current => {
+      if (selSite.type === 'tent') return current === 'Tent' ? current : 'Tent';
+      return current === 'Tent' ? 'Class A' : current;
+    });
+  }, [selSite?.id, selSite?.type]);
 
   const updateGuest = (field, value) => {
     setGuest(g => ({ ...g, [field]: value }));
@@ -746,8 +776,8 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   return (
     <section className="section reveal" id="stay" style={{ background: 'var(--paper)' }}>
       <div className="head">
-        <h2>Fourteen full-hookup RV sites. <em>Right behind the store.</em></h2>
-        <p>Sites 03-16 include water, sewer, and 30A or 50A service with shade options and short-walk access to fuel, coffee, ice, firewood, and groceries.</p>
+        <h2>RV sites and tent areas. <em>Right behind the store.</em></h2>
+        <p>Sites 03-16 include water, sewer, and 30A or 50A service. Ten walk-in tent areas sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
       </div>
 
       <div className="book-wrap">
@@ -778,7 +808,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
                 <div className="site-detail">
                   <div className="row1">
                     <div className="num">Site <em>No. {String(selSite.siteNumber || selSite.id).padStart(2,'0')}</em></div>
-                    <div className="amp">{selSite.amp} · {selSite.type === 'pull' ? 'pull-through' : 'back-in'} · {selSite.shade} shade · up to {selSite.maxRvLengthFeet || '--'} ft</div>
+                    <div className="amp">{selSite.amp} · {siteKindLabel} · {selSite.shade} shade · {siteCapacityLabel}</div>
                   </div>
                   <div className="feats">
                     {selSite.feats.map(f => <span key={f}>{f}</span>)}
@@ -805,8 +835,9 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
 
               <div className="row2">
                 <div>
-                  <label>Rig</label>
+                  <label>Setup</label>
                   <select value={rig} onChange={e => setRig(e.target.value)}>
+                    <option>Tent</option>
                     <option>Van / Truck</option><option>Travel Trailer</option>
                     <option>Class C</option><option>Class A</option><option>Fifth Wheel</option>
                   </select>
@@ -854,7 +885,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               <div className="review-card">
                 <div><span>Site</span><strong>No. {String(selSite?.siteNumber || sel || '').padStart(2,'0')}</strong></div>
                 <div><span>Dates</span><strong>{arr} to {dep}</strong></div>
-                <div><span>Rig</span><strong>{rig} · {heads} guests</strong></div>
+                <div><span>Setup</span><strong>{rig} · {heads} guests</strong></div>
                 <div><span>Guest</span><strong>{guest.name || 'Name required'}</strong></div>
               </div>
               <div className="pick" style={{ marginTop: 20 }}>
@@ -924,7 +955,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               <div className="r"><span className="l">Arrive</span><span>{confirmed.arr}</span></div>
               <div className="r"><span className="l">Depart</span><span>{confirmed.dep}</span></div>
               <div className="r"><span className="l">Nights</span><span>{confirmed.nights} × {money(confirmed.site.nightlyPriceCents)}</span></div>
-              <div className="r"><span className="l">Rig</span><span>{confirmed.rig}  ·  {confirmed.heads} guests</span></div>
+              <div className="r"><span className="l">Setup</span><span>{confirmed.rig}  ·  {confirmed.heads} guests</span></div>
               <div className="r" style={{ borderTop: '1px solid var(--rule)', paddingTop: 10, marginTop: 6 }}>
                 <span className="l">Total</span><span style={{ fontFamily:'var(--serif)', fontSize: 22 }}>{money(confirmed.payment?.amountCents || confirmed.hold?.quote?.totalCents || 0)}</span>
               </div>
@@ -1066,7 +1097,7 @@ const Foot = ({ visible = {}, phone = '', address = '' }) => (
         <a href="#today">Hours &amp; status</a>
         {visible.coffee && <a href="#coffee">Coffee</a>}
         {visible.products && <a href="#pantry">Pantry &amp; provisions</a>}
-        {visible.rvBooking && <a href="#stay">Book RV Site</a>}
+        {visible.rvBooking && <a href="#stay">Book Site</a>}
         {visible.instagram && <a href="#instagram">Instagram</a>}
       </div>
       <div>
@@ -1082,7 +1113,7 @@ const Foot = ({ visible = {}, phone = '', address = '' }) => (
       </div>
       <div>
         <h4>Local stop</h4>
-        <p>Fuel, espresso, bait, tackle, ice, firewood, groceries, and full-hookup RV sites in Plain, Washington.</p>
+        <p>Fuel, espresso, bait, tackle, ice, firewood, groceries, RV sites, and tent areas in Plain, Washington.</p>
       </div>
     </div>
     <div className="foot-bot">

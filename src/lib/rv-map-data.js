@@ -25,6 +25,8 @@ export const RV_SITE_AMENITIES = Object.freeze({
   PREMIUM: 'Premium',
   ROAD_EDGE: 'Road edge',
   QUIET_SIDE: 'Quiet side',
+  TENT_AREA: 'Tent area',
+  WALK_IN: 'Walk-in',
 });
 
 const DEFAULT_SITE_WIDTH = 78;
@@ -73,6 +75,41 @@ function createRvSite({
     amenities: Object.freeze(amenities),
     customerNotes,
     adminNotes,
+  });
+}
+
+function createTentSite({
+  siteNumber,
+  x,
+  y,
+  width = 48,
+  height = 30,
+  rotation = 0,
+}) {
+  return Object.freeze({
+    id: `tent-${siteNumber}`,
+    siteNumber: `T${siteNumber}`,
+    displayName: `Tent ${siteNumber}`,
+    status: 'active',
+    nightlyPriceCents: 2800,
+    maxRvLengthFeet: 0,
+    mapX: normalizeX(x),
+    mapY: normalizeY(y),
+    mapWidth: normalizeX(width),
+    mapHeight: normalizeY(height),
+    rotation,
+    amp: 'Tent',
+    type: 'tent',
+    shade: 'partial',
+    sku: `MIDWAY-TENT-${siteNumber}`,
+    amenities: Object.freeze([
+      RV_SITE_AMENITIES.TENT_AREA,
+      RV_SITE_AMENITIES.WALK_IN,
+      RV_SITE_AMENITIES.PICNIC_TABLE,
+      RV_SITE_AMENITIES.WALK_TO_STORE,
+    ]),
+    customerNotes: 'Walk-in tent area on the center island with easy access to the store.',
+    adminNotes: 'Center island tent inventory; confirm final site boundaries before peak-season launch.',
   });
 }
 
@@ -326,6 +363,24 @@ export const rvMapSites = Object.freeze([
     customerNotes: 'Upper left-row premium end site closest to the store side.',
     adminNotes: 'Top marked left-side pad; confirm whether this should be held back for staff or owner use.',
   }),
+]);
+
+export const tentMapSites = Object.freeze([
+  createTentSite({ siteNumber: '01', x: 506, y: 430, rotation: -2 }),
+  createTentSite({ siteNumber: '02', x: 566, y: 420, rotation: 2 }),
+  createTentSite({ siteNumber: '03', x: 626, y: 420, rotation: -2 }),
+  createTentSite({ siteNumber: '04', x: 686, y: 432, rotation: 2 }),
+  createTentSite({ siteNumber: '05', x: 486, y: 484, rotation: 2 }),
+  createTentSite({ siteNumber: '06', x: 546, y: 498, rotation: -2 }),
+  createTentSite({ siteNumber: '07', x: 606, y: 504, rotation: 2 }),
+  createTentSite({ siteNumber: '08', x: 666, y: 498, rotation: -2 }),
+  createTentSite({ siteNumber: '09', x: 526, y: 556, rotation: -2 }),
+  createTentSite({ siteNumber: '10', x: 626, y: 562, rotation: 2 }),
+]);
+
+export const bookableMapSites = Object.freeze([
+  ...rvMapSites,
+  ...tentMapSites,
 ]);
 
 export function denormalizeMapSite(site, viewBox = RV_MAP_COORDINATE_SYSTEM.sourceViewBox) {

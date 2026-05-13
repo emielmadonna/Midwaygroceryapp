@@ -137,7 +137,8 @@ test('public bootstrap and admin login endpoints expose launch-critical flags', 
     assert.equal(bootstrap.body.data.settings.instagramHandle, 'midwayplain');
     assert.equal(bootstrap.body.data.settings.instagramUrl, 'https://www.instagram.com/midwayplain/');
     assert.deepEqual(bootstrap.body.data.settings.instagramPosts, []);
-    assert.ok(bootstrap.body.data.rvSites.length >= 14);
+    assert.ok(bootstrap.body.data.rvSites.length >= 24);
+    assert.ok(bootstrap.body.data.rvSites.some(site => site.id === 'tent-01' && site.type === 'tent'));
 
     const badLogin = await requestJson(server, '/api/admin/auth/login', {
       method: 'POST',
