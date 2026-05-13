@@ -766,6 +766,16 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 .foot-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; margin-top: 60px; padding-top: 40px; border-top: 1px solid rgba(255,255,255,.15); }
 .foot-cols h4 { font-family: var(--mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255,255,255,.5); font-weight: 400; margin-bottom: 16px; }
 .foot-cols p, .foot-cols a { font-size: 14px; color: rgba(255,255,255,.85); line-height: 1.7; display: block; }
+.foot-cols .footer-admin-link {
+  width: fit-content;
+  margin-top: 18px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.58);
+}
+.foot-cols .footer-admin-link:hover { color: var(--paper); }
 .foot-bot { display: flex; justify-content: space-between; margin-top: 40px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,.4); }
 
 /* ─── Placeholder imagery (textured + glyph + mono label) ─── */

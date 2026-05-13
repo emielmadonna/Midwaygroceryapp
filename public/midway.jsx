@@ -1074,6 +1074,7 @@ const Foot = ({ visible = {}, phone = '', address = '' }) => (
       <div>
         <h4>Local stop</h4>
         <p>Fuel, espresso, bait, tackle, ice, firewood, groceries, RV sites, and tent areas in Plain, Washington.</p>
+        <a href="/admin.html" className="footer-admin-link">Admin login</a>
       </div>
     </div>
     <div className="foot-bot">
