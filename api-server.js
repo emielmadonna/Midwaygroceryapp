@@ -51,7 +51,7 @@ function createLocalStore(env) {
         name: 'Midway Gas & Grocery',
         publicBrandName: 'Midway Gas & Grocery',
         phone: '(509) 669-9378',
-        address: '14193 US-2, Leavenworth, WA 98826',
+        address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
         timezone: 'America/Los_Angeles',
         instagramHandle: 'midwayplain',
       },

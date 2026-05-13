@@ -246,7 +246,12 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
       <div className="hero-copy">
         {today && <div className="hero-route"><i /> Open today {hourLabel(today)}</div>}
         <h1>Midway Gas &amp; Grocery</h1>
-        <p>Fuel, espresso, camp provisions, bait, tackle, ice, firewood, full-hookup RV sites, and walk-in tent areas at the Plain turnoff outside Leavenworth.</p>
+        <p>Gas, groceries, espresso, bait, tackle, firewood, and bookable RV and tent sites at 14193 Chiwawa Loop Road.</p>
+        <div className="hero-facts" aria-label="Midway quick facts">
+          <span>Plain, Washington</span>
+          <span>RV 03-16</span>
+          <span>Tent T01-T10</span>
+        </div>
         <div className="hero-actions">
           {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book Site <span>→</span></a>}
           {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="hero-link hero-secondary">Directions <span>↗</span></a>}
@@ -288,42 +293,6 @@ const Marquee = () => (
       ))}
     </div>
   </div>
-);
-
-// ─── Editorial / About ───────────────────────────────────────────────────
-const About = () => (
-  <section className="section reveal" id="about">
-    <div className="head">
-      <h2>The stop before <em>the road gets quiet.</em></h2>
-      <p>Pull in for fuel, coffee, ice, firewood, bait, tackle, beer, snacks, and a clean full-hookup RV site close to Plain, Lake Wenatchee, and the Leavenworth backroads.</p>
-    </div>
-    <div className="about">
-      <div className="lead">
-        <span className="drop">M</span>idway is built for the people actually moving through the valley: early drivers, weekend campers, anglers, families, and rigs that need an easy place to plug in.
-      </div>
-      <div className="body">
-        <p>Use the site the same way you use the store: check today’s hours, scan open RV sites, call ahead, get directions, and keep moving.</p>
-        <p>The inventory changes with the season, but the essentials stay simple: fuel, espresso, groceries, cold drinks, ice cream, camp supplies, and a practical overnight stop.</p>
-        <dl className="meta">
-          <div><dt>Fuel</dt><dd>Non-ethanol & diesel</dd></div>
-          <div><dt>Store</dt><dd>Espresso, groceries, ice cream</dd></div>
-          <div><dt>Stay</dt><dd>Sites 03-16</dd></div>
-          <div><dt>Location</dt><dd>Plain / Leavenworth, WA</dd></div>
-        </dl>
-      </div>
-    </div>
-    <div className="about-photos">
-      <div className="p wide">
-        <Photo src="/images/store-interior.jpg" alt="Inside Midway Gas & Grocery with stocked shelves and warm store lighting" label="STORE INTERIOR  /  MORNING LIGHT" />
-      </div>
-      <div className="p">
-        <Photo src="/images/store-exterior.jpg" alt="Midway Gas & Grocery exterior and fuel stop in Plain, Washington" label="MIDWAY EXTERIOR  /  PLAIN, WA" />
-      </div>
-      <div className="p">
-        <Photo src="/images/exterior-wide.jpg" alt="Wide view of Midway Gas & Grocery and the surrounding mountain road setting" label="HIGHWAY 2  /  FACING WEST" />
-      </div>
-    </div>
-  </section>
 );
 
 // ─── Coffee menu ─────────────────────────────────────────────────────────
@@ -509,25 +478,16 @@ const SitePlan = ({ sel, setSel, sites }) => {
           </g>
         )}
 
-        {/* Store, yard buildings, and service edges */}
+        {/* Store and yard landmarks */}
         <g>
-          <rect x="118" y="206" width="130" height="84" fill="#EDE7D7" stroke="#11100E" strokeWidth="2" rx="2"/>
-          <path d="M118 206 L183 176 L248 206 Z" fill="#B0341E" stroke="#11100E" strokeWidth="2"/>
-          <text x="183" y="256" fontFamily="Fraunces" fontSize="14" textAnchor="middle" fill="#11100E" fontStyle="italic">store</text>
-          <text x="183" y="306" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.6" textAnchor="middle" fill="#11100E">MIDWAY</text>
+          <rect x="420" y="118" width="130" height="84" fill="#EDE7D7" stroke="#11100E" strokeWidth="2" rx="2"/>
+          <path d="M420 118 L485 88 L550 118 Z" fill="#B0341E" stroke="#11100E" strokeWidth="2"/>
+          <text x="485" y="168" fontFamily="Fraunces" fontSize="14" textAnchor="middle" fill="#11100E" fontStyle="italic">store</text>
+          <text x="485" y="218" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.6" textAnchor="middle" fill="#11100E">MIDWAY</text>
         </g>
         <g>
-          <rect x="260" y="118" width="150" height="56" fill="#EDE7D7" stroke="#11100E" strokeWidth="2" rx="2"/>
-          <rect x="474" y="84" width="160" height="70" fill="#D7B895" stroke="#11100E" strokeWidth="2" rx="2"/>
-          <rect x="652" y="124" width="94" height="52" fill="#B0341E" opacity="0.72" stroke="#11100E" strokeWidth="2" rx="2"/>
-          <text x="554" y="174" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.6" textAnchor="middle" fill="#11100E">SHOP / YARD</text>
-        </g>
-        <g>
-          <rect x="104" y="316" width="186" height="56" fill="#2A2925" stroke="#11100E" strokeWidth="2" rx="2"/>
-          {[0,1,2,3].map(i => (
-            <rect key={i} x={126 + i*42} y={330} width="22" height="28" fill="#EDE7D7" stroke="#11100E"/>
-          ))}
-          <text x="197" y="392" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.7" textAnchor="middle" fill="#11100E">PUMPS</text>
+          <rect x="604" y="124" width="128" height="58" fill="#D7B895" stroke="#11100E" strokeWidth="2" rx="2"/>
+          <text x="668" y="202" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.6" textAnchor="middle" fill="#11100E">SHOP / YARD</text>
         </g>
 
         {/* Common markers */}
@@ -774,10 +734,10 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   };
 
   return (
-    <section className="section reveal" id="stay" style={{ background: 'var(--paper)' }}>
+    <section className="section reveal booking-section" id="stay" style={{ background: 'var(--paper)' }}>
       <div className="head">
-        <h2>RV sites and tent areas. <em>Right behind the store.</em></h2>
-        <p>Sites 03-16 include water, sewer, and 30A or 50A service. Ten walk-in tent areas sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
+        <h2>Book RV or tent. <em>Right behind Midway.</em></h2>
+        <p>RV sites 03-16 include water, sewer, and 30A or 50A service. Tent areas T01-T10 sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
       </div>
 
       <div className="book-wrap">
@@ -1177,7 +1137,6 @@ const App = () => {
       <Nav visible={visibleSections} phone={bootstrap.settings?.phone} address={bootstrap.settings?.address} />
       <Hero flags={bootstrap.featureFlags} phone={bootstrap.settings?.phone} address={bootstrap.settings?.address} hours={bootstrap.hours || []} />
       <Ticker onJumpStay={jumpStay} sites={sites} bootstrap={bootstrap} />
-      <About />
       {visibleSections.coffee && <Coffee menu={bootstrap.coffeeMenu || COFFEE} />}
       {visibleSections.products && <Pantry products={bootstrap.products || []} />}
       {visibleSections.rvBooking && (
