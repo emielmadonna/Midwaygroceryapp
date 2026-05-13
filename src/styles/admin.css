@@ -882,6 +882,13 @@ select {
   gap: 10px;
 }
 
+.admin-form__hint {
+  color: var(--admin-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 body[data-role="employee"] .owner-only {
   display: none;
 }

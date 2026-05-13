@@ -157,6 +157,12 @@
                     </div>
                 </div>
                 <form id="manualBookingForm" class="admin-form">
+                    <label>Booking action
+                        <select name="bookingAction">
+                            <option value="create">Create admin booking</option>
+                            <option value="payment-link">Create Square payment link</option>
+                        </select>
+                    </label>
                     <label>Site
                         <select name="siteId" data-site-select required></select>
                     </label>
@@ -186,6 +192,7 @@
                         <input type="email" name="customerEmail" />
                     </label>
                     <button type="submit" class="btn btn--primary">Create Booking</button>
+                    <p class="admin-form__hint">Payment link holds the site and opens Square checkout. The booking confirms after payment succeeds.</p>
                 </form>
             </section>
 

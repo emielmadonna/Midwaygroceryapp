@@ -491,6 +491,63 @@ export function createApiRouter({
     }
   });
 
+  router.post('/admin/bookings/checkout', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('booking.manual_admin', { role: req.adminUser.role });
+      resolvedStore.requireFeature?.('payments.enabled', { role: req.adminUser.role });
+      resolvedStore.requireFeature?.('payments.provider.square', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+
+      const hold = await resolvedStore.hold({
+        siteId: req.body.siteId,
+        startDate: req.body.startDate,
+        endDate: req.body.endDate,
+        guests: req.body.guests,
+        vehicles: req.body.vehicles,
+        customerSessionId: `admin-${req.adminUser.id}`,
+      });
+      const bookingCode = `MW-${hold.id.slice(0, 6).toUpperCase()}`;
+      const squareConfig = await squareProviderConfig();
+      const checkout = await createRvCheckoutPaymentLink({
+        hold,
+        bookingCode,
+        customer: req.body.customer,
+        redirectUrl: await buildBookingReturnUrl(req, bookingCode, resolvedStore),
+        env: squareConfig,
+        fetchImpl,
+      });
+      const booking = await resolvedStore.recordPendingBooking({
+        hold,
+        customer: req.body.customer,
+        bookingCode,
+        squareOrderId: checkout.orderId,
+        checkoutUrl: checkout.checkoutUrl,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'booking.admin_payment_link',
+        actor: req.adminUser,
+        targetType: 'rv_booking',
+        targetId: booking.bookingCode,
+        metadata: {
+          siteId: booking.rvSiteId,
+          startDate: booking.startDate,
+          endDate: booking.endDate,
+          checkoutUrl: checkout.checkoutUrl,
+        },
+      });
+      res.status(201).json({
+        ok: true,
+        data: {
+          bookingCode: booking.bookingCode,
+          hold,
+          checkout,
+        },
+      });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_BOOKING_CHECKOUT_FAILED', 409);
+    }
+  });
+
   router.post('/admin/bookings/:bookingCode/cancel', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('booking.manual_admin', { role: req.adminUser.role });

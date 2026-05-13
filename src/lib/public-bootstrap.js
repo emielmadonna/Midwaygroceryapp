@@ -74,7 +74,7 @@ export function buildPublicBootstrap({
     events: resolvedEvents.length > 0 && requestedFlags.events === true && sectionEnabled('events'),
     coffee: Object.keys(resolvedCoffeeMenu ?? {}).length > 0 && requestedFlags.coffee === true && sectionEnabled('coffee'),
     hours: hours.length > 0 && requestedFlags.hours !== false,
-    instagram: Boolean(settings.instagramHandle || settings.instagramUrl || settings.instagramPosts?.length) && requestedFlags.instagram === true && sectionEnabled('instagram'),
+    instagram: hasInstagramContent(settings, normalizedSections) && requestedFlags.instagram === true && sectionEnabled('instagram'),
   };
 
   return {
@@ -119,6 +119,11 @@ function contentFromSections(sections) {
         }
       : {},
   };
+}
+
+function hasInstagramContent(settings, sections) {
+  const instagramSection = sections.find(section => section.key === 'instagram');
+  return Boolean(settings.instagramPosts?.length || instagramSection?.items?.length);
 }
 
 function normalizeSectionItems(items = []) {

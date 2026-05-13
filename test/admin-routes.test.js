@@ -71,6 +71,55 @@ test('owner can create and cancel a manual booking with audit records', async ()
   }
 });
 
+test('owner can create an admin Square payment link for a site booking', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  let requestBody = null;
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      assert.match(url, /\/v2\/online-checkout\/payment-links$/);
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink-admin', url: 'https://square.test/admin-checkout' },
+          related_resources: { orders: [{ id: 'order-admin' }] },
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const checkout = await api(server, '/api/admin/bookings/checkout', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        siteId: 'rv-03',
+        startDate: '2026-06-10',
+        endDate: '2026-06-12',
+        guests: 2,
+        vehicles: 1,
+        customer: { name: 'Counter Guest', phone: '555-0120', email: 'guest@example.com' },
+      },
+    });
+
+    assert.equal(checkout.status, 201);
+    assert.equal(checkout.body.data.checkout.checkoutUrl, 'https://square.test/admin-checkout');
+    assert.equal(checkout.body.data.bookingCode.startsWith('MW-'), true);
+    assert.equal(requestBody.order.line_items.length, 1);
+    assert.equal(requestBody.order.metadata.booking_code, checkout.body.data.bookingCode);
+
+    const bookings = await api(server, '/api/admin/bookings', { token: owner.token });
+    const pending = bookings.body.data.find(booking => booking.bookingCode === checkout.body.data.bookingCode);
+    assert.equal(pending.status, 'hold');
+    assert.equal(pending.checkoutUrl, 'https://square.test/admin-checkout');
+  } finally {
+    await server.close();
+  }
+});
+
 test('employee can read dashboard but cannot create bookings', async () => {
   const server = await createTestServer();
 
@@ -792,7 +841,7 @@ function createTestTenantConfig() {
       name: 'Midway Gas & Grocery',
       publicBrandName: 'Midway Gas & Grocery',
       phone: '(509) 669-9378',
-      address: '14193 US-2, Leavenworth, WA 98826',
+      address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
       instagramHandle: 'midwayplain',
     },

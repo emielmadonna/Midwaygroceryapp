@@ -44,11 +44,11 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(appJsx, /\/public\/bootstrap/);
   assert.match(appJsx, /const Instagram = \(\{ settings = \{\} \}\) =>/);
   assert.match(appJsx, /id="instagram"/);
-  assert.match(appJsx, /title="Midway Instagram profile"/);
-  assert.match(appJsx, /src=\{`\$\{url\.replace\(\/\\\/\$\/, ''\)\}\/embed`\}/);
+  assert.doesNotMatch(appJsx, /title="Midway Instagram profile"/);
+  assert.doesNotMatch(appJsx, /\/embed\/captioned/);
   assert.match(appJsx, /settings\.instagramPosts/);
-  assert.match(appJsx, /\/embed\/captioned/);
-  assert.match(appJsx, /className="instagram-fallback"/);
+  assert.match(appJsx, /className="instagram-gallery"/);
+  assert.doesNotMatch(appJsx, /className="instagram-fallback"/);
   assert.match(appJsx, /visibleSections\.instagram && <Instagram/);
   assert.match(appJsx, /https:\/\/sandbox\.web\.squarecdn\.com\/v1\/square\.js/);
   assert.match(appJsx, /const SquarePaymentForm = \(\{ session, onPay, onSuccess, onCancel \}\) =>/);
@@ -60,15 +60,14 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   await assertAssetExists('public/assets/midway-logo.png');
 
   assert.match(styles, /body\s*\{[\s\S]*overflow-x:\s*hidden;/);
-  assert.match(styles, /\.instagram-wrap\s*\{[\s\S]*grid-template-columns:\s*minmax\(260px,\s*\.72fr\)\s+minmax\(0,\s*1\.28fr\)/);
-  assert.match(styles, /\.instagram-embed\s*\{[\s\S]*min-height:\s*540px;/);
-  assert.match(styles, /\.instagram-post-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(styles, /\.instagram-gallery\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(styles, /\.instagram-card\s*\{[\s\S]*grid-template-rows:\s*auto 1fr;/);
   assert.match(styles, /\.square-card-host\s*\{[\s\S]*min-height:\s*96px;/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-links\s*\{\s*display:\s*none;/);
-  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.instagram-wrap\s*\{\s*grid-template-columns:\s*1fr;/);
+  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.instagram-gallery\s*\{\s*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.nav-actions\s*\{\s*display:\s*none;/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.hero-actions\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*1fr;/);
-  assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.instagram-embed,[\s\S]*\.instagram-embed iframe,[\s\S]*\.instagram-post-grid,[\s\S]*\.instagram-post-grid iframe\s*\{[\s\S]*min-height:\s*440px;/);
+  assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.instagram-gallery,[\s\S]*\.book-form \.row2/);
 });
 
 test('admin page keeps login shell, session flow, and mobile guardrails', async () => {
@@ -118,6 +117,8 @@ test('admin page keeps login shell, session flow, and mobile guardrails', async 
   assert.match(adminCss, /@media\s*\(max-width:\s*980px\)\s*\{[\s\S]*\.admin-main,[\s\S]*\.admin-columns,[\s\S]*\.calendar-layout,[\s\S]*\.property-map-layout\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
   assert.match(adminCss, /@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*\.admin-stats,[\s\S]*\.admin-form__row,[\s\S]*\.settings-grid,[\s\S]*\.employee-task-grid,[\s\S]*\.site-inspector__facts\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
   assert.match(adminCss, /@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*\.admin-topbar__actions,[\s\S]*\.admin-button,[\s\S]*\.admin-link\s*\{[\s\S]*width:\s*100%;/);
+  assert.match(adminHtml, /name="bookingAction"/);
+  assert.match(adminJs, /\/api\/admin\/bookings\/checkout/);
 });
 
 test('public bootstrap and admin login endpoints expose launch-critical flags', async () => {
@@ -206,13 +207,24 @@ function createVisualTenantConfig() {
       name: 'Midway Gas & Grocery',
       publicBrandName: 'Midway Gas & Grocery',
       phone: '(509) 669-9378',
-      address: '14193 US-2, Leavenworth, WA 98826',
+      address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
       instagramHandle: 'midwayplain',
     },
     publicSite: {
       theme: 'midway_farmhouse',
       instagramPosts: [],
+      sections: [
+        {
+          key: 'instagram',
+          enabled: true,
+          title: 'Fresh from Midway.',
+          copy: 'Store moments shown as a native gallery.',
+          items: [
+            { title: 'Coffee and shelves', description: 'Inside the store.', image: '/images/store-interior.jpg' },
+          ],
+        },
+      ],
     },
     providers: {
       square: {

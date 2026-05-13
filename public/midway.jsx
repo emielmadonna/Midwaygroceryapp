@@ -22,7 +22,7 @@ const DAY_LABELS = {
 const FALLBACK_SETTINGS = {
   businessName: 'Midway Gas & Grocery',
   phone: '(509) 669-9378',
-  address: '14193 US-2, Leavenworth, WA 98826',
+  address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
   timezone: 'America/Los_Angeles',
   instagramHandle: 'midwayplain',
   instagramUrl: 'https://www.instagram.com/midwayplain/',
@@ -37,20 +37,20 @@ const FALLBACK_HOURS = [
   { day: 'sunday', open: '8:00 AM', close: '8:00 PM' },
 ];
 const FALLBACK_RV_SITES = [
-  { id: 'rv-03', siteNumber: '03', displayName: 'Site 03', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 884, mapY: 210, mapWidth: 88, mapHeight: 38, rotation: -1, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-03-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig', 'Walk to store'], customerNotes: 'Upper right-row full-hookup site close to the store approach.' },
-  { id: 'rv-04', siteNumber: '04', displayName: 'Site 04', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 884, mapY: 252, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-04-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig'], customerNotes: 'Right-row full-hookup site with partial shade near the upper drive.' },
-  { id: 'rv-05', siteNumber: '05', displayName: 'Site 05', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 864, mapY: 314, mapWidth: 88, mapHeight: 38, rotation: 18, amp: '50A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-05-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Easy entry'], customerNotes: 'Angled right-row full-hookup site with an easy approach from the loop.' },
-  { id: 'rv-06', siteNumber: '06', displayName: 'Site 06', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 848, mapY: 352, mapWidth: 88, mapHeight: 38, rotation: 18, amp: '30A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-06-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly'], customerNotes: 'Angled right-row full-hookup site with sunny exposure.' },
-  { id: 'rv-07', siteNumber: '07', displayName: 'Site 07', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 432, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-07-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Quiet'], customerNotes: 'Quiet forest-edge back-in site with full shade.' },
-  { id: 'rv-08', siteNumber: '08', displayName: 'Site 08', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 486, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-08-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Deep shade'], customerNotes: 'Full-shade right-row back-in site along the forest edge.' },
-  { id: 'rv-09', siteNumber: '09', displayName: 'Site 09', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 540, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-09-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Pet-friendly'], customerNotes: 'Right-row back-in site with partial shade near the lower loop.' },
-  { id: 'rv-10', siteNumber: '10', displayName: 'Site 10', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 842, mapY: 592, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-10-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'End site', 'Picnic table'], customerNotes: 'Lower right-row end site with partial shade and a picnic table.' },
-  { id: 'rv-11', siteNumber: '11', displayName: 'Site 11', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 224, mapY: 652, mapWidth: 88, mapHeight: 38, rotation: -1, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-11-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Quiet side', 'Forest edge'], customerNotes: 'Lower left-row full-hookup site on the quieter side of the loop.' },
-  { id: 'rv-12', siteNumber: '12', displayName: 'Site 12', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 224, mapY: 604, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-12-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly', 'Forest edge'], customerNotes: 'Left-row back-in site with partial shade near the lower loop.' },
-  { id: 'rv-13', siteNumber: '13', displayName: 'Site 13', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 222, mapY: 552, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-13-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Family-size'], customerNotes: 'Left-row family-size full-hookup site with partial shade.' },
-  { id: 'rv-14', siteNumber: '14', displayName: 'Site 14', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 224, mapY: 500, mapWidth: 88, mapHeight: 38, rotation: 0, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-14-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Big rig'], customerNotes: 'Premium 50 amp full-hookup site on the left row.' },
-  { id: 'rv-15', siteNumber: '15', displayName: 'Site 15', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 242, mapY: 448, mapWidth: 88, mapHeight: 38, rotation: -2, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-15-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Road edge'], customerNotes: 'Premium 50 amp left-row site with partial shade.' },
-  { id: 'rv-16', siteNumber: '16', displayName: 'Site 16', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 258, mapY: 386, mapWidth: 88, mapHeight: 38, rotation: -1, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-16-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'End site', 'Walk to store'], customerNotes: 'Upper left-row premium end site closest to the store side.' },
+  { id: 'rv-03', siteNumber: '03', displayName: 'Site 03', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 992, mapY: 244, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-03-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig', 'Walk to store'], customerNotes: 'Upper right-row full-hookup site close to the store approach.' },
+  { id: 'rv-04', siteNumber: '04', displayName: 'Site 04', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 992, mapY: 292, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-04-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig'], customerNotes: 'Right-row full-hookup site with partial shade near the upper drive.' },
+  { id: 'rv-05', siteNumber: '05', displayName: 'Site 05', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 992, mapY: 340, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '50A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-05-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Easy entry'], customerNotes: 'Angled right-row full-hookup site with an easy approach from the loop.' },
+  { id: 'rv-06', siteNumber: '06', displayName: 'Site 06', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 388, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-06-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly'], customerNotes: 'Angled right-row full-hookup site with sunny exposure.' },
+  { id: 'rv-07', siteNumber: '07', displayName: 'Site 07', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 456, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-07-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Quiet'], customerNotes: 'Quiet forest-edge back-in site with full shade.' },
+  { id: 'rv-08', siteNumber: '08', displayName: 'Site 08', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 508, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-08-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Deep shade'], customerNotes: 'Full-shade right-row back-in site along the forest edge.' },
+  { id: 'rv-09', siteNumber: '09', displayName: 'Site 09', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 560, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-09-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Pet-friendly'], customerNotes: 'Right-row back-in site with partial shade near the lower loop.' },
+  { id: 'rv-10', siteNumber: '10', displayName: 'Site 10', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 612, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-10-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'End site', 'Picnic table'], customerNotes: 'Lower right-row end site with partial shade and a picnic table.' },
+  { id: 'rv-11', siteNumber: '11', displayName: 'Site 11', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 206, mapY: 628, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-11-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Quiet side', 'Forest edge'], customerNotes: 'Lower left-row full-hookup site on the quieter side of the loop.' },
+  { id: 'rv-12', siteNumber: '12', displayName: 'Site 12', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 206, mapY: 580, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-12-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly', 'Forest edge'], customerNotes: 'Left-row back-in site with partial shade near the lower loop.' },
+  { id: 'rv-13', siteNumber: '13', displayName: 'Site 13', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 206, mapY: 532, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-13-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Family-size'], customerNotes: 'Left-row family-size full-hookup site with partial shade.' },
+  { id: 'rv-14', siteNumber: '14', displayName: 'Site 14', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 484, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-14-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Big rig'], customerNotes: 'Premium 50 amp full-hookup site on the left row.' },
+  { id: 'rv-15', siteNumber: '15', displayName: 'Site 15', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 436, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-15-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Road edge'], customerNotes: 'Premium 50 amp left-row site with partial shade.' },
+  { id: 'rv-16', siteNumber: '16', displayName: 'Site 16', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 388, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-16-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'End site', 'Walk to store'], customerNotes: 'Upper left-row premium end site closest to the store side.' },
 ];
 
 const toMapSite = (site, availableIds = null) => ({
@@ -242,12 +242,6 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
           {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="hero-link hero-secondary">Directions <span>↗</span></a>}
           {phone && <a href={telHref(phone)} className="hero-link hero-secondary">Call <span>{phone}</span></a>}
         </div>
-      </div>
-      <div className="hero-board" aria-label="Midway essentials">
-        <span><b>01</b> Non-ethanol &amp; diesel</span>
-        <span><b>02</b> Espresso &amp; groceries</span>
-        <span><b>03</b> Bait, tackle, ice</span>
-        <span><b>14</b> Full-hookup RV sites</span>
       </div>
     </header>
   );
@@ -478,21 +472,21 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <rect width="1200" height="800" fill="#D9D2B4"/>
         <rect width="1200" height="800" fill="url(#forest)" opacity="0.35"/>
 
-        {/* Highway, drive, and loop traced from the supplied satellite reference */}
+        {/* Store drive and RV loop */}
         <path d="M-80 150 L560 -42" stroke="#2A2925" strokeWidth="56" fill="none" strokeLinecap="round" opacity="0.9"/>
         <path d="M-80 150 L560 -42" stroke="#EDE7D7" strokeWidth="2" strokeDasharray="18 18" fill="none" opacity="0.8"/>
-        <text x="84" y="106" fontFamily="JetBrains Mono" fontSize="11" letterSpacing="2" fill="#11100E" transform="rotate(-17 84 106)">HWY 22</text>
+        <text x="84" y="106" fontFamily="JetBrains Mono" fontSize="11" letterSpacing="2" fill="#11100E" transform="rotate(-17 84 106)">CHIWAWA LOOP RD</text>
 
-        <path d="M288 158 C320 232 354 268 404 314" stroke="#11100E" strokeWidth="32" fill="none" strokeLinecap="round" opacity="0.82"/>
-        <path d="M288 158 C320 232 354 268 404 314" stroke="#EDE7D7" strokeWidth="2" strokeDasharray="7 11" fill="none"/>
+        <path d="M286 158 C318 232 346 266 372 300" stroke="#11100E" strokeWidth="32" fill="none" strokeLinecap="round" opacity="0.82"/>
+        <path d="M286 158 C318 232 346 266 372 300" stroke="#EDE7D7" strokeWidth="2" strokeDasharray="7 11" fill="none"/>
 
-        <path d="M404 314 C496 246 660 232 792 260 C888 280 922 382 890 522 C862 644 754 716 610 704 C468 692 336 640 292 548 C246 450 302 366 404 314 Z"
+        <path d="M372 300 C496 232 700 238 820 320 C922 392 908 566 780 650 C656 732 454 698 356 578 C272 476 288 374 372 300 Z"
               stroke="#11100E" strokeWidth="42" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.84"/>
-        <path className="roadline" d="M404 314 C496 246 660 232 792 260 C888 280 922 382 890 522 C862 644 754 716 610 704 C468 692 336 640 292 548 C246 450 302 366 404 314 Z"
+        <path className="roadline" d="M372 300 C496 232 700 238 820 320 C922 392 908 566 780 650 C656 732 454 698 356 578 C272 476 288 374 372 300 Z"
               stroke="#EDE7D7" strokeWidth="2" strokeDasharray="7 11" fill="none"/>
-        <path d="M426 366 C510 312 652 302 758 330 C830 350 846 430 816 536 C788 618 712 658 610 658 C488 658 392 616 356 542 C322 470 348 414 426 366 Z"
+        <path d="M430 364 C526 312 668 314 748 366 C812 408 802 522 724 582 C632 654 480 626 414 536 C358 458 368 400 430 364 Z"
               fill="#C5C3A2" opacity="0.78"/>
-        <path d="M440 386 C520 344 640 338 734 360 C792 374 806 438 782 514 C756 584 694 622 612 626 C506 628 426 594 392 532 C362 474 378 426 440 386 Z"
+        <path d="M456 392 C540 354 654 356 720 398 C764 430 760 500 706 548 C634 612 512 590 456 522 C414 468 414 420 456 392 Z"
               fill="none" stroke="#7A776E" strokeWidth="1.3" strokeDasharray="5 8" opacity="0.5"/>
         {touring && selSite && (
           <g className="rover" transform={`translate(${selSite.x} ${selSite.y})`}>
@@ -696,6 +690,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   const [rig, setRig] = useState('Class A');
   const [heads, setHeads] = useState(2);
   const [guest, setGuest] = useState({ name: '', phone: '', email: '' });
+  const [step, setStep] = useState('site');
   const [confirmed, setConfirmed] = useState(null);
   const [paymentSession, setPaymentSession] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -709,7 +704,10 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   const selSite = useMemo(() => sites.find(s => s.id === sel), [sites, sel]);
   const rateCents = selSite?.nightlyPriceCents || 0;
   const totalCents = rateCents * nights;
-  const ready = !!selSite && guest.name.trim() && guest.phone.trim();
+  const datesReady = Boolean(arr && dep && new Date(dep) > new Date(arr));
+  const siteReady = Boolean(selSite && datesReady);
+  const guestReady = Boolean(guest.name.trim() && guest.phone.trim());
+  const ready = siteReady && guestReady;
 
   useEffect(() => {
     onDateRangeChange?.(arr, dep);
@@ -756,79 +754,142 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
         <SitePlan sel={sel} setSel={setSel} sites={sites} />
 
         <div className="book-form">
-          {selSite ? (
-            <div className="site-detail">
-              <div className="row1">
-                <div className="num">Site <em>No. {String(selSite.siteNumber || selSite.id).padStart(2,'0')}</em></div>
-                <div className="amp">{selSite.amp} · {selSite.type === 'pull' ? 'pull-through' : 'back-in'} · {selSite.shade} shade · up to {selSite.maxRvLengthFeet || '--'} ft</div>
-              </div>
-              <div className="feats">
-                {selSite.feats.map(f => <span key={f}>{f}</span>)}
-                {selSite.sku && <span>{selSite.sku}</span>}
-              </div>
-            </div>
-          ) : (
+          <div className="booking-steps" aria-label="Reservation steps">
+            {[
+              ['site', 'Site'],
+              ['guest', 'Guest'],
+              ['review', 'Pay'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                data-active={step === key ? 'true' : 'false'}
+                disabled={(key === 'guest' && !siteReady) || (key === 'review' && !ready)}
+                onClick={() => setStep(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {step === 'site' && (
             <>
-              <div className="kicker">Reservation  /  Lot Plan</div>
-              <h3>Pick a site, <em>choose your dates.</em></h3>
+              {selSite ? (
+                <div className="site-detail">
+                  <div className="row1">
+                    <div className="num">Site <em>No. {String(selSite.siteNumber || selSite.id).padStart(2,'0')}</em></div>
+                    <div className="amp">{selSite.amp} · {selSite.type === 'pull' ? 'pull-through' : 'back-in'} · {selSite.shade} shade · up to {selSite.maxRvLengthFeet || '--'} ft</div>
+                  </div>
+                  <div className="feats">
+                    {selSite.feats.map(f => <span key={f}>{f}</span>)}
+                    {selSite.sku && <span>{selSite.sku}</span>}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="kicker">Step 1  /  Site and dates</div>
+                  <h3>Pick a site, <em>then dates.</em></h3>
+                </>
+              )}
+
+              <div className="row2">
+                <div>
+                  <label>Arrive</label>
+                  <input type="date" value={arr} onChange={e => setArr(e.target.value)} />
+                </div>
+                <div>
+                  <label>Depart</label>
+                  <input type="date" value={dep} onChange={e => setDep(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="row2">
+                <div>
+                  <label>Rig</label>
+                  <select value={rig} onChange={e => setRig(e.target.value)}>
+                    <option>Van / Truck</option><option>Travel Trailer</option>
+                    <option>Class C</option><option>Class A</option><option>Fifth Wheel</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Travelers</label>
+                  <input type="number" min="1" max="8" value={heads} onChange={e => setHeads(+e.target.value)} />
+                </div>
+              </div>
+              <button className="cta" type="button" onClick={() => setStep('guest')} disabled={!siteReady}>
+                Continue to guest details →
+              </button>
             </>
           )}
 
-          <div className="row2">
-            <div>
-              <label>Arrive</label>
-              <input type="date" value={arr} onChange={e => setArr(e.target.value)} />
-            </div>
-            <div>
-              <label>Depart</label>
-              <input type="date" value={dep} onChange={e => setDep(e.target.value)} />
-            </div>
-          </div>
+          {step === 'guest' && (
+            <>
+              <div className="kicker">Step 2  /  Guest</div>
+              <h3>Who should we <em>hold it for?</em></h3>
+              <div className="row2 contact-row">
+                <div>
+                  <label>Name</label>
+                  <input value={guest.name} onChange={e => updateGuest('name', e.target.value)} placeholder="Your name" />
+                </div>
+                <div>
+                  <label>Phone</label>
+                  <input value={guest.phone} onChange={e => updateGuest('phone', e.target.value)} placeholder="(509) 000-0000" />
+                </div>
+              </div>
+              <div className="contact-row">
+                <label>Email <span style={{ color:'var(--mute)', letterSpacing:'0.08em' }}>(optional)</span></label>
+                <input type="email" value={guest.email} onChange={e => updateGuest('email', e.target.value)} placeholder="you@example.com" />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="ghost-cta" onClick={() => setStep('site')}>Back</button>
+                <button className="cta" type="button" onClick={() => setStep('review')} disabled={!guestReady}>Review and pay →</button>
+              </div>
+            </>
+          )}
 
-          <div className="row2">
-            <div>
-              <label>Rig</label>
-              <select value={rig} onChange={e => setRig(e.target.value)}>
-                <option>Van / Truck</option><option>Travel Trailer</option>
-                <option>Class C</option><option>Class A</option><option>Fifth Wheel</option>
-              </select>
-            </div>
-            <div>
-              <label>Travelers</label>
-              <input type="number" min="1" max="8" value={heads} onChange={e => setHeads(+e.target.value)} />
-            </div>
-          </div>
+          {step === 'review' && (
+            <>
+              <div className="kicker">Step 3  /  Secure payment</div>
+              <h3>Review, <em>then pay.</em></h3>
+              <div className="review-card">
+                <div><span>Site</span><strong>No. {String(selSite?.siteNumber || sel || '').padStart(2,'0')}</strong></div>
+                <div><span>Dates</span><strong>{arr} to {dep}</strong></div>
+                <div><span>Rig</span><strong>{rig} · {heads} guests</strong></div>
+                <div><span>Guest</span><strong>{guest.name || 'Name required'}</strong></div>
+              </div>
+              <div className="pick" style={{ marginTop: 20 }}>
+                <div><div className="det">Nights</div><div className="num">{nights}</div></div>
+                <div style={{ textAlign:'right' }}><div className="det">Rate</div><div className="num">{money(rateCents)}<span style={{fontSize:11,color:'var(--mute)',fontFamily:'var(--mono)',marginLeft:4}}>/NT</span></div></div>
+              </div>
 
-          <div className="row2 contact-row">
-            <div>
-              <label>Name</label>
-              <input value={guest.name} onChange={e => updateGuest('name', e.target.value)} placeholder="Your name" />
+              <div className="total">
+                <div className="l">Estimated total</div>
+                <div className="amt">{money(totalCents)}<small>USD</small></div>
+              </div>
+
+              <div className="form-actions">
+                <button type="button" className="ghost-cta" onClick={() => setStep('guest')}>Back</button>
+                <button className="cta" onClick={confirm} disabled={!ready || busy}>
+                  {busy ? 'Preparing payment...' : `Pay and reserve site no. ${String(selSite?.siteNumber || sel).padStart(2,'0')} →`}
+                </button>
+              </div>
+              {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
+              <div className="reserve-note">Square payment opens on this page. Your booking is confirmed after payment is complete.</div>
+            </>
+          )}
+
+          {step !== 'review' && (
+            <div className="reservation-mini-summary">
+              <div>
+                <span>Site</span>
+                <strong>{selSite ? `No. ${String(selSite.siteNumber || selSite.id).padStart(2,'0')}` : 'Pick one'}</strong>
+              </div>
+              <div>
+                <span>Total</span>
+                <strong>{money(totalCents)}</strong>
+              </div>
             </div>
-            <div>
-              <label>Phone</label>
-              <input value={guest.phone} onChange={e => updateGuest('phone', e.target.value)} placeholder="(509) 000-0000" />
-            </div>
-          </div>
-          <div className="contact-row">
-            <label>Email <span style={{ color:'var(--mute)', letterSpacing:'0.08em' }}>(optional)</span></label>
-            <input type="email" value={guest.email} onChange={e => updateGuest('email', e.target.value)} placeholder="you@example.com" />
-          </div>
-
-          <div className="pick" style={{ marginTop: 20 }}>
-            <div><div className="det">Nights</div><div className="num">{nights}</div></div>
-            <div style={{ textAlign:'right' }}><div className="det">Rate</div><div className="num">{money(rateCents)}<span style={{fontSize:11,color:'var(--mute)',fontFamily:'var(--mono)',marginLeft:4}}>/NT</span></div></div>
-          </div>
-
-          <div className="total">
-            <div className="l">Estimated total</div>
-            <div className="amt">{money(totalCents)}<small>USD</small></div>
-          </div>
-
-          <button className="cta" onClick={confirm} disabled={!ready || busy}>
-            {busy ? 'Preparing payment...' : sel ? `Reserve site no. ${String(selSite?.siteNumber || sel).padStart(2,'0')} →` : 'Pick a site to continue'}
-          </button>
-          {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
-          <div className="reserve-note">Square payment opens on this page. Your booking is confirmed after payment is complete.</div>
+          )}
         </div>
       </div>
 
@@ -919,86 +980,62 @@ const Events = ({ events = EVENTS }) => {
 
 // ─── Instagram ───────────────────────────────────────────────────────────
 const Instagram = ({ settings = {} }) => {
-  const handle = String(settings.instagramHandle || '').replace(/^@/, '').trim();
-  const url = settings.instagramUrl || (handle ? `https://www.instagram.com/${handle}/` : '');
-  const posts = Array.isArray(settings.instagramPosts) ? settings.instagramPosts.filter(Boolean).slice(0, 4) : [];
-  if (!url && posts.length === 0) return null;
+  const section = (settings.sections || []).find(item => item.key === 'instagram');
+  const sectionPosts = (section?.items || []).map((item, index) => ({
+    title: item.title || item.name || `Midway update ${index + 1}`,
+    caption: item.description || item.copy || item.date || 'A quick look at what is happening at Midway.',
+    image: item.image || item.imageUrl || ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
+  }));
+  const linkedPosts = Array.isArray(settings.instagramPosts)
+    ? settings.instagramPosts.filter(Boolean).slice(0, 6).map((postUrl, index) => ({
+        title: `Midway post ${String(index + 1).padStart(2, '0')}`,
+        caption: instagramPostCaption(postUrl),
+        image: ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
+      }))
+    : [];
+  const posts = (sectionPosts.length ? sectionPosts : linkedPosts).slice(0, 6);
+  if (posts.length === 0) return null;
 
   return (
     <section className="section reveal instagram-section" id="instagram">
       <div className="head">
-        <h2>Fresh from <em>the feed.</em></h2>
-        <p>Follow along for store updates, seasonal road conditions, fresh arrivals, and RV site notes from Plain.</p>
+        <h2>{section?.title || <>Fresh from <em>Midway.</em></>}</h2>
+        <p>{section?.copy || 'Store updates, seasonal road notes, new arrivals, and RV site moments shown as first-party content instead of a fragile social embed.'}</p>
       </div>
-      <div className="instagram-wrap">
-        <div className="instagram-copy">
-          <div className="eyebrow">Instagram</div>
-          <h3>{handle ? `@${handle}` : 'Midway on Instagram'}</h3>
-          <p>Embedded Instagram content can be blocked by privacy settings, so the direct profile link stays available.</p>
-          {url && <a className="instagram-link" href={url} target="_blank" rel="noreferrer">Open Instagram ↗</a>}
-        </div>
-        <div className="instagram-embed">
-          {posts.length > 0 ? (
-            <div className="instagram-post-grid">
-              {posts.map((postUrl, index) => (
-                <iframe
-                  key={postUrl}
-                  title={`Midway Instagram post ${index + 1}`}
-                  src={`${postUrl.replace(/\/$/, '')}/embed/captioned`}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-              ))}
+      <div className="instagram-gallery" aria-label="Midway Instagram gallery">
+        {posts.map((post, index) => (
+          <article className="instagram-card" key={`${post.title}-${index}`}>
+            <img src={post.image} alt="" loading="lazy" />
+            <div>
+              <span>Post {String(index + 1).padStart(2, '0')}</span>
+              <h3>{post.title}</h3>
+              <p>{post.caption}</p>
             </div>
-          ) : (
-            <iframe
-              title="Midway Instagram profile"
-              src={`${url.replace(/\/$/, '')}/embed`}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-          )}
-          <div className="instagram-fallback">
-            <span>Instagram embed unavailable</span>
-            {url && <a href={url} target="_blank" rel="noreferrer">View profile</a>}
-          </div>
-        </div>
+          </article>
+        ))}
       </div>
     </section>
   );
 };
 
+function instagramPostCaption(postUrl = '') {
+  const cleaned = String(postUrl).replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '');
+  return cleaned ? `Imported from ${cleaned}. Add title and copy in Admin section controls when you want this card to read like a finished story.` : 'Imported Midway post.';
+}
+
 // ─── Find us ─────────────────────────────────────────────────────────────
 const Find = ({ phone = '', address = '', hours = [] }) => {
   const rows = normalizedHours(hours);
+  const mapSrc = address ? `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed` : '';
   return (
     <section className="section reveal" id="find" style={{ background: 'var(--paper)' }}>
       <div className="head">
         <h2>Find <em>us.</em></h2>
-        <p>On US-2 near Plain and Leavenworth, close enough to be useful and tucked far enough into the mountains to feel like a proper stop.</p>
+        <p>Midway sits at 14193 Chiwawa Loop RD in Leavenworth, just outside Plain and close to the road into Lake Wenatchee.</p>
       </div>
       <div className="find">
         <div className="map">
-        <svg viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <pattern id="tree" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse">
-              <path d="M40 18 L28 44 L34 44 L24 64 L34 64 L28 78 L52 78 L46 64 L56 64 L46 44 L52 44 Z" fill="#4A4936" opacity=".18"/>
-            </pattern>
-          </defs>
-          <rect width="800" height="600" fill="#F5F0E1"/>
-          <rect width="800" height="600" fill="url(#tree)"/>
-          <path d="M0 480 Q200 430 360 410 T800 320" stroke="#11100E" strokeWidth="3" fill="none" strokeDasharray="0"/>
-          <path d="M360 410 Q420 380 500 280 T720 80" stroke="#B0341E" strokeWidth="3" fill="none" strokeDasharray="6 6"/>
-          <text x="40" y="500" fontFamily="JetBrains Mono" fontSize="11" letterSpacing="2" fill="#7A776E">US-2 →</text>
-          <text x="540" y="180" fontFamily="JetBrains Mono" fontSize="11" letterSpacing="2" fill="#7A776E">PLAIN / LEAVENWORTH</text>
-          <circle cx="500" cy="280" r="14" fill="#B0341E"/>
-          <circle cx="500" cy="280" r="26" fill="none" stroke="#B0341E" strokeWidth="1.5" opacity=".4">
-            <animate attributeName="r" values="14;42;14" dur="3s" repeatCount="indefinite"/>
-            <animate attributeName="opacity" values=".5;0;.5" dur="3s" repeatCount="indefinite"/>
-          </circle>
-          <text x="520" y="262" fontFamily="Fraunces" fontStyle="italic" fontSize="22" fill="#11100E">Midway</text>
-          {address && <text x="520" y="282" fontFamily="JetBrains Mono" fontSize="10" letterSpacing="2" fill="#7A776E">{address}</text>}
-        </svg>
+          {mapSrc && <iframe title="Map to Midway Gas & Grocery" src={mapSrc} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />}
       </div>
         <div className="hours">
           {rows.length > 0 && <div className="eyebrow" style={{ marginBottom: 16 }}>Hours</div>}

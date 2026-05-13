@@ -417,7 +417,7 @@ ON CONFLICT (id) DO UPDATE SET
   updated_at = NOW();
 
 INSERT INTO locations (tenant_id, id, name, address, phone, timezone, status) VALUES
-('midway', 'plain', 'Midway Gas & Grocery', '14193 US-2, Leavenworth, WA 98826', '(509) 669-9378', 'America/Los_Angeles', 'active')
+('midway', 'plain', 'Midway Gas & Grocery', '14193 Chiwawa Loop RD, Leavenworth, WA 98826', '(509) 669-9378', 'America/Los_Angeles', 'active')
 ON CONFLICT (tenant_id, id) DO UPDATE SET
   name = EXCLUDED.name,
   address = EXCLUDED.address,
@@ -435,7 +435,7 @@ INSERT INTO site_settings (
   'plain',
   'Midway Gas & Grocery',
   'Midway Gas & Grocery',
-  '14193 US-2, Leavenworth, WA 98826',
+  '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
   '(509) 669-9378',
   '',
   'midwayplain',
@@ -466,7 +466,31 @@ INSERT INTO frontend_configs (
   'plain',
   'midway_farmhouse',
   'convenience_store_rv',
-  '[]'::jsonb,
+  '[
+    {
+      "key": "instagram",
+      "enabled": true,
+      "title": "Fresh from Midway.",
+      "copy": "Store moments, seasonal notes, and RV site updates shown as a native gallery instead of a fragile social embed.",
+      "items": [
+        {
+          "title": "Coffee, shelves, and the morning stop",
+          "description": "Inside the store before the day heads toward Plain, Lake Wenatchee, and the pass.",
+          "image": "/images/store-interior.jpg"
+        },
+        {
+          "title": "Fuel before the valley roads",
+          "description": "The storefront, pumps, and quick-stop basics at 14193 Chiwawa Loop RD.",
+          "image": "/images/store-exterior.jpg"
+        },
+        {
+          "title": "Room for the weekend rig",
+          "description": "Full-hookup RV sites behind the store, close to coffee, ice, groceries, and firewood.",
+          "image": "/images/exterior-wide.jpg"
+        }
+      ]
+    }
+  ]'::jsonb,
   '{}'::jsonb
 )
 ON CONFLICT (tenant_id, location_id) DO UPDATE SET
@@ -512,20 +536,20 @@ INSERT INTO rv_sites (
   max_rv_length_feet, map_x, map_y, map_width, map_height, rotation,
   amp, site_type, shade, sku, sort_order, customer_notes, admin_notes
 ) VALUES
-('rv-03', '03', 'Site 03', 'active', 5800, 40, 884, 210, 88, 38, -1, '50A', 'back', 'partial', 'MIDWAY-RV-03-50AMP', 1, 'Upper right-row full-hookup site close to the store approach.', 'Satellite trace places this as the first marked right-side pad; confirm final utility pedestal details.'),
-('rv-04', '04', 'Site 04', 'active', 5800, 40, 884, 252, 88, 38, 0, '50A', 'back', 'partial', 'MIDWAY-RV-04-50AMP', 2, 'Right-row full-hookup site with partial shade near the upper drive.', 'Second marked right-side pad; verify driveway clearance against final survey.'),
-('rv-05', '05', 'Site 05', 'active', 5800, 40, 864, 314, 88, 38, 18, '50A', 'back', 'sun', 'MIDWAY-RV-05-50AMP', 3, 'Angled right-row full-hookup site with an easy approach from the loop.', 'Marked pad is angled in the reference; keep rotation unless updated survey says otherwise.'),
-('rv-06', '06', 'Site 06', 'active', 4400, 30, 848, 352, 88, 38, 18, '30A', 'back', 'sun', 'MIDWAY-RV-06-30AMP', 4, 'Angled right-row full-hookup site with sunny exposure.', 'Pairing location with site 5 appears tight; confirm vehicle length limit before publishing.'),
-('rv-07', '07', 'Site 07', 'active', 4400, 30, 842, 432, 88, 38, 0, '30A', 'back', 'full', 'MIDWAY-RV-07-30AMP', 5, 'Quiet forest-edge back-in site with full shade.', 'First straight lower right-side pad in the reference image.'),
-('rv-08', '08', 'Site 08', 'active', 4400, 30, 842, 486, 88, 38, 0, '30A', 'back', 'full', 'MIDWAY-RV-08-30AMP', 6, 'Full-shade right-row back-in site along the forest edge.', 'Lower right-side pad; good for shade preference once amenities are confirmed.'),
-('rv-09', '09', 'Site 09', 'active', 4400, 30, 842, 540, 88, 38, 0, '30A', 'back', 'partial', 'MIDWAY-RV-09-30AMP', 7, 'Right-row back-in site with partial shade near the lower loop.', 'Reference marks this directly above site 10 on the right edge.'),
-('rv-10', '10', 'Site 10', 'active', 4400, 30, 842, 592, 88, 38, 0, '30A', 'back', 'partial', 'MIDWAY-RV-10-30AMP', 8, 'Lower right-row end site with partial shade and a picnic table.', 'Right row runs 3-10; this is the bottom marked pad in the supplied reference.'),
-('rv-11', '11', 'Site 11', 'active', 4400, 30, 224, 652, 88, 38, -1, '30A', 'back', 'partial', 'MIDWAY-RV-11-30AMP', 9, 'Lower left-row full-hookup site on the quieter side of the loop.', 'Left row runs 11-16 from lower to upper in the reference image.'),
-('rv-12', '12', 'Site 12', 'active', 4400, 30, 224, 604, 88, 38, 0, '30A', 'back', 'partial', 'MIDWAY-RV-12-30AMP', 10, 'Left-row back-in site with partial shade near the lower loop.', 'Second lower-left marked pad; verify exact pedestal placement.'),
-('rv-13', '13', 'Site 13', 'active', 4400, 30, 222, 552, 88, 38, 0, '30A', 'back', 'partial', 'MIDWAY-RV-13-30AMP', 11, 'Left-row family-size full-hookup site with partial shade.', 'Confirm guest/vehicle limits before surfacing family-size upsell.'),
-('rv-14', '14', 'Site 14', 'active', 5800, 40, 224, 500, 88, 38, 0, '50A', 'back', 'partial', 'MIDWAY-RV-14-50AMP', 12, 'Premium 50 amp full-hookup site on the left row.', 'Good default recommendation for 50 amp rigs; verify turning radius on the loop.'),
-('rv-15', '15', 'Site 15', 'active', 5800, 40, 242, 448, 88, 38, -2, '50A', 'back', 'partial', 'MIDWAY-RV-15-50AMP', 13, 'Premium 50 amp left-row site with partial shade.', 'Reference shows this just below site 16 near the road side.'),
-('rv-16', '16', 'Site 16', 'active', 5800, 40, 258, 386, 88, 38, -1, '50A', 'back', 'partial', 'MIDWAY-RV-16-50AMP', 14, 'Upper left-row premium end site closest to the store side.', 'Top marked left-side pad; confirm whether this should be held back for staff or owner use.')
+('rv-03', '03', 'Site 03', 'active', 5800, 40, 992, 244, 78, 34, -5, '50A', 'back', 'partial', 'MIDWAY-RV-03-50AMP', 1, 'Upper right-row full-hookup site close to the store approach.', 'Satellite trace places this as the first marked right-side pad; confirm final utility pedestal details.'),
+('rv-04', '04', 'Site 04', 'active', 5800, 40, 992, 292, 78, 34, -5, '50A', 'back', 'partial', 'MIDWAY-RV-04-50AMP', 2, 'Right-row full-hookup site with partial shade near the upper drive.', 'Second marked right-side pad; verify driveway clearance against final survey.'),
+('rv-05', '05', 'Site 05', 'active', 5800, 40, 992, 340, 78, 34, -5, '50A', 'back', 'sun', 'MIDWAY-RV-05-50AMP', 3, 'Angled right-row full-hookup site with an easy approach from the loop.', 'Marked pad is angled in the reference; keep rotation unless updated survey says otherwise.'),
+('rv-06', '06', 'Site 06', 'active', 4400, 30, 992, 388, 78, 34, -5, '30A', 'back', 'sun', 'MIDWAY-RV-06-30AMP', 4, 'Angled right-row full-hookup site with sunny exposure.', 'Pairing location with site 5 appears tight; confirm vehicle length limit before publishing.'),
+('rv-07', '07', 'Site 07', 'active', 4400, 30, 992, 456, 78, 34, -5, '30A', 'back', 'full', 'MIDWAY-RV-07-30AMP', 5, 'Quiet forest-edge back-in site with full shade.', 'First straight lower right-side pad in the reference image.'),
+('rv-08', '08', 'Site 08', 'active', 4400, 30, 992, 508, 78, 34, -5, '30A', 'back', 'full', 'MIDWAY-RV-08-30AMP', 6, 'Full-shade right-row back-in site along the forest edge.', 'Lower right-side pad; good for shade preference once amenities are confirmed.'),
+('rv-09', '09', 'Site 09', 'active', 4400, 30, 992, 560, 78, 34, -5, '30A', 'back', 'partial', 'MIDWAY-RV-09-30AMP', 7, 'Right-row back-in site with partial shade near the lower loop.', 'Reference marks this directly above site 10 on the right edge.'),
+('rv-10', '10', 'Site 10', 'active', 4400, 30, 992, 612, 78, 34, -5, '30A', 'back', 'partial', 'MIDWAY-RV-10-30AMP', 8, 'Lower right-row end site with partial shade and a picnic table.', 'Right row runs 3-10; this is the bottom marked pad in the supplied reference.'),
+('rv-11', '11', 'Site 11', 'active', 4400, 30, 206, 628, 78, 34, 5, '30A', 'back', 'partial', 'MIDWAY-RV-11-30AMP', 9, 'Lower left-row full-hookup site on the quieter side of the loop.', 'Left row runs 11-16 from lower to upper in the reference image.'),
+('rv-12', '12', 'Site 12', 'active', 4400, 30, 206, 580, 78, 34, 5, '30A', 'back', 'partial', 'MIDWAY-RV-12-30AMP', 10, 'Left-row back-in site with partial shade near the lower loop.', 'Second lower-left marked pad; verify exact pedestal placement.'),
+('rv-13', '13', 'Site 13', 'active', 4400, 30, 206, 532, 78, 34, 5, '30A', 'back', 'partial', 'MIDWAY-RV-13-30AMP', 11, 'Left-row family-size full-hookup site with partial shade.', 'Confirm guest/vehicle limits before surfacing family-size upsell.'),
+('rv-14', '14', 'Site 14', 'active', 5800, 40, 206, 484, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-14-50AMP', 12, 'Premium 50 amp full-hookup site on the left row.', 'Good default recommendation for 50 amp rigs; verify turning radius on the loop.'),
+('rv-15', '15', 'Site 15', 'active', 5800, 40, 206, 436, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-15-50AMP', 13, 'Premium 50 amp left-row site with partial shade.', 'Reference shows this just below site 16 near the road side.'),
+('rv-16', '16', 'Site 16', 'active', 5800, 40, 206, 388, 78, 34, 5, '50A', 'back', 'partial', 'MIDWAY-RV-16-50AMP', 14, 'Upper left-row premium end site closest to the store side.', 'Top marked left-side pad; confirm whether this should be held back for staff or owner use.')
 ON CONFLICT (id) DO UPDATE SET
   nightly_price_cents = EXCLUDED.nightly_price_cents,
   max_rv_length_feet = EXCLUDED.max_rv_length_feet,

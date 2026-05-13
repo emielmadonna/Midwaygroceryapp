@@ -35,13 +35,38 @@ function createFallbackTenantConfig() {
       name: 'Midway Gas & Grocery',
       publicBrandName: 'Midway Gas & Grocery',
       phone: '(509) 669-9378',
-      address: '14193 US-2, Leavenworth, WA 98826',
+      address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
       instagramHandle: 'midwayplain',
     },
     publicSite: {
       theme: 'midway_farmhouse',
       instagramPosts: [],
+      sections: [
+        {
+          key: 'instagram',
+          enabled: true,
+          title: 'Fresh from Midway.',
+          copy: 'Store moments, seasonal notes, and RV site updates shown as a native gallery instead of a fragile social embed.',
+          items: [
+            {
+              title: 'Coffee, shelves, and the morning stop',
+              description: 'Inside the store before the day heads toward Plain, Lake Wenatchee, and the pass.',
+              image: '/images/store-interior.jpg',
+            },
+            {
+              title: 'Fuel before the valley roads',
+              description: 'The storefront, pumps, and quick-stop basics at 14193 Chiwawa Loop RD.',
+              image: '/images/store-exterior.jpg',
+            },
+            {
+              title: 'Room for the weekend rig',
+              description: 'Full-hookup RV sites behind the store, close to coffee, ice, groceries, and firewood.',
+              image: '/images/exterior-wide.jpg',
+            },
+          ],
+        },
+      ],
     },
     providers: {
       square: {

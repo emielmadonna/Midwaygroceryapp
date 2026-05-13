@@ -62,8 +62,8 @@ test('RV map helpers support legacy SVG viewBox rendering', () => {
   assert.equal(site.siteNumber, '03');
 
   const legacySite = denormalizeMapSite(site);
-  assert.equal(legacySite.mapX, 884);
-  assert.equal(legacySite.mapY, 210);
-  assert.equal(legacySite.mapWidth, 88);
-  assert.equal(legacySite.mapHeight, 38);
+  assert.equal(legacySite.mapX, 992);
+  assert.equal(legacySite.mapY, 244);
+  assert.equal(legacySite.mapWidth, 78);
+  assert.equal(legacySite.mapHeight, 34);
 });

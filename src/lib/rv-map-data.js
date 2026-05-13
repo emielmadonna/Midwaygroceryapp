@@ -27,8 +27,8 @@ export const RV_SITE_AMENITIES = Object.freeze({
   QUIET_SIDE: 'Quiet side',
 });
 
-const DEFAULT_SITE_WIDTH = 88;
-const DEFAULT_SITE_HEIGHT = 38;
+const DEFAULT_SITE_WIDTH = 78;
+const DEFAULT_SITE_HEIGHT = 34;
 
 function normalizeX(value) {
   return Number((value / RV_MAP_COORDINATE_SYSTEM.sourceViewBox.width).toFixed(4));
@@ -79,9 +79,9 @@ function createRvSite({
 export const rvMapSites = Object.freeze([
   createRvSite({
     siteNumber: '03',
-    x: 884,
-    y: 210,
-    rotation: -1,
+    x: 992,
+    y: 244,
+    rotation: -5,
     amp: '50A',
     type: 'back-in',
     shade: 'partial',
@@ -97,8 +97,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '04',
-    x: 884,
-    y: 252,
+    x: 992,
+    y: 292,
+    rotation: -5,
     amp: '50A',
     type: 'back-in',
     shade: 'partial',
@@ -113,9 +114,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '05',
-    x: 864,
-    y: 314,
-    rotation: 18,
+    x: 992,
+    y: 340,
+    rotation: -5,
     amp: '50A',
     type: 'back-in',
     shade: 'sun',
@@ -130,9 +131,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '06',
-    x: 848,
-    y: 352,
-    rotation: 18,
+    x: 992,
+    y: 388,
+    rotation: -5,
     amp: '30A',
     type: 'back-in',
     shade: 'sun',
@@ -147,8 +148,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '07',
-    x: 842,
-    y: 432,
+    x: 992,
+    y: 456,
+    rotation: -5,
     amp: '30A',
     type: 'back-in',
     shade: 'full',
@@ -164,8 +166,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '08',
-    x: 842,
-    y: 486,
+    x: 992,
+    y: 508,
+    rotation: -5,
     amp: '30A',
     type: 'back-in',
     shade: 'full',
@@ -181,8 +184,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '09',
-    x: 842,
-    y: 540,
+    x: 992,
+    y: 560,
+    rotation: -5,
     amp: '30A',
     type: 'back-in',
     shade: 'partial',
@@ -198,8 +202,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '10',
-    x: 842,
-    y: 592,
+    x: 992,
+    y: 612,
+    rotation: -5,
     amp: '30A',
     type: 'back-in',
     shade: 'partial',
@@ -215,9 +220,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '11',
-    x: 224,
-    y: 652,
-    rotation: -1,
+    x: 206,
+    y: 628,
+    rotation: 5,
     amp: '30A',
     type: 'back-in',
     shade: 'partial',
@@ -233,8 +238,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '12',
-    x: 224,
-    y: 604,
+    x: 206,
+    y: 580,
+    rotation: 5,
     amp: '30A',
     type: 'back-in',
     shade: 'partial',
@@ -250,8 +256,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '13',
-    x: 222,
-    y: 552,
+    x: 206,
+    y: 532,
+    rotation: 5,
     amp: '30A',
     type: 'back-in',
     shade: 'partial',
@@ -266,8 +273,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '14',
-    x: 224,
-    y: 500,
+    x: 206,
+    y: 484,
+    rotation: 5,
     amp: '50A',
     type: 'back-in',
     shade: 'partial',
@@ -283,9 +291,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '15',
-    x: 242,
-    y: 448,
-    rotation: -2,
+    x: 206,
+    y: 436,
+    rotation: 5,
     amp: '50A',
     type: 'back-in',
     shade: 'partial',
@@ -301,9 +309,9 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '16',
-    x: 258,
-    y: 386,
-    rotation: -1,
+    x: 206,
+    y: 388,
+    rotation: 5,
     amp: '50A',
     type: 'back-in',
     shade: 'partial',

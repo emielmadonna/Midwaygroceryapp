@@ -153,7 +153,7 @@ els.propertyMap?.addEventListener('click', event => {
 els.manualForm?.addEventListener('submit', async event => {
   event.preventDefault();
   const form = new FormData(els.manualForm);
-  await mutate('/api/admin/bookings', {
+  const payload = {
     siteId: form.get('siteId'),
     startDate: form.get('startDate'),
     endDate: form.get('endDate'),
@@ -164,7 +164,22 @@ els.manualForm?.addEventListener('submit', async event => {
       phone: form.get('customerPhone'),
       email: form.get('customerEmail'),
     },
-  }, 'Manual booking created.');
+  };
+  if (form.get('bookingAction') === 'payment-link') {
+    const checkout = await api('/api/admin/bookings/checkout', {
+      method: 'POST',
+      body: payload,
+    });
+    if (checkout.checkout?.checkoutUrl) {
+      window.open(checkout.checkout.checkoutUrl, '_blank', 'noopener,noreferrer');
+      showToast('Square payment link opened. Booking is pending until payment completes.', 'success');
+    } else {
+      showToast('Payment session created, but Square did not return a link.', 'success');
+    }
+    await loadAdminData();
+  } else {
+    await mutate('/api/admin/bookings', payload, 'Manual booking created.');
+  }
   els.manualForm.reset();
 });
 
@@ -663,7 +678,7 @@ function renderPropertyMap() {
   els.propertyMap.innerHTML = `
     ${renderPropertyMapBase()}
     <div class="property-map__label property-map__label--store">Store</div>
-    <div class="property-map__label property-map__label--road">Hwy 22</div>
+    <div class="property-map__label property-map__label--road">Chiwawa Loop RD</div>
     <div class="property-map__label property-map__label--island">Future tent island</div>
     ${state.sites.map(site => renderMapSite(site, activeForDate)).join('')}
   `;
@@ -678,11 +693,11 @@ function renderPropertyMapBase() {
       <rect width="1200" height="800" fill="#f4efe2"></rect>
       <path d="M-80 150 L560 -42" stroke="#2f2d28" stroke-width="58" stroke-linecap="round" opacity=".76" fill="none"></path>
       <path d="M-80 150 L560 -42" stroke="#fff9eb" stroke-width="3" stroke-dasharray="18 18" fill="none"></path>
-      <path d="M288 158 C320 232 354 268 404 314" stroke="#6f695f" stroke-width="34" stroke-linecap="round" fill="none"></path>
-      <path d="M288 158 C320 232 354 268 404 314" stroke="#fff9eb" stroke-width="3" stroke-dasharray="7 11" fill="none"></path>
-      <path d="M404 314 C496 246 660 232 792 260 C888 280 922 382 890 522 C862 644 754 716 610 704 C468 692 336 640 292 548 C246 450 302 366 404 314 Z" stroke="#6f695f" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-      <path d="M404 314 C496 246 660 232 792 260 C888 280 922 382 890 522 C862 644 754 716 610 704 C468 692 336 640 292 548 C246 450 302 366 404 314 Z" stroke="#fff9eb" stroke-width="3" stroke-dasharray="7 11" fill="none"></path>
-      <path d="M426 366 C510 312 652 302 758 330 C830 350 846 430 816 536 C788 618 712 658 610 658 C488 658 392 616 356 542 C322 470 348 414 426 366 Z" fill="#d8d5b4" opacity=".9"></path>
+      <path d="M286 158 C318 232 346 266 372 300" stroke="#6f695f" stroke-width="34" stroke-linecap="round" fill="none"></path>
+      <path d="M286 158 C318 232 346 266 372 300" stroke="#fff9eb" stroke-width="3" stroke-dasharray="7 11" fill="none"></path>
+      <path d="M372 300 C496 232 700 238 820 320 C922 392 908 566 780 650 C656 732 454 698 356 578 C272 476 288 374 372 300 Z" stroke="#6f695f" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+      <path d="M372 300 C496 232 700 238 820 320 C922 392 908 566 780 650 C656 732 454 698 356 578 C272 476 288 374 372 300 Z" stroke="#fff9eb" stroke-width="3" stroke-dasharray="7 11" fill="none"></path>
+      <path d="M430 364 C526 312 668 314 748 366 C812 408 802 522 724 582 C632 654 480 626 414 536 C358 458 368 400 430 364 Z" fill="#d8d5b4" opacity=".9"></path>
       <rect x="118" y="206" width="130" height="84" fill="#fffdf9" stroke="#5b5144" stroke-width="3" rx="4"></rect>
       <path d="M118 206 L183 176 L248 206 Z" fill="#b65a46" stroke="#5b5144" stroke-width="3"></path>
       <rect x="260" y="118" width="150" height="56" fill="#fffdf9" stroke="#5b5144" stroke-width="3" rx="4"></rect>
