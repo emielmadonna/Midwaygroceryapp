@@ -50,10 +50,12 @@ const DEFAULT_PRODUCTS = [
 
 const DEFAULT_SETTINGS = {
     slackWebhookUrl: '',
-    address: '14193 US-2, Leavenworth, WA 98826',
-    phone: '(509) 669-9378',
+    businessName: '',
+    publicBrandName: '',
+    address: '',
+    phone: '',
     locallyOwnedSince: '',
-    adminPassword: 'midway2025',
+    adminPassword: '',
 };
 
 const DEFAULT_RENTALS = {

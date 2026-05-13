@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",
+    "api": "node api-server.js",
+    "test": "node --test",
+    "smoke:visual": "node --test test/visual-smoke.test.js",
+    "smoke:browser:availability": "node --test test/browser-visual-availability.test.js",
+    "smoke": "npm test && npm run build",
     "build": "vite build",
     "preview": "vite preview"
   },

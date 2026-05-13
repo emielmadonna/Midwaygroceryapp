@@ -26,9 +26,10 @@ export async function sendSlackNotification(message, type = 'general') {
         product: '📦',
         general: '📢',
     }[type] || '📢';
+    const brand = settings.publicBrandName || settings.businessName || '';
 
     const payload = {
-        text: `${emoji} *Midway Gas & Grocery*\n${message}`,
+        text: brand ? `${emoji} *${brand}*\n${message}` : `${emoji} ${message}`,
         unfurl_links: false,
     };
 
