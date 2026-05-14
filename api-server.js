@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import cors from 'cors';
 import express from 'express';
 import path from 'node:path';
@@ -12,6 +12,10 @@ import { createTenantConfig } from './src/lib/tenant-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '.env'), quiet: true });
+dotenv.config({ path: path.join(__dirname, '.env.local'), override: true, quiet: true });
+
 const app = express();
 const port = process.env.MIDWAY_API_PORT || 3001;
 const host = process.env.HOST || '127.0.0.1';
