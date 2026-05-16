@@ -395,7 +395,6 @@ function iconForProduct(product) {
 const MAP_WORLD = { minX: -360, minY: -260, maxX: 1560, maxY: 1060 };
 
 const SitePlan = ({ sel, setSel, sites }) => {
-  const [touring, setTouring] = useState(false);
   const stageRef = useRef(null);
 
   // Zoom-to-site: compute transform that centers the selected pad in the viewport.
@@ -403,43 +402,21 @@ const SitePlan = ({ sel, setSel, sites }) => {
     const s = sites.find(x => x.id === sel);
     if (!s) return { tx: 0, ty: 0, sc: 1 };
     const sc = 1.28;
-    const cx = 600, cy = 400; // viewBox center
+    const cx = 600, cy = 400;
     const tx = clamp(cx - s.x * sc, 1200 - MAP_WORLD.maxX * sc, -MAP_WORLD.minX * sc);
     const ty = clamp(cy - s.y * sc, 800 - MAP_WORLD.maxY * sc, -MAP_WORLD.minY * sc);
     return { tx, ty, sc };
   }, [sel]);
   const mapTransform = `matrix(${zoom.sc} 0 0 ${zoom.sc} ${zoom.tx} ${zoom.ty})`;
 
-  // Auto-tour through open sites
-  useEffect(() => {
-    if (!touring) return;
-    const open = sites.filter(s => !s.taken).map(s => s.id);
-    let i = open.indexOf(sel);
-    if (i < 0) i = 0;
-    setSel(open[i]);
-    const t = setInterval(() => {
-      i = (i + 1) % open.length;
-      setSel(open[i]);
-    }, 2200);
-    return () => clearInterval(t);
-  }, [touring]);
   const tree = (x, y, s = 1) => (
     <path key={`t${x}${y}`} d={`M${x} ${y-12*s} L${x-9*s} ${y+10*s} L${x-4*s} ${y+10*s} L${x-12*s} ${y+22*s} L${x-4*s} ${y+22*s} L${x-9*s} ${y+30*s} L${x+9*s} ${y+30*s} L${x+4*s} ${y+22*s} L${x+12*s} ${y+22*s} L${x+4*s} ${y+10*s} L${x+9*s} ${y+10*s} Z`}
        fill="#4A4936" opacity="0.42" />
   );
-  const selSite = sites.find(s => s.id === sel);
 
   return (
     <div className={`siteplan${sel ? ' zoomed' : ''}`}>
-      <div className="toolbar">
-        <button onClick={() => { setSel(null); setTouring(false); }}>
-          <span className="dot" /> Overview
-        </button>
-        <button className={touring ? 'on' : ''} onClick={() => setTouring(t => !t)}>
-          {touring ? '■ Stop tour' : '▶ Tour open sites'}
-        </button>
-      </div>
-      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" onClick={() => setSel(null)} style={{ cursor: sel ? 'zoom-out' : 'default' }}>
         <defs>
           <pattern id="forest" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
             <path d="M30 8 L22 28 L26 28 L18 42 L26 42 L22 52 L38 52 L34 42 L42 42 L34 28 L38 28 Z" fill="#4A4936" opacity=".22"/>
@@ -469,13 +446,6 @@ const SitePlan = ({ sel, setSel, sites }) => {
               fill="#C5C3A2" opacity="0.78"/>
         <path d="M456 392 C540 354 654 356 720 398 C764 430 760 500 706 548 C634 612 512 590 456 522 C414 468 414 420 456 392 Z"
               fill="none" stroke="#7A776E" strokeWidth="1.3" strokeDasharray="5 8" opacity="0.5"/>
-        {touring && selSite && (
-          <g className="rover" transform={`translate(${selSite.x} ${selSite.y})`}>
-            <circle r="14" fill="#B0341E" opacity="0.25"/>
-            <circle r="7" fill="#B0341E"/>
-            <circle r="3" fill="#F5F0E1"/>
-          </g>
-        )}
 
         {/* Store and yard landmarks */}
         <g>
@@ -489,7 +459,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
           <text x="668" y="202" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.6" textAnchor="middle" fill="#11100E">SHOP / YARD</text>
         </g>
 
-        {/* Common markers */}
+        {/* Tent area marker */}
         <g>
           <rect x="456" y="392" width="284" height="220" fill="none" stroke="#11100E" strokeWidth="1.4" strokeDasharray="4 6" rx="8"/>
           <text x="598" y="624" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1.5" textAnchor="middle" fill="#11100E">TENT AREAS T01-T10</text>
@@ -499,34 +469,32 @@ const SitePlan = ({ sel, setSel, sites }) => {
         {[[48,250],[52,470],[74,610],[132,660],[318,704],[420,744],[560,748],[736,744],[932,664],[978,548],[988,430],[982,300],[930,190],[820,148],[1100,210],[1128,330],[1138,470],[1122,628]].map(([x,y]) => tree(x, y, 1))}
         {[[430,420],[520,392],[642,386],[734,424],[710,560],[600,594],[486,560],[318,464],[304,560]].map(([x,y]) => tree(x, y, 0.7))}
 
-        {/* Pads */}
+        {/* Pads — enlarged for easier tapping */}
         {sites.map(s => {
           const isSel = sel === s.id;
           const label = s.siteNumber || String(s.id).replace(/\D/g, '') || s.id;
-          const padW = s.w || 88;
-          const padH = s.h || 38;
+          const padW = (s.w || 88) * 1.12;
+          const padH = (s.h || 38) * 1.12;
           return (
             <g key={s.id}
                className={`pad${s.taken ? ' taken' : ''}${isSel ? ' sel pulse' : ''}`}
                transform={`translate(${s.x} ${s.y}) rotate(${s.rot})`}
-               onClick={() => !s.taken && setSel(s.id)}>
-              <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="4"
-                    fill={s.amp === '50A' ? '#F5F0E1' : '#EDE7D7'}
-                    stroke="#11100E" strokeWidth={isSel ? 2.5 : 1.4}/>
+               onClick={e => { e.stopPropagation(); !s.taken && setSel(s.id); }}>
+              <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
+                    fill={s.type === 'tent' ? '#C5C3A2' : s.amp === '50A' ? '#F5F0E1' : '#EDE7D7'}
+                    stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
               {s.taken && (
-                <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="4" fill="rgba(17,16,14,0.18)"/>
+                <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5" fill="rgba(17,16,14,0.18)"/>
               )}
-              <text x="0" y="2" fontFamily="Fraunces" fontSize="16" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
+              <text x="0" y="1" fontFamily="Fraunces" fontSize="18" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
                 {String(label).padStart(2,'0')}
               </text>
-              <text x="0" y="14" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1" textAnchor="middle" fill="#7A776E" dominantBaseline="middle">
+              <text x="0" y="16" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1" textAnchor="middle" fill="#7A776E" dominantBaseline="middle">
                 {s.amp}
               </text>
             </g>
           );
         })}
-
-        <text x="1130" y="780" fontFamily="JetBrains Mono" fontSize="9" letterSpacing="2" textAnchor="end" fill="#11100E">RV 03-16 / TENT T01-T10</text>
         </g>
       </svg>
 
@@ -535,8 +503,6 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <div className="l"><i className="t" /> Taken</div>
         <div className="l"><i className="s" /> Your pick</div>
       </div>
-      <div className="compass"><span className="n">N</span></div>
-      <div className="scale">100 FT</div>
     </div>
   );
 };
@@ -766,8 +732,13 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               {selSite ? (
                 <div className="site-detail">
                   <div className="row1">
-                    <div className="num">Site <em>No. {String(selSite.siteNumber || selSite.id).padStart(2,'0')}</em></div>
-                    <div className="amp">{selSite.amp} · {siteKindLabel} · {selSite.shade} shade · {siteCapacityLabel}</div>
+                    <div className="num">
+                      {selSite.type === 'tent'
+                        ? <><span className="site-type-badge tent">Tent</span> <em>{selSite.siteNumber}</em></>
+                        : <><span className="site-type-badge rv">RV Site</span> <em>No. {String(selSite.siteNumber).padStart(2,'0')}</em></>
+                      }
+                    </div>
+                    <div className="amp">{selSite.type !== 'tent' && <>{selSite.amp} · </>}{siteKindLabel} · {selSite.shade} shade · {siteCapacityLabel}</div>
                   </div>
                   <div className="feats">
                     {selSite.feats.map(f => <span key={f}>{f}</span>)}
