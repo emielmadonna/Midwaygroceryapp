@@ -14,8 +14,7 @@ export function createAdminAuthService({ env = process.env, now = () => new Date
   return {
     users,
     async login({ email, password } = {}) {
-      const normalizedEmail = normalizeEmail(email);
-      const user = users.find(candidate => normalizeEmail(candidate.email) === normalizedEmail);
+      const user = resolveLoginUser(users, email);
       if (!user || user.disabled || !await verifyPassword(password, user.passwordHash, env)) {
         const error = new Error('Email or password is incorrect.');
         error.statusCode = 401;
@@ -49,6 +48,16 @@ export function createAdminAuthService({ env = process.env, now = () => new Date
       };
     },
   };
+}
+
+function resolveLoginUser(users, email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail) {
+    return users.find(candidate => normalizeEmail(candidate.email) === normalizedEmail) ?? null;
+  }
+
+  const owners = users.filter(candidate => candidate.role === OWNER_ROLE && !candidate.disabled);
+  return owners.length === 1 ? owners[0] : null;
 }
 
 export function requireAdminRole(user, allowedRoles = [OWNER_ROLE, EMPLOYEE_ROLE]) {

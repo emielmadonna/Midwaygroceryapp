@@ -29,6 +29,23 @@ test('admin routes require a server-side token', async () => {
   }
 });
 
+test('single owner can sign in with password only', async () => {
+  const server = await createTestServer();
+
+  try {
+    const owner = await api(server, '/api/admin/auth/login', {
+      method: 'POST',
+      body: { password: 'owner-pass' },
+    });
+    assert.equal(owner.status, 200);
+    assert.equal(owner.body.data.user.email, 'owner@midway.local');
+    assert.equal(owner.body.data.user.role, 'owner');
+    assert.ok(owner.body.data.token);
+  } finally {
+    await server.close();
+  }
+});
+
 test('owner can create and cancel a manual booking with audit records', async () => {
   const server = await createTestServer();
 

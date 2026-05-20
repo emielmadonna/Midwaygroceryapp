@@ -82,7 +82,7 @@ test('admin page keeps login shell, session flow, and mobile guardrails', async 
 
   assert.match(adminHtml, /<meta\s+name="viewport"\s+content="width=device-width,\s*initial-scale=1\.0"/);
   assert.match(adminHtml, /<form\s+id="loginForm"/);
-  assert.match(adminHtml, /type="email"\s+id="loginEmail"/);
+  assert.match(adminHtml, /type="email"\s+id="loginEmail"[^>]+placeholder="Email \(optional for owner\)"/);
   assert.match(adminHtml, /type="password"\s+id="loginPassword"/);
   assert.match(adminHtml, /id="loginStatus"/);
   assert.match(adminHtml, /id="adminDashboard"\s+hidden/);
