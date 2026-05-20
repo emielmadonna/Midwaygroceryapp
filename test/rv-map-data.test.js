@@ -80,6 +80,27 @@ test('every bookable site has normalized map coordinates', () => {
   }
 });
 
+test('RV site rates and hookup types match the published inventory plan', () => {
+  const site03 = getRvMapSiteByNumber(3);
+  const site11 = getRvMapSiteByNumber(11);
+  const site15 = getRvMapSiteByNumber(15);
+  const site16 = getRvMapSiteByNumber(16);
+
+  assert.equal(site03.nightlyPriceCents, 4500);
+  assert.equal(site03.hookup, 'full');
+  assert.ok(site03.amenities.includes('Septic'));
+
+  assert.equal(site11.nightlyPriceCents, 4000);
+  assert.equal(site11.hookup, 'partial');
+  assert.ok(site11.amenities.includes('Partial hookup'));
+  assert.ok(site11.amenities.includes('Electricity'));
+  assert.equal(site11.amenities.includes('Septic'), false);
+
+  assert.equal(site15.status, 'inactive');
+  assert.equal(site16.nightlyPriceCents, 4500);
+  assert.equal(tentMapSites[0].nightlyPriceCents, 2000);
+});
+
 test('RV map helpers support legacy SVG viewBox rendering', () => {
   const site = getRvMapSiteByNumber(3);
   assert.equal(site.siteNumber, '03');

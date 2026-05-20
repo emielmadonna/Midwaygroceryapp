@@ -37,6 +37,55 @@ export const SEEDED_RV_SITES = withSquareCatalog(
   }),
 );
 
+export const SEEDED_RV_BOOKINGS = Object.freeze([
+  {
+    id: 'seed-block-rv-07-2026-06-20',
+    bookingCode: 'BLOCK-RV07-JUN20',
+    rvSiteId: 'rv-07',
+    customer: { name: 'Owner Hold', phone: '' },
+    customerName: 'Owner Hold',
+    customerPhone: '',
+    customerEmail: null,
+    startDate: '2026-06-20',
+    endDate: '2026-06-21',
+    nights: 1,
+    guests: 1,
+    vehicles: 1,
+    subtotalCents: 0,
+    taxCents: 0,
+    feeCents: 0,
+    totalCents: 0,
+    currency: 'USD',
+    status: 'blocked',
+    source: 'admin',
+    createdAt: '2026-05-20T00:00:00.000Z',
+    updatedAt: '2026-05-20T00:00:00.000Z',
+  },
+  {
+    id: 'seed-block-rv-08-2026-06-20',
+    bookingCode: 'BLOCK-RV08-JUN20',
+    rvSiteId: 'rv-08',
+    customer: { name: 'Owner Hold', phone: '' },
+    customerName: 'Owner Hold',
+    customerPhone: '',
+    customerEmail: null,
+    startDate: '2026-06-20',
+    endDate: '2026-06-21',
+    nights: 1,
+    guests: 1,
+    vehicles: 1,
+    subtotalCents: 0,
+    taxCents: 0,
+    feeCents: 0,
+    totalCents: 0,
+    currency: 'USD',
+    status: 'blocked',
+    source: 'admin',
+    createdAt: '2026-05-20T00:00:00.000Z',
+    updatedAt: '2026-05-20T00:00:00.000Z',
+  },
+]);
+
 export function createMidwayHarness({
   squareProducts = [],
   fuelPrices = [],
@@ -57,6 +106,7 @@ export function createMidwayHarness({
   const resolvedBookingStore = bookingStore ?? createBookingStore({
     supabase: resolvedSupabase,
     sites: SEEDED_RV_SITES,
+    bookings: SEEDED_RV_BOOKINGS,
     providerConnections: hasExplicitTenantConfig ? providerConnectionsFromTenantConfig(tenantConfigCache) : [],
   });
   const state = {

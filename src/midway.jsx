@@ -1,6 +1,7 @@
 /* global Square */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { bookableMapSites as STATIC_RV_SITES, denormalizeMapSite } from './lib/rv-map-data.js';
 
 // ─── Data ───────────────────────────────────────────────────────────────────
 const API_ROOT = ['3000', '3002', '5173'].includes(window.location.port)
@@ -37,32 +38,13 @@ const FALLBACK_HOURS = [
   { day: 'saturday', open: '7:00 AM', close: '9:00 PM' },
   { day: 'sunday', open: '8:00 AM', close: '8:00 PM' },
 ];
-const FALLBACK_RV_SITES = [
-  { id: 'rv-03', siteNumber: '03', displayName: 'Site 03', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 992, mapY: 244, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-03-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig', 'Walk to store'], customerNotes: 'Upper right-row full-hookup site close to the store approach.' },
-  { id: 'rv-04', siteNumber: '04', displayName: 'Site 04', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 992, mapY: 292, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-04-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Big rig'], customerNotes: 'Right-row full-hookup site with partial shade near the upper drive.' },
-  { id: 'rv-05', siteNumber: '05', displayName: 'Site 05', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 992, mapY: 340, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '50A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-05-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Easy entry'], customerNotes: 'Angled right-row full-hookup site with an easy approach from the loop.' },
-  { id: 'rv-06', siteNumber: '06', displayName: 'Site 06', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 388, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'sun', sku: 'MIDWAY-RV-06-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly'], customerNotes: 'Angled right-row full-hookup site with sunny exposure.' },
-  { id: 'rv-07', siteNumber: '07', displayName: 'Site 07', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 456, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-07-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Quiet'], customerNotes: 'Quiet forest-edge back-in site with full shade.' },
-  { id: 'rv-08', siteNumber: '08', displayName: 'Site 08', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 508, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'full', sku: 'MIDWAY-RV-08-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Deep shade'], customerNotes: 'Full-shade right-row back-in site along the forest edge.' },
-  { id: 'rv-09', siteNumber: '09', displayName: 'Site 09', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 560, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-09-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Forest edge', 'Pet-friendly'], customerNotes: 'Right-row back-in site with partial shade near the lower loop.' },
-  { id: 'rv-10', siteNumber: '10', displayName: 'Site 10', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 992, mapY: 612, mapWidth: 78, mapHeight: 34, rotation: -5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-10-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'End site', 'Picnic table'], customerNotes: 'Lower right-row end site with partial shade and a picnic table.' },
-  { id: 'rv-11', siteNumber: '11', displayName: 'Site 11', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 206, mapY: 628, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-11-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Quiet side', 'Forest edge'], customerNotes: 'Lower left-row full-hookup site on the quieter side of the loop.' },
-  { id: 'rv-12', siteNumber: '12', displayName: 'Site 12', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 206, mapY: 580, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-12-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Pet-friendly', 'Forest edge'], customerNotes: 'Left-row back-in site with partial shade near the lower loop.' },
-  { id: 'rv-13', siteNumber: '13', displayName: 'Site 13', status: 'active', nightlyPriceCents: 4400, maxRvLengthFeet: 30, mapX: 206, mapY: 532, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '30A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-13-30AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Family-size'], customerNotes: 'Left-row family-size full-hookup site with partial shade.' },
-  { id: 'rv-14', siteNumber: '14', displayName: 'Site 14', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 484, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-14-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Big rig'], customerNotes: 'Premium 50 amp full-hookup site on the left row.' },
-  { id: 'rv-15', siteNumber: '15', displayName: 'Site 15', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 436, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-15-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'Road edge'], customerNotes: 'Premium 50 amp left-row site with partial shade.' },
-  { id: 'rv-16', siteNumber: '16', displayName: 'Site 16', status: 'active', nightlyPriceCents: 5800, maxRvLengthFeet: 40, mapX: 206, mapY: 388, mapWidth: 78, mapHeight: 34, rotation: 5, amp: '50A', type: 'back', shade: 'partial', sku: 'MIDWAY-RV-16-50AMP', amenities: ['Full hookup', 'Water', 'Sewer', 'Premium', 'End site', 'Walk to store'], customerNotes: 'Upper left-row premium end site closest to the store side.' },
-  { id: 'tent-01', siteNumber: 'T01', displayName: 'Tent 01', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 506, mapY: 430, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-01', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-02', siteNumber: 'T02', displayName: 'Tent 02', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 566, mapY: 420, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-02', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-03', siteNumber: 'T03', displayName: 'Tent 03', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 626, mapY: 420, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-03', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-04', siteNumber: 'T04', displayName: 'Tent 04', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 686, mapY: 432, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-04', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-05', siteNumber: 'T05', displayName: 'Tent 05', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 486, mapY: 484, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-05', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-06', siteNumber: 'T06', displayName: 'Tent 06', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 546, mapY: 498, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-06', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-07', siteNumber: 'T07', displayName: 'Tent 07', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 606, mapY: 504, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-07', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-08', siteNumber: 'T08', displayName: 'Tent 08', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 666, mapY: 498, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-08', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-09', siteNumber: 'T09', displayName: 'Tent 09', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 526, mapY: 556, mapWidth: 48, mapHeight: 30, rotation: -2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-09', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-  { id: 'tent-10', siteNumber: 'T10', displayName: 'Tent 10', status: 'active', nightlyPriceCents: 2800, maxRvLengthFeet: 0, mapX: 626, mapY: 562, mapWidth: 48, mapHeight: 30, rotation: 2, amp: 'Tent', type: 'tent', shade: 'partial', sku: 'MIDWAY-TENT-10', amenities: ['Tent area', 'Walk-in', 'Picnic table', 'Walk to store'], customerNotes: 'Walk-in tent area on the center island with easy access to the store.' },
-];
+const FALLBACK_RV_SITES = STATIC_RV_SITES.map(site => {
+  const denormalized = denormalizeMapSite(site);
+  return {
+    ...denormalized,
+    type: denormalized.type === 'back-in' ? 'back' : denormalized.type,
+  };
+});
 
 const toMapSite = (site, availableIds = null) => ({
   id: site.id,
@@ -628,7 +610,9 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   const [dep, setDep] = useState(dateInput(4));
   const [rig, setRig] = useState('Class A');
   const [heads, setHeads] = useState(2);
+  const [vehicles, setVehicles] = useState(1);
   const [guest, setGuest] = useState({ name: '', phone: '', email: '' });
+  const [waiverAccepted, setWaiverAccepted] = useState(false);
   const [step, setStep] = useState('site');
   const [confirmed, setConfirmed] = useState(null);
   const [paymentSession, setPaymentSession] = useState(null);
@@ -642,10 +626,12 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
 
   const selSite = useMemo(() => sites.find(s => s.id === sel), [sites, sel]);
   const rateCents = selSite?.nightlyPriceCents || 0;
-  const totalCents = rateCents * nights;
+  const vehicleCount = clamp(Math.trunc(Number(vehicles) || 1), 1, 6);
+  const extraVehicleFeeCents = Math.max(0, vehicleCount - 1) * 1000;
+  const totalCents = (rateCents * nights) + extraVehicleFeeCents;
   const datesReady = Boolean(arr && dep && new Date(dep) > new Date(arr));
-  const siteReady = Boolean(selSite && datesReady);
-  const guestReady = Boolean(guest.name.trim() && guest.phone.trim());
+  const siteReady = Boolean(selSite && !selSite.taken && datesReady);
+  const guestReady = Boolean(guest.name.trim() && guest.phone.trim() && waiverAccepted);
   const ready = siteReady && guestReady;
   const siteKindLabel = selSite?.type === 'tent'
     ? 'walk-in tent area'
@@ -662,11 +648,15 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
 
   useEffect(() => {
     if (!selSite) return;
+    if (selSite.taken) {
+      setSel(null);
+      return;
+    }
     setRig(current => {
       if (selSite.type === 'tent') return current === 'Tent' ? current : 'Tent';
       return current === 'Tent' ? 'Class A' : current;
     });
-  }, [selSite?.id, selSite?.type]);
+  }, [selSite?.id, selSite?.taken, selSite?.type]);
 
   const updateGuest = (field, value) => {
     setGuest(g => ({ ...g, [field]: value }));
@@ -682,9 +672,12 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
         startDate: arr,
         endDate: dep,
         guests: heads,
-        vehicles: 1,
+        vehicles: vehicleCount,
         rig,
-        customer: guest,
+        customer: {
+          ...guest,
+          waiverAccepted,
+        },
       });
       if (checkout.checkout?.checkoutUrl) {
         window.location.href = checkout.checkout.checkoutUrl;
@@ -702,7 +695,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
     <section className="section reveal booking-section" id="stay" style={{ background: 'var(--paper)' }}>
       <div className="head">
         <h2>Book RV or tent. <em>Right behind Midway.</em></h2>
-        <p>RV sites 03-16 include water, sewer, and 30A or 50A service. Tent areas T01-T10 sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
+        <p>Full hookup sites include water, septic, and electricity. Partial hookup sites include water and electricity. Tent areas T01-T10 sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
       </div>
 
       <div className="book-wrap">
@@ -777,6 +770,11 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
                   <input type="number" min="1" max="8" value={heads} onChange={e => setHeads(+e.target.value)} />
                 </div>
               </div>
+              <div className="contact-row">
+                <label>Vehicles</label>
+                <input type="number" min="1" max="6" value={vehicles} onChange={e => setVehicles(clamp(Math.trunc(+e.target.value || 1), 1, 6))} />
+                <div className="reserve-note">One car is included. Extra cars are $10 each.</div>
+              </div>
               <button className="cta" type="button" onClick={() => setStep('guest')} disabled={!siteReady}>
                 Continue to guest details →
               </button>
@@ -801,6 +799,10 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
                 <label>Email <span style={{ color:'var(--mute)', letterSpacing:'0.08em' }}>(optional)</span></label>
                 <input type="email" value={guest.email} onChange={e => updateGuest('email', e.target.value)} placeholder="you@example.com" />
               </div>
+              <label className="booking-check">
+                <input type="checkbox" checked={waiverAccepted} onChange={e => setWaiverAccepted(e.target.checked)} />
+                <span>I agree to the campground waiver and understand Midway may verify my driver license at check-in.</span>
+              </label>
               <div className="form-actions">
                 <button type="button" className="ghost-cta" onClick={() => setStep('site')}>Back</button>
                 <button className="cta" type="button" onClick={() => setStep('review')} disabled={!guestReady}>Review and pay →</button>
@@ -815,13 +817,16 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               <div className="review-card">
                 <div><span>Site</span><strong>No. {String(selSite?.siteNumber || sel || '').padStart(2,'0')}</strong></div>
                 <div><span>Dates</span><strong>{arr} to {dep}</strong></div>
-                <div><span>Setup</span><strong>{rig} · {heads} guests</strong></div>
+                <div><span>Setup</span><strong>{rig} · {heads} guests · {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'}</strong></div>
                 <div><span>Guest</span><strong>{guest.name || 'Name required'}</strong></div>
               </div>
               <div className="pick" style={{ marginTop: 20 }}>
                 <div><div className="det">Nights</div><div className="num">{nights}</div></div>
                 <div style={{ textAlign:'right' }}><div className="det">Rate</div><div className="num">{money(rateCents)}<span style={{fontSize:11,color:'var(--mute)',fontFamily:'var(--mono)',marginLeft:4}}>/NT</span></div></div>
               </div>
+              {extraVehicleFeeCents > 0 && (
+                <div className="reserve-note">Extra vehicle fee: {money(extraVehicleFeeCents)}</div>
+              )}
 
               <div className="total">
                 <div className="l">Estimated total</div>
@@ -885,7 +890,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               <div className="r"><span className="l">Arrive</span><span>{confirmed.arr}</span></div>
               <div className="r"><span className="l">Depart</span><span>{confirmed.dep}</span></div>
               <div className="r"><span className="l">Nights</span><span>{confirmed.nights} × {money(confirmed.site.nightlyPriceCents)}</span></div>
-              <div className="r"><span className="l">Setup</span><span>{confirmed.rig}  ·  {confirmed.heads} guests</span></div>
+              <div className="r"><span className="l">Setup</span><span>{confirmed.rig}  ·  {confirmed.heads} guests  ·  {confirmed.hold?.quote?.vehicles || 1} vehicle{(confirmed.hold?.quote?.vehicles || 1) === 1 ? '' : 's'}</span></div>
               <div className="r" style={{ borderTop: '1px solid var(--rule)', paddingTop: 10, marginTop: 6 }}>
                 <span className="l">Total</span><span style={{ fontFamily:'var(--serif)', fontSize: 22 }}>{money(confirmed.payment?.amountCents || confirmed.hold?.quote?.totalCents || 0)}</span>
               </div>

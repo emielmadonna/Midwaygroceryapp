@@ -659,7 +659,7 @@ test('owner can edit RV site details and Square mapping with audit log', async (
         squareCatalogObjectId: 'VAR_RV_03',
         customerNotes: 'Best for larger rigs.',
         adminNotes: 'Verify pedestal after repair.',
-        amenities: ['Water', 'Sewer', 'Big rig'],
+        amenities: ['Water', 'Septic', 'Big rig'],
         mapX: 900,
       },
     });
@@ -668,7 +668,7 @@ test('owner can edit RV site details and Square mapping with audit log', async (
     assert.equal(patched.body.data.displayName, 'Premium Site 03');
     assert.equal(patched.body.data.status, 'maintenance');
     assert.equal(patched.body.data.squareCatalogObjectId, 'VAR_RV_03');
-    assert.deepEqual(patched.body.data.amenities, ['Water', 'Sewer', 'Big rig']);
+    assert.deepEqual(patched.body.data.amenities, ['Water', 'Septic', 'Big rig']);
 
     const audit = await api(server, '/api/admin/audit-log', { token: owner.token });
     assert.equal(audit.body.data[0].action, 'rv_site.update_details');

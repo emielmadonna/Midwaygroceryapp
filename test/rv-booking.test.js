@@ -77,6 +77,21 @@ test('quoteBooking calculates nights and total on the server', () => {
   assert.equal(quote.currency, 'USD');
 });
 
+test('quoteBooking adds the extra vehicle fee after the first car', () => {
+  const quote = quoteBooking({
+    site: sites[0],
+    startDate: '2026-05-15',
+    endDate: '2026-05-17',
+    vehicles: 3,
+  });
+
+  assert.equal(quote.vehicles, 3);
+  assert.equal(quote.subtotalCents, 8800);
+  assert.equal(quote.extraVehicleFeeCents, 2000);
+  assert.equal(quote.feeCents, 2000);
+  assert.equal(quote.totalCents, 10800);
+});
+
 test('createBookingHold rejects a double-booked site', () => {
   assert.throws(
     () => createBookingHold({

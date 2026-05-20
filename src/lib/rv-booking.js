@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 const CONFIRMED_STATUSES = new Set(['hold', 'paid', 'confirmed', 'blocked']);
+const EXTRA_VEHICLE_FEE_CENTS = 1000;
 
 export function nightsBetween(startDate, endDate) {
   const start = parseLocalDate(startDate);
@@ -61,8 +62,10 @@ export function quoteBooking({ site, startDate, endDate, guests = 1, vehicles = 
   }
 
   const subtotalCents = nightlyPriceCents * nights;
+  const vehicleCount = Math.max(1, Math.trunc(Number(vehicles) || 1));
+  const extraVehicleFeeCents = Math.max(0, vehicleCount - 1) * EXTRA_VEHICLE_FEE_CENTS;
   const taxCents = 0;
-  const feeCents = 0;
+  const feeCents = extraVehicleFeeCents;
 
   return {
     siteId: site.id,
@@ -71,8 +74,9 @@ export function quoteBooking({ site, startDate, endDate, guests = 1, vehicles = 
     endDate,
     nights,
     guests,
-    vehicles,
+    vehicles: vehicleCount,
     nightlyPriceCents,
+    extraVehicleFeeCents,
     squareCatalogObjectId: site.squareCatalogObjectId ?? site.square_catalog_object_id ?? null,
     sku: site.sku ?? null,
     subtotalCents,
@@ -137,6 +141,7 @@ export function toPublicSite(site) {
     mapHeight: site.mapHeight,
     rotation: site.rotation ?? 0,
     amp: site.amp,
+    hookup: site.hookup ?? '',
     type: site.type,
     shade: site.shade,
     sku: site.sku ?? '',

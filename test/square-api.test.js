@@ -294,6 +294,53 @@ test('checkout sends a custom amount line item when no Square catalog variation 
   });
 });
 
+test('checkout adds extra vehicles as a Square fee line item', async () => {
+  let requestBody;
+  await createRvCheckoutPaymentLink({
+    hold: {
+      ...hold,
+      quote: {
+        ...hold.quote,
+        vehicles: 3,
+        extraVehicleFeeCents: 2000,
+        totalCents: 13600,
+      },
+    },
+    bookingCode: 'MW-ABC123',
+    customer: { phone: '509-555-0101' },
+    redirectUrl: 'https://example.com/return',
+    env: {
+      accessToken: 'token',
+      locationId: 'location',
+      environment: 'production',
+      nodeEnv: 'production',
+    },
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink', url: 'https://square.test/checkout' },
+          related_resources: { orders: [{ id: 'order' }] },
+        }),
+      };
+    },
+  });
+
+  assert.deepEqual(requestBody.order.line_items[1], {
+    name: 'Extra vehicle',
+    note: '2 extra vehicles · 2026-06-01 to 2026-06-03',
+    quantity: '2',
+    base_price_money: { amount: 1000, currency: 'USD' },
+    metadata: {
+      rv_site_id: 'rv-01',
+      start_date: '2026-06-01',
+      end_date: '2026-06-03',
+      fee_type: 'extra_vehicle',
+    },
+  });
+});
+
 test('web payments session exposes only public Square browser configuration', () => {
   const checkout = createRvWebPaymentSession({
     hold,

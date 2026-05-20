@@ -614,6 +614,29 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
   line-height: 1.45;
 }
 .book-form .contact-row input::placeholder { color: color-mix(in srgb, var(--mute) 62%, transparent); }
+.book-form .booking-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0 6px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.book-form .booking-check input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  padding: 0;
+  border: 1px solid var(--ink);
+  -webkit-appearance: auto;
+  appearance: auto;
+}
+.book-form .booking-check span { display: block; }
 .book-form .legend { display: flex; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
 .book-form .legend span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--mute); display: inline-flex; align-items: center; gap: 6px; }
 .book-form .legend i { width: 10px; height: 10px; display: inline-block; border: 1px solid var(--ink); }

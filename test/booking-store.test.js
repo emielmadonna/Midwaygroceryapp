@@ -151,7 +151,7 @@ test('memory booking store updates RV site details and amenities', async () => {
       squareCatalogObjectId: 'VAR_RV_01',
       customerNotes: 'Near the trees.',
       adminNotes: 'Check pedestal.',
-      amenities: ['Water', 'Sewer', 'Water'],
+      amenities: ['Water', 'Septic', 'Water'],
       mapX: 100,
       mapY: 200,
       mapWidth: 80,
@@ -165,7 +165,7 @@ test('memory booking store updates RV site details and amenities', async () => {
   assert.equal(updated.status, 'maintenance');
   assert.equal(updated.nightlyPriceCents, 5200);
   assert.equal(updated.squareCatalogObjectId, 'VAR_RV_01');
-  assert.deepEqual(updated.amenities, ['Water', 'Sewer']);
+  assert.deepEqual(updated.amenities, ['Water', 'Septic']);
   assert.equal(updated.updatedBy, 'owner-1');
 });
 

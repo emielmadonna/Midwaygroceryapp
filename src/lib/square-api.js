@@ -161,9 +161,7 @@ export async function createRvCheckoutPaymentLink({
         hold_id: hold.id,
         rv_site_id: hold.rvSiteId,
       },
-      line_items: [
-        createRvLineItem(hold),
-      ],
+      line_items: createRvLineItems(hold),
     },
     checkout_options: {
       ask_for_shipping_address: false,
@@ -362,6 +360,32 @@ function createRvLineItem(hold) {
   }
 
   return lineItem;
+}
+
+function createRvLineItems(hold) {
+  const lineItems = [createRvLineItem(hold)];
+  const extraVehicles = Math.max(0, Number(hold.quote?.vehicles || 1) - 1);
+  const extraVehicleFeeCents = Number(hold.quote?.extraVehicleFeeCents || 0);
+
+  if (extraVehicles > 0 && extraVehicleFeeCents > 0) {
+    lineItems.push({
+      name: 'Extra vehicle',
+      note: `${extraVehicles} extra vehicle${extraVehicles === 1 ? '' : 's'} · ${hold.startDate} to ${hold.endDate}`,
+      quantity: String(extraVehicles),
+      base_price_money: {
+        amount: Math.round(extraVehicleFeeCents / extraVehicles),
+        currency: hold.quote.currency,
+      },
+      metadata: {
+        rv_site_id: hold.rvSiteId,
+        start_date: hold.startDate,
+        end_date: hold.endDate,
+        fee_type: 'extra_vehicle',
+      },
+    });
+  }
+
+  return lineItems;
 }
 
 function isSquareItemHidden(object = {}, itemData = {}) {
