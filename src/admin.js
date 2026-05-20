@@ -66,8 +66,8 @@ els.loginForm?.addEventListener('submit', async event => {
   setLoginStatus('');
   const email = els.loginEmail.value.trim();
   const password = els.loginPassword.value;
-  if (!password) {
-    setLoginStatus('Enter your admin password.');
+  if (!email || !password) {
+    setLoginStatus('Enter your email and password.');
     return;
   }
 
