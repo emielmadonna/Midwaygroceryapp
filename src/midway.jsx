@@ -87,6 +87,7 @@ const emptyBootstrap = {
 
 const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(0)}`;
 const moneyExact = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
+const squareAmount = (cents) => (Number(cents || 0) / 100).toFixed(2);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const telHref = (phone = '') => `tel:${String(phone).replace(/[^\d+]/g, '')}`;
 const directionsHref = (address = '') => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
@@ -376,10 +377,12 @@ function iconForProduct(product) {
 // ─── Site plan SVG ───────────────────────────────────────────────────────
 const SitePlan = ({ sel, setSel, sites }) => {
   const stageRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
   const selectedIds = Array.isArray(sel) ? sel : (sel ? [sel] : []);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds.join('|')]);
 
-  const mapTransform = 'matrix(1 0 0 1 0 0)';
+  const mapTransform = `translate(${(1 - zoom) * 600} ${(1 - zoom) * 400}) scale(${zoom})`;
+  const zoomMap = (delta) => setZoom(current => clamp(Number((current + delta).toFixed(2)), 1, 1.55));
   const toggleSite = (siteId) => {
     setSel(current => {
       const currentIds = Array.isArray(current) ? current : (current ? [current] : []);
@@ -403,6 +406,10 @@ const SitePlan = ({ sel, setSel, sites }) => {
           </pattern>
           <pattern id="water" x="0" y="0" width="40" height="14" patternUnits="userSpaceOnUse">
             <path d="M0 7 Q10 0 20 7 T40 7" stroke="#8AA39A" strokeWidth="1.2" fill="none" opacity=".7"/>
+          </pattern>
+          <pattern id="takenHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="8" height="8" fill="rgba(237,231,215,0.88)" />
+            <path d="M0 0 L0 8" stroke="#7A776E" strokeWidth="2" opacity="0.72" />
           </pattern>
         </defs>
 
@@ -464,7 +471,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
                     fill={s.type === 'tent' ? '#C5C3A2' : s.amp === '50A' ? '#F5F0E1' : '#EDE7D7'}
                     stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
               {s.taken && (
-                <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5" fill="rgba(17,16,14,0.18)"/>
+                <rect className="taken-shade" x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5" fill="url(#takenHatch)"/>
               )}
               <text x="0" y="1" fontFamily="Fraunces" fontSize="18" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
                 {String(label).padStart(2,'0')}
@@ -483,6 +490,11 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <div className="l"><i className="t" /> Taken</div>
         <div className="l"><i className="s" /> Your picks</div>
       </div>
+      <div className="map-zoom" aria-label="Map zoom controls">
+        <button type="button" onClick={() => zoomMap(-0.15)} disabled={zoom <= 1.01} aria-label="Zoom map out">-</button>
+        <span>{Math.round(zoom * 100)}%</span>
+        <button type="button" onClick={() => zoomMap(0.15)} disabled={zoom >= 1.54} aria-label="Zoom map in">+</button>
+      </div>
     </div>
   );
 };
@@ -491,16 +503,19 @@ const SitePlan = ({ sel, setSel, sites }) => {
 const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
   const cardContainerId = useMemo(() => `square-card-${session.bookingCode}`, [session.bookingCode]);
   const [card, setCard] = useState(null);
+  const [applePay, setApplePay] = useState(null);
   const [payments, setPayments] = useState(null);
   const [status, setStatus] = useState('Preparing secure payment form...');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const checkout = session.checkout || {};
   const amount = money(checkout.amountCents || session.hold?.quote?.totalCents || 0);
+  const amountCents = checkout.amountCents || session.hold?.quote?.totalCents || 0;
 
   useEffect(() => {
     let disposed = false;
     let mountedCard = null;
+    let mountedApplePay = null;
 
     const setup = async () => {
       try {
@@ -511,12 +526,26 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
         const paymentClient = square.payments(checkout.applicationId, checkout.locationId);
         mountedCard = await paymentClient.card();
         await mountedCard.attach(`#${cardContainerId}`);
+        try {
+          const paymentRequest = paymentClient.paymentRequest({
+            countryCode: 'US',
+            currencyCode: checkout.currency || 'USD',
+            total: {
+              amount: squareAmount(amountCents),
+              label: 'Midway reservation',
+            },
+          });
+          mountedApplePay = await paymentClient.applePay(paymentRequest);
+        } catch (walletError) {
+          mountedApplePay = null;
+        }
         if (disposed) {
           mountedCard.destroy?.();
           return;
         }
         setPayments(paymentClient);
         setCard(mountedCard);
+        setApplePay(mountedApplePay);
         setStatus('Secure card form ready.');
       } catch (err) {
         setError(err.message || 'Square payment form is unavailable.');
@@ -529,17 +558,17 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
       disposed = true;
       mountedCard?.destroy?.();
     };
-  }, [checkout.mode, checkout.environment, checkout.applicationId, checkout.locationId, cardContainerId]);
+  }, [checkout.mode, checkout.environment, checkout.applicationId, checkout.locationId, checkout.currency, amountCents, cardContainerId]);
 
-  const submitPayment = async () => {
+  const submitPayment = async (paymentMethod = card, methodLabel = 'card') => {
     if (busy) return;
-    setBusy(true);
     setError('');
     try {
       let sourceId = null;
       let verificationToken = null;
-      if (!card) throw new Error('The card form is still loading.');
-      const result = await card.tokenize();
+      if (!paymentMethod) throw new Error('The payment form is still loading.');
+      setBusy(true);
+      const result = await paymentMethod.tokenize();
       if (result.status !== 'OK') {
         const message = result.errors?.map(item => item.message).filter(Boolean).join(' ') || 'Card details could not be verified.';
         throw new Error(message);
@@ -565,7 +594,7 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
         bookingCode: session.bookingCode,
         sourceId,
         verificationToken,
-        idempotencyKey: `payment-${session.bookingCode}`,
+        idempotencyKey: `payment-${session.bookingCode}-${methodLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       });
       onSuccess(paid);
     } catch (err) {
@@ -585,10 +614,20 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
           <span>{session.bookingCode}</span>
           <strong>{amount}</strong>
         </div>
+        {applePay && (
+          <button
+            className="apple-pay-button"
+            type="button"
+            aria-label={`Pay ${amount} with Apple Pay`}
+            onClick={() => submitPayment(applePay, 'Apple Pay')}
+            disabled={busy}
+          />
+        )}
+        {applePay && <div className="payment-divider"><span>or pay with card</span></div>}
         <div id={cardContainerId} className="square-card-host" />
         {status && <div className="reserve-note">{status}</div>}
         {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
-        <button className="cta payment-submit" onClick={submitPayment} disabled={busy || !card}>
+        <button className="cta payment-submit" onClick={() => submitPayment(card, 'Card')} disabled={busy || !card}>
           {busy ? 'Processing payment...' : `Pay ${amount}`}
         </button>
       </div>
@@ -606,7 +645,7 @@ const formatSiteList = (sites = []) => sites
   .map(site => site.type === 'tent' ? site.siteNumber : `Site No. ${String(site.siteNumber || site.id || '').padStart(2,'0')}`)
   .join(', ');
 
-const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverLicenseUpload, onDateRangeChange }) => {
+const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverLicenseUpload, onReleaseHold, onDateRangeChange }) => {
   const [sel, setSel] = useState([]);
   const [arr, setArr] = useState(dateInput(1));
   const [dep, setDep] = useState(dateInput(4));
@@ -710,6 +749,18 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
       setError(err.message || 'Checkout is unavailable right now.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const cancelPaymentSession = async () => {
+    const session = paymentSession;
+    setPaymentSession(null);
+    if (!session?.hold?.id || !onReleaseHold) return;
+    try {
+      await onReleaseHold(session.hold.id);
+      onDateRangeChange?.(arr, dep);
+    } catch (err) {
+      setError(err.message || 'Could not release the booking hold. It will expire automatically.');
     }
   };
 
@@ -935,7 +986,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
         <SquarePaymentForm
           session={paymentSession}
           onPay={onPay}
-          onCancel={() => setPaymentSession(null)}
+          onCancel={cancelPaymentSession}
           onSuccess={(paid) => {
             setPaymentSession(null);
             setConfirmed({
@@ -978,6 +1029,34 @@ const Events = ({ events = EVENTS }) => {
 // ─── Instagram ───────────────────────────────────────────────────────────
 const Instagram = ({ settings = {} }) => {
   const section = (settings.sections || []).find(item => item.key === 'instagram');
+  const posts = buildInstagramPosts(settings);
+  if (posts.length === 0) return null;
+
+  return (
+    <section className="section reveal instagram-section" id="instagram">
+      <div className="head">
+        <h2>{section?.title || <>Fresh from <em>Midway.</em></>}</h2>
+        <p>{section?.copy || 'Store updates, seasonal road notes, new arrivals, and RV site moments shown as first-party content instead of a fragile social embed.'}</p>
+      </div>
+      <div className="instagram-gallery" aria-label="Midway Instagram gallery">
+        {posts.map((post, index) => (
+          <article className="instagram-card" key={`${post.title}-${index}`}>
+            <img src={post.image} alt="" loading="lazy" onError={event => { event.currentTarget.src = fallbackInstagramImage(index); }} />
+            <div>
+              <span>{post.label || 'Post'} {String(index + 1).padStart(2, '0')}</span>
+              <h3>{post.title}</h3>
+              <p>{post.caption}</p>
+              {post.href && <a href={post.href} target="_blank" rel="noreferrer">Open on Instagram →</a>}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+function buildInstagramPosts(settings = {}) {
+  const section = (settings.sections || []).find(item => item.key === 'instagram');
   const apiPosts = Array.isArray(settings.instagramFeed)
     ? settings.instagramFeed.filter(post => post?.image && post?.permalink).slice(0, 6).map((post, index) => ({
         title: post.title || `Midway post ${String(index + 1).padStart(2, '0')}`,
@@ -1004,30 +1083,12 @@ const Instagram = ({ settings = {} }) => {
       }))
     : [];
   const posts = (apiPosts.length ? apiPosts : sectionPosts.length ? sectionPosts : linkedPosts).slice(0, 6);
-  if (posts.length === 0) return null;
+  return posts;
+}
 
-  return (
-    <section className="section reveal instagram-section" id="instagram">
-      <div className="head">
-        <h2>{section?.title || <>Fresh from <em>Midway.</em></>}</h2>
-        <p>{section?.copy || 'Store updates, seasonal road notes, new arrivals, and RV site moments shown as first-party content instead of a fragile social embed.'}</p>
-      </div>
-      <div className="instagram-gallery" aria-label="Midway Instagram gallery">
-        {posts.map((post, index) => (
-          <article className="instagram-card" key={`${post.title}-${index}`}>
-            <img src={post.image} alt="" loading="lazy" />
-            <div>
-              <span>{post.label || 'Post'} {String(index + 1).padStart(2, '0')}</span>
-              <h3>{post.title}</h3>
-              <p>{post.caption}</p>
-              {post.href && <a href={post.href} target="_blank" rel="noreferrer">Open on Instagram →</a>}
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-};
+function fallbackInstagramImage(index = 0) {
+  return ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4];
+}
 
 function instagramPostCaption(postUrl = '') {
   const cleaned = String(postUrl).replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '');
@@ -1152,6 +1213,13 @@ const App = () => {
     body: JSON.stringify(payload),
   });
 
+  const releaseHold = async (holdId) => api(`/bookings/holds/${encodeURIComponent(holdId)}/release`, {
+    method: 'POST',
+    body: JSON.stringify({
+      customerSessionId: getCustomerSessionId(),
+    }),
+  });
+
   useReveal();
 
   const jumpStay = () => document.getElementById('stay')?.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -1160,7 +1228,7 @@ const App = () => {
     products: !!(bootstrap.featureFlags?.products && (bootstrap.products || []).length),
     rvBooking: !!bootstrap.featureFlags?.rvBooking,
     events: !!(bootstrap.featureFlags?.events && (bootstrap.events || []).length),
-    instagram: !!bootstrap.featureFlags?.instagram,
+    instagram: !!(bootstrap.featureFlags?.instagram && buildInstagramPosts(bootstrap.settings || {}).length),
   };
   return (
     <>
@@ -1177,6 +1245,7 @@ const App = () => {
           onCheckout={startCheckout}
           onDriverLicenseUpload={uploadDriverLicense}
           onPay={payBooking}
+          onReleaseHold={releaseHold}
           onDateRangeChange={(startDate, endDate) => loadBootstrap({ startDate, endDate })}
         />
       )}

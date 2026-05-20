@@ -149,6 +149,18 @@ export function createApiRouter({
     }
   });
 
+  router.post('/bookings/holds/:holdId/release', async (req, res) => {
+    try {
+      const hold = await resolvedStore.releaseHold({
+        holdId: req.params.holdId,
+        customerSessionId: req.body.customerSessionId || req.ip,
+      });
+      res.json({ ok: true, data: { hold } });
+    } catch (error) {
+      res.status(409).json(apiError('HOLD_RELEASE_FAILED', error.message));
+    }
+  });
+
   router.post('/bookings/checkout', async (req, res) => {
     try {
       const hold = await resolvedStore.hold({

@@ -282,6 +282,9 @@ export function createMidwayHarness({
     async hold(input) {
       return resolvedBookingStore.createHold(input);
     },
+    async releaseHold(input) {
+      return resolvedBookingStore.releaseHold(input);
+    },
     async recordPendingBooking({ hold, customer, bookingCode, squareOrderId, checkoutUrl }) {
       return resolvedBookingStore.createPendingBooking({
         holdId: hold.id,
