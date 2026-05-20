@@ -1060,6 +1060,16 @@ body.density-compact .section .head { margin-bottom: 40px; }
   line-height: 1.5;
 }
 
+.instagram-card a {
+  width: max-content;
+  max-width: 100%;
+  color: var(--oxide);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 920px) {
   .nav {
     grid-template-columns: minmax(0, 1fr) auto;

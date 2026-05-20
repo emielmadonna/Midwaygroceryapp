@@ -22,7 +22,7 @@ export function createApiRouter({
   platformProviderConfigs = [],
 } = {}) {
   const router = express.Router();
-  const resolvedStore = store ?? createMidwayHarness({ env });
+  const resolvedStore = store ?? createMidwayHarness({ env, fetchImpl });
   const resolvedPlatformProviderConfigs = platformProviderConfigs.length
     ? platformProviderConfigs
     : platformProviderConfigsFromEnv(env);

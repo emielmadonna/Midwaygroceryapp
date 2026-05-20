@@ -1285,6 +1285,9 @@ function providerDetails(provider = {}) {
     handle: 'Handle',
     profileUrl: 'Profile URL',
     postsConfigured: 'Embed posts',
+    feedSource: 'Feed source',
+    feedLimit: 'Feed limit',
+    apiVersion: 'API version',
   };
   const entries = Object.entries(config)
     .filter(([key, value]) => !/secret|token|password|key|credential/i.test(key) && value !== null && typeof value !== 'object')

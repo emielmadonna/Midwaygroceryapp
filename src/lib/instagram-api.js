@@ -1,0 +1,139 @@
+const DEFAULT_GRAPH_API_VERSION = 'v24.0';
+const DEFAULT_MEDIA_FIELDS = [
+  'id',
+  'caption',
+  'media_type',
+  'media_url',
+  'thumbnail_url',
+  'permalink',
+  'timestamp',
+  'username',
+].join(',');
+
+export async function fetchInstagramFeed({
+  config = {},
+  limit = 6,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const accessToken = readConfig(config, 'accessToken');
+  const instagramUserId = readConfig(config, 'instagramUserId')
+    || readConfig(config, 'userId')
+    || readConfig(config, 'igUserId')
+    || readConfig(config, 'externalAccountId')
+    || readConfig(config, 'externalLocationId');
+  if (!accessToken) throw new Error('Instagram access token is required.');
+  if (!instagramUserId) throw new Error('Instagram user ID is required.');
+
+  const url = buildInstagramMediaUrl({
+    instagramUserId,
+    accessToken,
+    limit,
+    apiVersion: readConfig(config, 'apiVersion') || DEFAULT_GRAPH_API_VERSION,
+    apiBaseUrl: readConfig(config, 'apiBaseUrl'),
+  });
+  const response = await fetchImpl(url);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(instagramErrorMessage(body, response.status));
+  }
+
+  return normalizeInstagramMedia(body.data ?? [], { limit });
+}
+
+export function normalizeInstagramMedia(items = [], { limit = 6 } = {}) {
+  return (Array.isArray(items) ? items : [])
+    .map(item => {
+      const permalink = String(item.permalink || '').trim();
+      const imageUrl = String(item.media_url || item.thumbnail_url || '').trim();
+      const mediaType = String(item.media_type || '').toUpperCase();
+      return {
+        id: String(item.id || permalink || imageUrl).trim(),
+        title: titleFromCaption(item.caption) || titleFromPermalink(permalink),
+        caption: cleanCaption(item.caption),
+        image: mediaType === 'VIDEO'
+          ? String(item.thumbnail_url || item.media_url || '').trim()
+          : imageUrl,
+        mediaUrl: imageUrl,
+        thumbnailUrl: String(item.thumbnail_url || '').trim(),
+        permalink,
+        mediaType,
+        timestamp: String(item.timestamp || '').trim(),
+        username: String(item.username || '').trim(),
+        source: 'instagram-api',
+      };
+    })
+    .filter(item => item.id && item.permalink && item.image)
+    .slice(0, limit);
+}
+
+export function instagramProviderConfigFromEnv(env = {}) {
+  const accessToken = cleanEnvValue(env.INSTAGRAM_ACCESS_TOKEN || env.META_INSTAGRAM_ACCESS_TOKEN);
+  const instagramUserId = cleanEnvValue(env.INSTAGRAM_USER_ID || env.INSTAGRAM_ACCOUNT_ID || env.META_INSTAGRAM_USER_ID);
+  if (!accessToken && !instagramUserId) return {};
+
+  return {
+    providerKey: 'instagram',
+    providerKind: 'social',
+    status: accessToken && instagramUserId ? 'connected' : 'not_connected',
+    accessToken,
+    instagramUserId,
+    apiVersion: cleanEnvValue(env.INSTAGRAM_GRAPH_API_VERSION) || DEFAULT_GRAPH_API_VERSION,
+    apiBaseUrl: cleanEnvValue(env.INSTAGRAM_GRAPH_API_BASE_URL) || 'https://graph.facebook.com',
+    feedLimit: Number(env.INSTAGRAM_FEED_LIMIT || 6),
+  };
+}
+
+export function mergeInstagramProviderConfig(...configs) {
+  return Object.assign({}, ...configs.filter(Boolean));
+}
+
+function buildInstagramMediaUrl({
+  instagramUserId,
+  accessToken,
+  limit,
+  apiVersion,
+  apiBaseUrl = 'https://graph.facebook.com',
+}) {
+  const cleanBase = String(apiBaseUrl || 'https://graph.facebook.com').replace(/\/$/, '');
+  const cleanVersion = String(apiVersion || DEFAULT_GRAPH_API_VERSION).replace(/^\/?/, '');
+  const url = new URL(`${cleanBase}/${cleanVersion}/${encodeURIComponent(instagramUserId)}/media`);
+  url.searchParams.set('fields', DEFAULT_MEDIA_FIELDS);
+  url.searchParams.set('limit', String(Math.max(1, Math.min(25, Number(limit) || 6))));
+  url.searchParams.set('access_token', accessToken);
+  return url.toString();
+}
+
+function instagramErrorMessage(body, status) {
+  const detail = body?.error?.message || body?.error_description || body?.message;
+  return `Instagram feed request failed${status ? ` with ${status}` : ''}${detail ? `: ${detail}` : '.'}`;
+}
+
+function readConfig(config = {}, key) {
+  const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  const value = config[key] ?? config[snakeKey];
+  if (value === undefined || value === null || value === '') return undefined;
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+function cleanEnvValue(value) {
+  const text = String(value || '').trim();
+  if (!text || /^your_.+_here$/i.test(text)) return '';
+  return text;
+}
+
+function cleanCaption(caption = '') {
+  const text = String(caption || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= 160) return text;
+  return `${text.slice(0, 157).trim()}...`;
+}
+
+function titleFromCaption(caption = '') {
+  const firstSentence = String(caption || '').split(/[.!?\n]/)[0]?.trim();
+  if (!firstSentence) return '';
+  return firstSentence.length > 54 ? `${firstSentence.slice(0, 51).trim()}...` : firstSentence;
+}
+
+function titleFromPermalink(permalink = '') {
+  const cleaned = String(permalink).replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '');
+  return cleaned ? `Instagram ${cleaned}` : 'Instagram update';
+}

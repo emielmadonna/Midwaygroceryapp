@@ -451,14 +451,23 @@ function connectionFromTenantProviderConfig({
     const handle = tenantConfig?.business?.instagramHandle || '';
     const profileUrl = tenantConfig?.business?.instagramUrl || '';
     const posts = tenantConfig?.publicSite?.instagramPosts || [];
+    const accessToken = config?.accessToken || config?.access_token || '';
+    const instagramUserId = config?.instagramUserId || config?.instagram_user_id || config?.userId || config?.user_id || '';
     return normalizeProviderConnection({
       ...base,
-      status: config?.status || (handle || profileUrl || posts.length ? 'connected' : 'not_connected'),
+      status: config?.status || (accessToken && instagramUserId ? 'connected' : handle || profileUrl || posts.length ? 'connected' : 'not_connected'),
+      externalAccountId: config?.externalAccountId || instagramUserId || null,
       publicConfig: pickDefined({
         handle,
         profileUrl,
         postsConfigured: posts.length,
+        feedSource: accessToken && instagramUserId ? 'Instagram Graph API' : '',
+        feedLimit: config?.feedLimit,
+        apiVersion: config?.apiVersion,
         providerName: config?.providerName,
+      }),
+      encryptedCredentials: pickDefined({
+        accessToken,
       }),
     });
   }

@@ -143,8 +143,41 @@ Messaging:
 
 Social/content:
 
-- Instagram embed/settings provider where supported
+- `InstagramFeedProvider` for public media via the Instagram Graph API
 - Google Business/Profile provider where supported
+
+## Instagram Feed
+
+The public Instagram section can read recent media server-side from Meta's Instagram Graph API. The browser never receives the access token; it only receives normalized post data in `/api/public/bootstrap`:
+
+- `id`
+- `title`
+- `caption`
+- `image`
+- `mediaUrl`
+- `thumbnailUrl`
+- `permalink`
+- `mediaType`
+- `timestamp`
+- `username`
+
+Configuration can come from environment variables for the single-client deployment:
+
+```text
+INSTAGRAM_USER_ID=<instagram professional account id>
+INSTAGRAM_ACCESS_TOKEN=<graph api access token>
+INSTAGRAM_GRAPH_API_VERSION=v24.0
+INSTAGRAM_FEED_LIMIT=6
+```
+
+Or from the `provider_connections` row for `provider_key = 'instagram'`:
+
+- `public_config.instagramUserId`
+- `public_config.apiVersion`
+- `public_config.feedLimit`
+- `encrypted_credentials.accessToken`
+
+Manual Instagram post URLs remain as a fallback when the API feed is not configured or the Meta request fails.
 
 ## Normalized Statuses
 

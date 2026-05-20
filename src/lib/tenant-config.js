@@ -266,9 +266,12 @@ function providerStatusesFromTenantConfig(config) {
       handle: config.business.instagramHandle,
       profileUrl: config.business.instagramUrl,
       postsConfigured: config.publicSite.instagramPosts.length,
+      feedSource: config.providers?.instagram?.accessToken || config.providers?.instagram?.externalAccountId ? 'Instagram Graph API' : '',
+      feedLimit: config.providers?.instagram?.feedLimit,
+      apiVersion: config.providers?.instagram?.apiVersion,
     }, {
-      configuredKeys: ['handle', 'profileUrl', 'postsConfigured'],
-      publicKeys: ['handle', 'profileUrl', 'postsConfigured'],
+      configuredKeys: ['accessToken', 'externalAccountId', 'handle', 'profileUrl', 'postsConfigured'],
+      publicKeys: ['handle', 'profileUrl', 'postsConfigured', 'feedSource', 'feedLimit', 'apiVersion'],
     }),
   ];
 }

@@ -947,19 +947,32 @@ const Events = ({ events = EVENTS }) => {
 // ─── Instagram ───────────────────────────────────────────────────────────
 const Instagram = ({ settings = {} }) => {
   const section = (settings.sections || []).find(item => item.key === 'instagram');
+  const apiPosts = Array.isArray(settings.instagramFeed)
+    ? settings.instagramFeed.filter(post => post?.image && post?.permalink).slice(0, 6).map((post, index) => ({
+        title: post.title || `Midway post ${String(index + 1).padStart(2, '0')}`,
+        caption: post.caption || instagramPostCaption(post.permalink),
+        image: post.image,
+        href: post.permalink,
+        label: post.mediaType === 'VIDEO' ? 'Reel' : 'Post',
+      }))
+    : [];
   const sectionPosts = (section?.items || []).map((item, index) => ({
     title: item.title || item.name || `Midway update ${index + 1}`,
     caption: item.description || item.copy || item.date || 'A quick look at what is happening at Midway.',
     image: item.image || item.imageUrl || ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
+    href: item.url || item.href || '',
+    label: 'Post',
   }));
   const linkedPosts = Array.isArray(settings.instagramPosts)
     ? settings.instagramPosts.filter(Boolean).slice(0, 6).map((postUrl, index) => ({
         title: `Midway post ${String(index + 1).padStart(2, '0')}`,
         caption: instagramPostCaption(postUrl),
         image: ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
+        href: postUrl,
+        label: 'Post',
       }))
     : [];
-  const posts = (sectionPosts.length ? sectionPosts : linkedPosts).slice(0, 6);
+  const posts = (apiPosts.length ? apiPosts : sectionPosts.length ? sectionPosts : linkedPosts).slice(0, 6);
   if (posts.length === 0) return null;
 
   return (
@@ -973,9 +986,10 @@ const Instagram = ({ settings = {} }) => {
           <article className="instagram-card" key={`${post.title}-${index}`}>
             <img src={post.image} alt="" loading="lazy" />
             <div>
-              <span>Post {String(index + 1).padStart(2, '0')}</span>
+              <span>{post.label || 'Post'} {String(index + 1).padStart(2, '0')}</span>
               <h3>{post.title}</h3>
               <p>{post.caption}</p>
+              {post.href && <a href={post.href} target="_blank" rel="noreferrer">Open on Instagram →</a>}
             </div>
           </article>
         ))}

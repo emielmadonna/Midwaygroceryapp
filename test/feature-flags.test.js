@@ -63,3 +63,52 @@ test('public bootstrap hides disabled RV booking and includes Instagram settings
     'https://www.instagram.com/reel/example-two/',
   ]);
 });
+
+test('public bootstrap can populate Instagram from the Graph API feed', async () => {
+  const store = createMidwayHarness({
+    env: {
+      INSTAGRAM_USER_ID: '17841400000000000',
+      INSTAGRAM_ACCESS_TOKEN: 'secret-token',
+    },
+    tenantConfig: {
+      business: { instagramHandle: 'midwayplain' },
+      publicSite: {
+        sections: [{ key: 'instagram', enabled: true }],
+      },
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            id: 'ig-1',
+            caption: 'Fresh from Plain.',
+            media_type: 'IMAGE',
+            media_url: 'https://cdn.example/post.jpg',
+            permalink: 'https://www.instagram.com/p/api-post/',
+          },
+        ],
+      }),
+    }),
+  });
+
+  const bootstrap = await store.publicBootstrap();
+
+  assert.equal(bootstrap.featureFlags.instagram, true);
+  assert.deepEqual(bootstrap.settings.instagramFeed, [
+    {
+      id: 'ig-1',
+      title: 'Fresh from Plain',
+      caption: 'Fresh from Plain.',
+      image: 'https://cdn.example/post.jpg',
+      mediaUrl: 'https://cdn.example/post.jpg',
+      thumbnailUrl: '',
+      permalink: 'https://www.instagram.com/p/api-post/',
+      mediaType: 'IMAGE',
+      timestamp: '',
+      username: '',
+      source: 'instagram-api',
+    },
+  ]);
+  assert.equal(JSON.stringify(bootstrap).includes('secret-token'), false);
+});

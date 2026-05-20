@@ -2,6 +2,11 @@ import { buildPublicBootstrap } from './public-bootstrap.js';
 import { createBookingStore } from './booking-store.js';
 import { bookableMapSites, denormalizeMapSite } from './rv-map-data.js';
 import { createFeatureFlagEvaluator } from './feature-flags.js';
+import {
+  fetchInstagramFeed,
+  instagramProviderConfigFromEnv,
+  mergeInstagramProviderConfig,
+} from './instagram-api.js';
 import { quoteBooking } from './rv-booking.js';
 import {
   assertProductionPersistence,
@@ -96,6 +101,7 @@ export function createMidwayHarness({
   featureFlagOverrides = {},
   tenantConfig = null,
   platformProviderConfigs = [],
+  fetchImpl = globalThis.fetch,
   tenantId = tenantConfig?.tenantId || DEFAULT_TENANT_ID,
   locationId = tenantConfig?.locationId || DEFAULT_LOCATION_ID,
 } = {}) {
@@ -139,11 +145,12 @@ export function createMidwayHarness({
       }).getProviderConfig(providerKey);
     },
     async listProviderStatuses(input) {
-      return createProviderConnectionService({
+      const statuses = await createProviderConnectionService({
         store: resolvedBookingStore,
         tenantConfig: await resolveTenantConfig(),
         platformProviderConfigs,
       }).listStatuses(input);
+      return mergeInstagramStatusFromEnv(statuses, env);
     },
     async listProviderConnections(input) {
       if (resolvedSupabase) {
@@ -215,6 +222,14 @@ export function createMidwayHarness({
       const flags = flagEvaluator.all();
       const sites = await resolvedBookingStore.listSites({ publicOnly: true });
       const persistedProducts = await resolvedBookingStore.listStoreInventory?.({ activeOnly: true }) ?? [];
+      const settings = publicSettingsFromTenantConfig(resolvedTenantConfig);
+      const instagramFeed = flags.instagram
+        ? await resolveInstagramFeed({
+            store: this,
+            env,
+            fetchImpl,
+          })
+        : [];
       const availability = flags.rvBooking && startDate && endDate
         ? (await resolvedBookingStore.listAvailability({
             startDate,
@@ -224,7 +239,10 @@ export function createMidwayHarness({
         : [];
 
       return buildPublicBootstrap({
-        settings: publicSettingsFromTenantConfig(resolvedTenantConfig),
+        settings: {
+          ...settings,
+          instagramFeed,
+        },
         hours: state.hours,
         fuelPrices: flags.fuel ? state.fuelPrices : [],
         squareProducts: flags.products ? (persistedProducts.length ? persistedProducts : state.squareProducts) : [],
@@ -380,6 +398,54 @@ function withSquareCatalog(sites) {
       ...site,
       sku: site.sku || `RV-${ampKey}-NIGHT`,
       squareCatalogObjectId: site.squareCatalogObjectId || null,
+    };
+  });
+}
+
+async function resolveInstagramFeed({ store, env, fetchImpl }) {
+  const providerConfig = await store.getProviderConfig?.('instagram');
+  const envConfig = instagramProviderConfigFromEnv(env);
+  const config = mergeInstagramProviderConfig(providerConfig, envConfig);
+  const limit = Number(config.feedLimit || config.feed_limit || env.INSTAGRAM_FEED_LIMIT || 6);
+
+  if (!config.accessToken || !(config.instagramUserId || config.externalAccountId || config.externalLocationId)) {
+    return [];
+  }
+
+  try {
+    return await fetchInstagramFeed({
+      config,
+      limit,
+      fetchImpl,
+    });
+  } catch (error) {
+    console.warn('[Instagram] Feed sync unavailable:', error.message);
+    return [];
+  }
+}
+
+function mergeInstagramStatusFromEnv(statuses, env) {
+  const envConfig = instagramProviderConfigFromEnv(env);
+  if (!envConfig.accessToken && !envConfig.instagramUserId) return statuses;
+
+  return statuses.map(status => {
+    if (status.providerKey !== 'instagram') return status;
+    const fullyConfigured = Boolean(envConfig.accessToken && envConfig.instagramUserId);
+    return {
+      ...status,
+      status: fullyConfigured ? 'connected' : 'not_connected',
+      publicConfig: {
+        ...status.publicConfig,
+        feedSource: 'Instagram Graph API',
+        feedLimit: envConfig.feedLimit,
+        apiVersion: envConfig.apiVersion,
+      },
+      externalAccountId: envConfig.instagramUserId || status.externalAccountId,
+      hasEncryptedCredentials: Boolean(envConfig.accessToken) || status.hasEncryptedCredentials,
+      credentialKeys: envConfig.accessToken
+        ? Array.from(new Set([...(status.credentialKeys || []), 'accessToken']))
+        : status.credentialKeys,
+      errorMessage: fullyConfigured ? '' : 'Instagram API feed is missing an access token or user ID.',
     };
   });
 }
