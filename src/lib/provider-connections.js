@@ -110,13 +110,13 @@ export function createProviderConnectionService({
       const accessToken = String(input.accessToken || existing?.encryptedCredentials?.accessToken || '').trim();
       let instagramUserId = String(input.instagramUserId || input.externalAccountId || existing?.externalAccountId || '').trim();
       let tokenProfile = null;
-      if (accessToken && !instagramUserId) {
+      if (accessToken) {
         tokenProfile = await fetchInstagramTokenProfile({
           accessToken,
           apiBaseUrl: platformConfig.apiBaseUrl,
           fetchImpl,
         });
-        instagramUserId = String(tokenProfile.id || '').trim();
+        instagramUserId = instagramUserId || String(tokenProfile.id || '').trim();
       }
       const tokenExpiresAt = normalizeIsoDate(input.tokenExpiresAt || input.expiresAt || existing?.publicConfig?.tokenExpiresAt);
       const handle = input.handle || tokenProfile?.username || existing?.publicConfig?.handle;
@@ -346,6 +346,9 @@ export function createProviderConnectionService({
             },
           },
           scopes,
+          encryptedCredentials: {},
+          externalAccountId: null,
+          externalLocationId: null,
           errorMessage: null,
           updatedBy: input.actor?.id ?? null,
         },

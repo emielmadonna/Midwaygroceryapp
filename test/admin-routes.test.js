@@ -639,6 +639,15 @@ test('owner can save and manually refresh Instagram API credentials', async () =
   const server = await createTestServer({
     store,
     fetchImpl: async (url) => {
+      if (String(url).startsWith('https://graph.instagram.com/me?')) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: '17841400000000000',
+            username: 'midwayplain',
+          }),
+        };
+      }
       refreshRequestedUrl = url;
       return {
         ok: true,
