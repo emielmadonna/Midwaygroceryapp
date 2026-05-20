@@ -21,6 +21,37 @@ const DAY_LABELS = {
   friday: 'Fri',
   saturday: 'Sat',
 };
+const FALLBACK_INSTAGRAM_POSTS = [
+  'https://www.instagram.com/p/DWsMQddiQOW/',
+  'https://www.instagram.com/reel/DYTfenpxPJp/',
+  'https://www.instagram.com/reel/DYQiQ0YJGAT/',
+  'https://www.instagram.com/reel/DXwq_2QxqUG/',
+  'https://www.instagram.com/reel/DXmrC6ej8y1/',
+  'https://www.instagram.com/p/DXf22ZWjTmv/',
+];
+const FALLBACK_INSTAGRAM_SECTION = {
+  key: 'instagram',
+  enabled: true,
+  title: 'Fresh from Midway.',
+  copy: 'Store moments, seasonal notes, and RV site updates from Midway Gas & Grocery.',
+  items: [
+    {
+      image: '/images/store-interior.jpg',
+      title: 'Coffee, shelves, and the morning stop',
+      description: 'Inside the store before the day heads toward Plain, Lake Wenatchee, and the pass.',
+    },
+    {
+      image: '/images/store-exterior.jpg',
+      title: 'Fuel before the valley roads',
+      description: 'The storefront, pumps, and quick-stop basics at 14193 Chiwawa Loop RD.',
+    },
+    {
+      image: '/images/exterior-wide.jpg',
+      title: 'Room for the weekend rig',
+      description: 'Full-hookup RV sites behind the store, close to coffee, ice, groceries, and firewood.',
+    },
+  ],
+};
 const FALLBACK_SETTINGS = {
   businessName: 'Midway Gas & Grocery',
   phone: '(206) 669-5880',
@@ -28,6 +59,9 @@ const FALLBACK_SETTINGS = {
   timezone: 'America/Los_Angeles',
   instagramHandle: 'midwaygrocer',
   instagramUrl: 'https://www.instagram.com/midwaygrocer/',
+  instagramPosts: FALLBACK_INSTAGRAM_POSTS,
+  instagramFeed: [],
+  sections: [FALLBACK_INSTAGRAM_SECTION],
 };
 const FALLBACK_HOURS = [
   { day: 'monday', open: '6:00 AM', close: '9:00 PM' },
@@ -1113,6 +1147,34 @@ function instagramPostCaption(postUrl = '') {
   return cleaned ? `The latest Midway update from ${cleaned}.` : 'The latest Midway update from Instagram.';
 }
 
+function normalizeBootstrap(data = {}) {
+  const settings = data.settings || {};
+  const sections = Array.isArray(settings.sections)
+    ? settings.sections
+    : Array.isArray(data.sections)
+      ? data.sections
+      : FALLBACK_SETTINGS.sections;
+  const instagramPosts = Array.isArray(settings.instagramPosts) && settings.instagramPosts.length
+    ? settings.instagramPosts
+    : FALLBACK_INSTAGRAM_POSTS;
+
+  return {
+    ...data,
+    settings: {
+      ...FALLBACK_SETTINGS,
+      ...settings,
+      instagramPosts,
+      instagramFeed: Array.isArray(settings.instagramFeed) ? settings.instagramFeed : [],
+      sections,
+    },
+    featureFlags: {
+      ...emptyBootstrap.featureFlags,
+      ...(data.featureFlags || {}),
+      instagram: data.featureFlags?.instagram !== false,
+    },
+  };
+}
+
 // ─── Find us ─────────────────────────────────────────────────────────────
 const Find = ({ phone = '', address = '', hours = [] }) => {
   const rows = normalizedHours(hours);
@@ -1198,7 +1260,7 @@ const App = () => {
         ? `?startDate=${encodeURIComponent(range.startDate)}&endDate=${encodeURIComponent(range.endDate)}`
         : '';
       const data = await api(`/public/bootstrap${query}`);
-      setBootstrap(data);
+      setBootstrap(normalizeBootstrap(data));
       if (range.startDate && range.endDate) setAvailabilityIds(data.rvAvailability || []);
     } catch (err) {
       console.warn('[Midway] Public bootstrap unavailable.', err);
