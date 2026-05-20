@@ -45,7 +45,7 @@ app.listen(port, host, () => {
 
 function createLocalStore(env) {
   if (env.NODE_ENV === 'production') return null;
-  if (getSupabaseServerConfig(env).enabled) return null;
+  if (getSupabaseServerConfig(env).configured) return null;
 
   return createMidwayHarness({
     env,
