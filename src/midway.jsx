@@ -1093,11 +1093,11 @@ function buildInstagramPosts(settings = {}) {
   }));
   const linkedPosts = Array.isArray(settings.instagramPosts)
     ? settings.instagramPosts.filter(Boolean).slice(0, 6).map((postUrl, index) => ({
-        title: `Midway post ${String(index + 1).padStart(2, '0')}`,
-        caption: instagramPostCaption(postUrl),
-        image: ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
+        title: section?.items?.[index]?.title || `Midway update ${String(index + 1).padStart(2, '0')}`,
+        caption: section?.items?.[index]?.description || section?.items?.[index]?.copy || instagramPostCaption(postUrl),
+        image: section?.items?.[index]?.image || ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
         href: postUrl,
-        label: 'Post',
+        label: postUrl.includes('/reel/') ? 'Reel' : 'Post',
       }))
     : [];
   const posts = (apiPosts.length ? apiPosts : linkedPosts.length ? linkedPosts : sectionPosts).slice(0, 6);
@@ -1110,7 +1110,7 @@ function fallbackInstagramImage(index = 0) {
 
 function instagramPostCaption(postUrl = '') {
   const cleaned = String(postUrl).replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '');
-  return cleaned ? `Imported from ${cleaned}. Add title and copy in Admin section controls when you want this card to read like a finished story.` : 'Imported Midway post.';
+  return cleaned ? `The latest Midway update from ${cleaned}.` : 'The latest Midway update from Instagram.';
 }
 
 // ─── Find us ─────────────────────────────────────────────────────────────
