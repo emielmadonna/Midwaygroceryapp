@@ -1209,7 +1209,7 @@ const Find = ({ phone = '', address = '', hours = [] }) => {
 };
 
 // ─── Footer ──────────────────────────────────────────────────────────────
-const Foot = ({ visible = {}, phone = '', address = '' }) => (
+const Foot = ({ visible = {}, phone = '', address = '', instagramUrl = '' }) => (
   <footer className="foot">
     <img src="/assets/midway-logo.png" alt="Midway" className="wm" />
     <div className="foot-cols">
@@ -1219,7 +1219,11 @@ const Foot = ({ visible = {}, phone = '', address = '' }) => (
         {visible.coffee && <a href="#coffee">Coffee</a>}
         {visible.products && <a href="#pantry">Pantry &amp; provisions</a>}
         {visible.rvBooking && <a href="#stay">Book Site</a>}
-        {visible.instagram && <a href="#instagram">Instagram</a>}
+        {visible.instagram && (
+          <a href={instagramUrl || FALLBACK_SETTINGS.instagramUrl} target="_blank" rel="noreferrer">
+            Instagram
+          </a>
+        )}
       </div>
       <div>
         <h4>Visit</h4>
@@ -1335,6 +1339,7 @@ const App = () => {
       <Foot
         phone={bootstrap.settings?.phone}
         address={bootstrap.settings?.address}
+        instagramUrl={bootstrap.settings?.instagramUrl}
         visible={visibleSections}
       />
     </>

@@ -39,10 +39,18 @@ function createFallbackTenantConfig() {
       address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
       instagramHandle: 'midwaygrocer',
+      instagramUrl: 'https://www.instagram.com/midwaygrocer/',
     },
     publicSite: {
       theme: 'midway_farmhouse',
-      instagramPosts: [],
+      instagramPosts: [
+        'https://www.instagram.com/p/DWsMQddiQOW/',
+        'https://www.instagram.com/reel/DYTfenpxPJp/',
+        'https://www.instagram.com/reel/DYQiQ0YJGAT/',
+        'https://www.instagram.com/reel/DXwq_2QxqUG/',
+        'https://www.instagram.com/reel/DXmrC6ej8y1/',
+        'https://www.instagram.com/p/DXf22ZWjTmv/',
+      ],
       sections: [
         {
           key: 'instagram',
