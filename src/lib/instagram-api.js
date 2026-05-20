@@ -83,6 +83,7 @@ export async function exchangeInstagramOAuthCode({
   clientId,
   clientSecret,
   fetchImpl = globalThis.fetch,
+  retryDelayMs = 1200,
 } = {}) {
   if (!code) throw new Error('Instagram authorization code is required.');
   if (!clientId || !clientSecret) throw new Error('Instagram app credentials are required.');
@@ -95,17 +96,18 @@ export async function exchangeInstagramOAuthCode({
     redirect_uri: redirectUri,
     code,
   });
-  const response = await fetchImpl('https://api.instagram.com/oauth/access_token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+  const data = await fetchInstagramJsonWithRetry({
+    fetchImpl,
+    url: 'https://api.instagram.com/oauth/access_token',
+    options: {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
     },
-    body,
+    retryDelayMs,
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(instagramErrorMessage(data, response.status));
-  }
   if (!data.access_token || !data.user_id) {
     throw new Error('Instagram OAuth response did not include an access token and user ID.');
   }
@@ -122,6 +124,7 @@ export async function exchangeInstagramLongLivedToken({
   clientSecret,
   fetchImpl = globalThis.fetch,
   now = () => new Date(),
+  retryDelayMs = 1200,
 } = {}) {
   if (!accessToken) throw new Error('Instagram short-lived access token is required.');
   if (!clientSecret) throw new Error('Instagram app secret is required.');
@@ -131,11 +134,11 @@ export async function exchangeInstagramLongLivedToken({
   url.searchParams.set('client_secret', clientSecret);
   url.searchParams.set('access_token', accessToken);
 
-  const response = await fetchImpl(url.toString());
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(instagramErrorMessage(data, response.status));
-  }
+  const data = await fetchInstagramJsonWithRetry({
+    fetchImpl,
+    url: url.toString(),
+    retryDelayMs,
+  });
   if (!data.access_token) {
     throw new Error('Instagram long-lived token response did not include an access token.');
   }
@@ -223,6 +226,37 @@ function buildInstagramMediaUrl({
 function instagramErrorMessage(body, status) {
   const detail = body?.error?.message || body?.error_description || body?.message;
   return `Instagram feed request failed${status ? ` with ${status}` : ''}${detail ? `: ${detail}` : '.'}`;
+}
+
+async function fetchInstagramJsonWithRetry({
+  fetchImpl,
+  url,
+  options,
+  attempts = 3,
+  retryDelayMs = 1200,
+} = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const response = await fetchImpl(url, options);
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) return data;
+
+    const message = instagramErrorMessage(data, response.status);
+    lastError = new Error(message);
+    if (!isInstagramClockSkewError(message) || attempt === attempts) break;
+    await delay(retryDelayMs);
+  }
+  throw lastError;
+}
+
+function isInstagramClockSkewError(message = '') {
+  return /jwt issued at future/i.test(String(message));
+}
+
+function delay(ms) {
+  const duration = Math.max(0, Number(ms) || 0);
+  if (duration === 0) return Promise.resolve();
+  return new Promise(resolve => setTimeout(resolve, duration));
 }
 
 function readConfig(config = {}, key) {
