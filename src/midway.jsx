@@ -428,6 +428,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
   const pointersRef = useRef(new Map());
   const gestureRef = useRef(null);
   const draggedRef = useRef(false);
+  const movedRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const selectedIds = Array.isArray(sel) ? sel : (sel ? [sel] : []);
@@ -472,7 +473,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
     zoomAt(event.clientX, event.clientY, zoom - (event.deltaY * 0.0012));
   };
   const onPointerDown = (event) => {
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    draggedRef.current = false;
+    movedRef.current = false;
     pointersRef.current.set(event.pointerId, {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -499,15 +501,22 @@ const SitePlan = ({ sel, setSel, sites }) => {
   };
   const onPointerMove = (event) => {
     if (!pointersRef.current.has(event.pointerId)) return;
+    const gesture = gestureRef.current;
+    if (!gesture) return;
+    const movement = gesture.mode === 'pan'
+      ? Math.hypot(event.clientX - gesture.startClientX, event.clientY - gesture.startClientY)
+      : 8;
+    if (movement > 5) {
+      draggedRef.current = true;
+      movedRef.current = true;
+    }
     pointersRef.current.set(event.pointerId, {
       clientX: event.clientX,
       clientY: event.clientY,
     });
-    const gesture = gestureRef.current;
     const rect = stageRef.current?.getBoundingClientRect();
     if (!gesture || !rect) return;
     const pointers = Array.from(pointersRef.current.values());
-    draggedRef.current = true;
     if (gesture.mode === 'pinch' && pointers.length >= 2) {
       const [first, second] = pointers;
       const nextZoom = clamp(gesture.startZoom * (pointerDistance(first, second) / gesture.startDistance), 1, 2.25);
@@ -541,7 +550,10 @@ const SitePlan = ({ sel, setSel, sites }) => {
     } else if (pointersRef.current.size === 0) {
       gestureRef.current = null;
     }
-    window.setTimeout(() => { draggedRef.current = false; }, 0);
+    window.setTimeout(() => {
+      draggedRef.current = false;
+      movedRef.current = false;
+    }, 0);
   };
   const toggleSite = (siteId) => {
     setSel(current => {
@@ -566,7 +578,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet">
         <defs>
           <pattern id="forest" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
             <path d="M30 8 L22 28 L26 28 L18 42 L26 42 L22 52 L38 52 L34 42 L42 42 L34 28 L38 28 Z" fill="#4A4936" opacity=".22"/>
@@ -635,7 +647,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
                transform={`translate(${s.x} ${s.y}) rotate(${s.rot})`}
                onClick={e => {
                  e.stopPropagation();
-                 if (draggedRef.current) return;
+                 if (draggedRef.current || movedRef.current) return;
                  !s.taken && toggleSite(s.id);
                }}>
               <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
