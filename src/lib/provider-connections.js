@@ -180,10 +180,8 @@ export function createProviderConnectionService({
     async completeSquareOAuth(input = {}) {
       const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
       const scope = resolveScope({
-        tenantId: resolvedTenantConfig?.tenantId,
-        locationId: resolvedTenantConfig?.locationId,
-        tenantId: input.tenantId,
-        locationId: input.tenantLocationId || input.businessLocationId,
+        tenantId: input.tenantId || resolvedTenantConfig?.tenantId,
+        locationId: input.tenantLocationId || input.businessLocationId || resolvedTenantConfig?.locationId,
       });
       const definition = getProviderDefinition('square');
       const existing = await getConnectionRecord({

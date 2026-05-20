@@ -1,5 +1,8 @@
 const tokenKey = 'midway_admin_session';
 const pendingProviderKey = 'midway_pending_provider_connection';
+const API_ROOT = ['3000', '3002', '5173'].includes(window.location.port) || window.location.protocol === 'file:'
+  ? 'http://127.0.0.1:3001/api'
+  : '/api';
 const state = {
   token: sessionStorage.getItem(tokenKey) || '',
   user: null,
@@ -26,6 +29,7 @@ const els = {
   logoutBtn: document.getElementById('logoutBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
   userRole: document.getElementById('userRole'),
+  adminApiStatus: document.getElementById('adminApiStatus'),
   stats: document.getElementById('dashboardStats'),
   alerts: document.getElementById('alertsList'),
   arrivals: document.getElementById('arrivalsList'),
@@ -35,6 +39,8 @@ const els = {
   settingsPanel: document.getElementById('settingsPanel'),
   settingsForm: document.getElementById('businessSettingsForm'),
   settingsRoleNote: document.getElementById('settingsRoleNote'),
+  instagramForm: document.getElementById('instagramSettingsForm'),
+  instagramStatus: document.getElementById('instagramStatus'),
   sectionControlsGrid: document.getElementById('sectionControlsGrid'),
   sectionStatusSummary: document.getElementById('sectionStatusSummary'),
   providerPanel: document.getElementById('providerPanel'),
@@ -122,15 +128,28 @@ els.settingsForm?.addEventListener('submit', async event => {
       email: form.get('email'),
       address: form.get('address'),
       timezone: form.get('timezone'),
-      instagramHandle: form.get('instagramHandle'),
-      instagramUrl: form.get('instagramUrl'),
+      instagramHandle: state.settings?.business?.instagramHandle || '',
+      instagramUrl: state.settings?.business?.instagramUrl || '',
     },
     publicSite: {
       url: form.get('publicSiteUrl'),
       theme: form.get('theme'),
-      instagramPosts: splitTextList(form.get('instagramPosts')),
+      instagramPosts: state.settings?.publicSite?.instagramPosts || [],
       sections: collectSectionSettings(form),
     },
+  });
+});
+
+els.instagramForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.user?.role !== 'owner') return;
+
+  const form = new FormData(els.instagramForm);
+  await updateInstagramSettings({
+    instagramHandle: form.get('instagramHandle'),
+    instagramUrl: form.get('instagramUrl'),
+    instagramPosts: splitTextList(form.get('instagramPosts')),
+    instagramEnabled: form.get('instagramEnabled') === 'on',
   });
 });
 
@@ -326,8 +345,44 @@ async function updateSettings(body) {
   await loadAdminData();
 }
 
-async function startSquareConnection() {
+async function updateInstagramSettings(input) {
+  const settings = state.settings ?? {};
+  const business = settings.business ?? {};
+  const publicSite = settings.publicSite ?? {};
+  const instagramSection = {
+    ...sectionByKey(publicSite.sections, 'instagram'),
+    key: 'instagram',
+    enabled: Boolean(input.instagramEnabled),
+  };
+  state.settings = await api('/api/admin/settings', {
+    method: 'PATCH',
+    body: {
+      business: {
+        businessName: business.businessName,
+        publicBrandName: business.publicBrandName,
+        phone: business.phone,
+        email: business.email,
+        address: business.address,
+        timezone: business.timezone,
+        instagramHandle: input.instagramHandle,
+        instagramUrl: input.instagramUrl,
+      },
+      publicSite: {
+        url: publicSite.url,
+        theme: publicSite.theme,
+        instagramPosts: input.instagramPosts,
+        sections: mergeSectionSettings(publicSite.sections, instagramSection),
+      },
+    },
+  });
+  showToast('Instagram settings updated.', 'success');
+  await loadAdminData();
+}
+
+async function startSquareConnection(event) {
   const redirectUri = squareRedirectUri();
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Connecting...');
   try {
     const data = await api('/api/admin/providers/square/oauth/start', {
       method: 'POST',
@@ -346,7 +401,9 @@ async function startSquareConnection() {
     showToast(providerPlaceholderMessage(data), 'error');
     await loadAdminData();
   } catch (error) {
-    showToast(error.message, 'error');
+    showToast(squareConnectionErrorMessage(error), 'error');
+  } finally {
+    setButtonBusy(trigger, null);
   }
 }
 
@@ -381,14 +438,20 @@ async function completePendingProviderCallback() {
 }
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
-  const response = await fetch(path, {
-    method,
-    headers: {
-      ...(auth ? { Authorization: `Bearer ${state.token}` } : {}),
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const url = apiUrl(path);
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        ...(auth ? { Authorization: `Bearer ${state.token}` } : {}),
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    throw new Error(`Admin API could not be reached at ${API_ROOT}. ${error.message}`);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.ok === false) {
     throw new Error(payload.error?.message || `Request failed with ${response.status}`);
@@ -408,8 +471,10 @@ function showDashboard() {
 }
 
 function render() {
+  renderAdminApiStatus();
   renderStats();
   renderEmployeeMode();
+  renderInstagramSettings();
   renderSettings();
   renderProviderStatuses();
   renderSiteSelects();
@@ -428,6 +493,13 @@ function render() {
   document.body.dataset.adminCalendar = featureEnabled('booking.admin_calendar', 'adminCalendar') ? 'on' : 'off';
   document.body.dataset.adminPropertyMap = featureEnabled('booking.admin_property_map', 'adminPropertyMap') ? 'on' : 'off';
   document.body.dataset.employeeMode = featureEnabled('admin.employee_mode', 'employeeMode') ? 'on' : 'off';
+}
+
+function renderAdminApiStatus() {
+  if (!els.adminApiStatus) return;
+  els.adminApiStatus.textContent = API_ROOT === '/api'
+    ? 'API connected on this site'
+    : `API target ${API_ROOT}`;
 }
 
 function renderStats() {
@@ -547,11 +619,8 @@ function renderSettings() {
     email: business.email,
     address: business.address,
     timezone: business.timezone,
-    instagramHandle: business.instagramHandle,
-    instagramUrl: business.instagramUrl,
     publicSiteUrl: publicSite.url,
     theme: publicSite.theme,
-    instagramPosts: (publicSite.instagramPosts ?? []).join('\n'),
   };
 
   for (const [name, value] of Object.entries(fields)) {
@@ -568,6 +637,38 @@ function renderSettings() {
     els.settingsRoleNote.textContent = canEdit ? 'Owner edit access' : 'Read only';
   }
   els.settingsForm.dataset.readonly = canEdit ? 'false' : 'true';
+}
+
+function renderInstagramSettings() {
+  if (!els.instagramForm) return;
+
+  const canEdit = state.user?.role === 'owner';
+  const settings = state.settings ?? {};
+  const business = settings.business ?? {};
+  const publicSite = settings.publicSite ?? {};
+  const instagramSection = sectionByKey(publicSite.sections, 'instagram');
+  const fields = {
+    instagramHandle: business.instagramHandle,
+    instagramUrl: business.instagramUrl,
+    instagramPosts: (publicSite.instagramPosts ?? []).join('\n'),
+  };
+
+  for (const [name, value] of Object.entries(fields)) {
+    const field = els.instagramForm.elements.namedItem(name);
+    if (field) field.value = value ?? '';
+  }
+  const enabledField = els.instagramForm.elements.namedItem('instagramEnabled');
+  if (enabledField) enabledField.checked = instagramSection?.enabled !== false;
+
+  els.instagramForm.querySelectorAll('input, textarea, button').forEach(control => {
+    control.disabled = !canEdit;
+  });
+
+  if (els.instagramStatus) {
+    const postCount = (publicSite.instagramPosts ?? []).length;
+    const handle = business.instagramHandle ? `@${business.instagramHandle}` : 'No handle';
+    els.instagramStatus.textContent = `${handle} · ${postCount} post${postCount === 1 ? '' : 's'}`;
+  }
 }
 
 function renderSectionControls(sections = []) {
@@ -1205,6 +1306,43 @@ function providerAction(provider = {}) {
   `;
 }
 
+function apiUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path;
+  const cleanRoot = API_ROOT.replace(/\/$/, '');
+  const cleanPath = String(path || '').replace(/^\/api/, '').replace(/^\//, '');
+  return `${cleanRoot}/${cleanPath}`;
+}
+
+function setButtonBusy(button, label) {
+  if (!button) return;
+  if (label) {
+    button.dataset.previousLabel = button.textContent;
+    button.textContent = label;
+    button.disabled = true;
+    return;
+  }
+  button.textContent = button.dataset.previousLabel || button.textContent;
+  button.disabled = false;
+  delete button.dataset.previousLabel;
+}
+
+function squareConnectionErrorMessage(error) {
+  if (/Admin API could not be reached|Failed to fetch|NetworkError/i.test(error.message)) {
+    return `Square connection could not reach the admin API. Expected API root: ${API_ROOT}.`;
+  }
+  return `Square connection failed: ${error.message}`;
+}
+
+function sectionByKey(sections = [], key) {
+  return (sections ?? []).find(section => section.key === key) ?? null;
+}
+
+function mergeSectionSettings(sections = [], updatedSection = {}) {
+  const existing = new Map((sections ?? []).map(section => [section.key, section]));
+  existing.set(updatedSection.key, updatedSection);
+  return [...existing.values()];
+}
+
 function squareRedirectUri() {
   const url = new URL(window.location.href);
   url.pathname = '/admin.html';
@@ -1232,8 +1370,21 @@ function clearProviderCallbackQuery() {
 }
 
 function providerPlaceholderMessage(data = {}) {
-  const missing = (data.missing ?? []).length ? ` Missing: ${data.missing.join(', ')}.` : '';
-  return `Square OAuth is not configured yet.${missing}`;
+  const missing = (data.missing ?? [])
+    .map(squareMissingLabel)
+    .filter(Boolean);
+  return missing.length
+    ? `Square OAuth is not configured yet. Missing ${missing.join(', ')}.`
+    : 'Square OAuth is not configured yet.';
+}
+
+function squareMissingLabel(value) {
+  const labels = {
+    'platform_provider_configs.square.environment': 'Square environment',
+    'platform_provider_configs.square.public_config.applicationId': 'Square application ID',
+    'platform_provider_configs.square.encrypted_credentials.clientSecret': 'Square OAuth client secret',
+  };
+  return labels[value] || value;
 }
 
 function setLoginStatus(message) {

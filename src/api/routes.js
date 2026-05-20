@@ -23,12 +23,15 @@ export function createApiRouter({
 } = {}) {
   const router = express.Router();
   const resolvedStore = store ?? createMidwayHarness({ env });
+  const resolvedPlatformProviderConfigs = platformProviderConfigs.length
+    ? platformProviderConfigs
+    : platformProviderConfigsFromEnv(env);
   const providerConnections = createProviderConnectionService({
     store: resolvedStore,
     tenantConfig: resolvedStore.tenantConfig,
     env,
     fetchImpl,
-    platformProviderConfigs,
+    platformProviderConfigs: resolvedPlatformProviderConfigs,
   });
   const notifications = createNotificationService({ store: resolvedStore, env, fetchImpl });
   const adminAuth = createAdminAuthService({ env });
@@ -751,6 +754,38 @@ export function createApiRouter({
   });
 
   return router;
+}
+
+function platformProviderConfigsFromEnv(env = {}) {
+  const squareApplicationId = env.SQUARE_OAUTH_APPLICATION_ID
+    || env.SQUARE_APPLICATION_ID
+    || env.VITE_SQUARE_APPLICATION_ID;
+  const squareClientSecret = env.SQUARE_OAUTH_CLIENT_SECRET
+    || env.SQUARE_CLIENT_SECRET;
+  const squareEnvironment = env.SQUARE_OAUTH_ENVIRONMENT
+    || env.SQUARE_ENVIRONMENT
+    || env.VITE_SQUARE_ENVIRONMENT
+    || '';
+  const squareRedirectUri = env.SQUARE_OAUTH_REDIRECT_URI
+    || env.SQUARE_REDIRECT_URI
+    || '';
+
+  if (!squareApplicationId && !squareClientSecret && !squareEnvironment && !squareRedirectUri) return [];
+
+  return [
+    {
+      providerKey: 'square',
+      environment: squareEnvironment,
+      publicConfig: {
+        applicationId: squareApplicationId,
+        environment: squareEnvironment,
+        redirectUri: squareRedirectUri,
+      },
+      encryptedCredentials: {
+        clientSecret: squareClientSecret,
+      },
+    },
+  ];
 }
 
 async function buildBookingReturnUrl(req, bookingCode, store) {

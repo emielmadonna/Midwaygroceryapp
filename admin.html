@@ -44,6 +44,21 @@
         </header>
 
         <main class="admin-main">
+            <section class="admin-panel admin-panel--wide admin-command">
+                <div class="admin-command__intro">
+                    <p class="admin-eyebrow">Command Center</p>
+                    <h2>Run the store from here</h2>
+                    <span id="adminApiStatus" class="admin-user"></span>
+                </div>
+                <nav class="admin-nav" aria-label="Admin sections">
+                    <a href="#providerPanel">Connections</a>
+                    <a href="#instagramPanel">Instagram</a>
+                    <a href="#settingsPanel">Site Settings</a>
+                    <a href="#calendarPanel">Calendar</a>
+                    <a href="#propertyMapPanel">Map</a>
+                </nav>
+            </section>
+
             <section class="admin-panel admin-panel--wide">
                 <div class="admin-panel__header">
                     <div>
@@ -76,6 +91,46 @@
                     </div>
                 </div>
                 <div class="employee-task-grid" id="employeeTaskGrid"></div>
+            </section>
+
+            <section class="admin-panel admin-panel--wide feature-tenant-config feature-dynamic-sections" id="instagramPanel">
+                <div class="admin-panel__header">
+                    <div>
+                        <p class="admin-eyebrow">Public Site</p>
+                        <h2>Instagram</h2>
+                    </div>
+                    <span id="instagramStatus" class="admin-user"></span>
+                </div>
+                <form id="instagramSettingsForm" class="admin-form instagram-form">
+                    <div class="settings-grid">
+                        <label>Instagram handle
+                            <input type="text" name="instagramHandle" placeholder="midwayplain" autocomplete="off" />
+                        </label>
+                        <label>Instagram profile URL
+                            <input type="url" name="instagramUrl" placeholder="https://www.instagram.com/midwayplain/" />
+                        </label>
+                    </div>
+                    <label>Instagram post URLs
+                        <textarea name="instagramPosts" rows="4" placeholder="One Instagram post URL per line"></textarea>
+                    </label>
+                    <div class="instagram-form__controls">
+                        <label class="section-control__toggle">
+                            <input type="checkbox" name="instagramEnabled" />
+                            Show Instagram on public site
+                        </label>
+                        <button type="submit" class="btn btn--primary owner-only">Save Instagram</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="admin-panel admin-panel--wide feature-provider-adapters" id="providerPanel">
+                <div class="admin-panel__header">
+                    <div>
+                        <p class="admin-eyebrow">Provider Adapters</p>
+                        <h2>Connections</h2>
+                    </div>
+                </div>
+                <div class="provider-status-grid" id="providerStatusGrid"></div>
             </section>
 
             <section class="admin-panel admin-panel--wide feature-tenant-config" id="settingsPanel">
@@ -114,16 +169,7 @@
                         <label>Theme
                             <input type="text" name="theme" />
                         </label>
-                        <label>Instagram handle
-                            <input type="text" name="instagramHandle" />
-                        </label>
-                        <label>Instagram profile URL
-                            <input type="url" name="instagramUrl" />
-                        </label>
                     </div>
-                    <label class="feature-dynamic-sections">Instagram post URLs
-                        <textarea name="instagramPosts" rows="4"></textarea>
-                    </label>
                     <div class="section-controls feature-dynamic-sections">
                         <div class="section-controls__header">
                             <div>
@@ -138,16 +184,6 @@
                         <button type="submit" class="btn btn--primary">Save Settings</button>
                     </div>
                 </form>
-            </section>
-
-            <section class="admin-panel admin-panel--wide feature-provider-adapters" id="providerPanel">
-                <div class="admin-panel__header">
-                    <div>
-                        <p class="admin-eyebrow">Provider Adapters</p>
-                        <h2>Connections</h2>
-                    </div>
-                </div>
-                <div class="provider-status-grid" id="providerStatusGrid"></div>
             </section>
 
             <section class="admin-panel owner-only manual-booking-panel">
