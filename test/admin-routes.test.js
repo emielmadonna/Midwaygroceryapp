@@ -412,6 +412,97 @@ test('admin provider status lists business connection state without secrets', as
   }
 });
 
+test('owner can save and manually refresh Instagram API credentials', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  let refreshRequestedUrl = null;
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url) => {
+      refreshRequestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'ig-refreshed-token',
+          token_type: 'bearer',
+          expires_in: 5184000,
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const saved = await api(server, '/api/admin/providers/instagram', {
+      method: 'PUT',
+      token: owner.token,
+      body: {
+        handle: 'midwayplain',
+        profileUrl: 'https://www.instagram.com/midwayplain/',
+        instagramUserId: '17841400000000000',
+        accessToken: 'ig-original-token',
+        tokenExpiresAt: '2026-06-01T00:00:00.000Z',
+        feedLimit: 6,
+        apiVersion: 'v24.0',
+      },
+    });
+
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.data.status, 'connected');
+    assert.equal(saved.body.data.externalAccountId, '17841400000000000');
+    assert.equal(JSON.stringify(saved.body.data).includes('ig-original-token'), false);
+
+    const refreshed = await api(server, '/api/admin/providers/instagram/refresh', {
+      method: 'POST',
+      token: owner.token,
+      body: {},
+    });
+
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.body.data.mode, 'refreshed');
+    assert.equal(refreshRequestedUrl, 'https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=ig-original-token');
+    assert.equal(JSON.stringify(refreshed.body.data).includes('ig-refreshed-token'), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('cron refreshes Instagram token with cron secret', async () => {
+  const env = { ...baseEnv, NODE_ENV: 'production', MIDWAY_CRON_SECRET: 'cron-secret' };
+  const store = createMidwayHarness({ env: { ...env, MIDWAY_ALLOW_MEMORY_STORE: 'true' }, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(instagramProviderConnection());
+  const server = await createTestServer({
+    env,
+    store,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: 'cron-refreshed-token',
+        token_type: 'bearer',
+        expires_in: 5184000,
+      }),
+    }),
+  });
+
+  try {
+    const unauthorized = await api(server, '/api/cron/instagram-refresh', { method: 'POST', body: {} });
+    assert.equal(unauthorized.status, 401);
+
+    const response = await fetch(`${server.url}/api/cron/instagram-refresh`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer cron-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ force: true }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.data.mode, 'refreshed');
+  } finally {
+    await server.close();
+  }
+});
+
 test('Square OAuth start returns a safe placeholder when platform credentials are absent', async () => {
   const server = await createTestServer();
 
@@ -875,6 +966,28 @@ function squareProviderConnection() {
     encryptedCredentials: {
       accessToken: 'sandbox-access-token',
     },
+  };
+}
+
+function instagramProviderConnection() {
+  return {
+    tenantId: 'midway',
+    locationId: 'plain',
+    providerKey: 'instagram',
+    providerKind: 'social',
+    status: 'connected',
+    publicConfig: {
+      handle: 'midwayplain',
+      profileUrl: 'https://www.instagram.com/midwayplain/',
+      feedSource: 'Instagram Graph API',
+      feedLimit: 6,
+      apiVersion: 'v24.0',
+      tokenExpiresAt: '2026-06-01T00:00:00.000Z',
+    },
+    encryptedCredentials: {
+      accessToken: 'ig-original-token',
+    },
+    externalAccountId: '17841400000000000',
   };
 }
 

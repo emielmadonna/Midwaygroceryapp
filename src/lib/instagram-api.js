@@ -40,6 +40,43 @@ export async function fetchInstagramFeed({
   return normalizeInstagramMedia(body.data ?? [], { limit });
 }
 
+export async function refreshInstagramAccessToken({
+  config = {},
+  fetchImpl = globalThis.fetch,
+  now = () => new Date(),
+} = {}) {
+  const accessToken = readConfig(config, 'accessToken');
+  if (!accessToken) throw new Error('Instagram access token is required.');
+
+  const apiBaseUrl = readConfig(config, 'refreshApiBaseUrl') || 'https://graph.instagram.com';
+  const url = new URL(`${String(apiBaseUrl).replace(/\/$/, '')}/refresh_access_token`);
+  url.searchParams.set('grant_type', 'ig_refresh_token');
+  url.searchParams.set('access_token', accessToken);
+
+  const response = await fetchImpl(url.toString());
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(instagramErrorMessage(body, response.status));
+  }
+
+  const refreshedToken = String(body.access_token || '').trim();
+  if (!refreshedToken) throw new Error('Instagram refresh response did not include an access token.');
+
+  const expiresIn = Number(body.expires_in || 0);
+  const issuedAt = now();
+  const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
+    ? new Date(issuedAt.getTime() + expiresIn * 1000).toISOString()
+    : null;
+
+  return {
+    accessToken: refreshedToken,
+    tokenType: body.token_type || 'bearer',
+    expiresIn,
+    expiresAt,
+    refreshedAt: issuedAt.toISOString(),
+  };
+}
+
 export function normalizeInstagramMedia(items = [], { limit = 6 } = {}) {
   return (Array.isArray(items) ? items : [])
     .map(item => {
@@ -84,7 +121,9 @@ export function instagramProviderConfigFromEnv(env = {}) {
 }
 
 export function mergeInstagramProviderConfig(...configs) {
-  return Object.assign({}, ...configs.filter(Boolean));
+  return Object.assign({}, ...configs.filter(Boolean).map(config => Object.fromEntries(
+    Object.entries(config).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+  )));
 }
 
 function buildInstagramMediaUrl({

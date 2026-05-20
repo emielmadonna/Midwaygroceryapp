@@ -44,6 +44,34 @@ export function createApiRouter({
     ),
   });
 
+  const runInstagramCronRefresh = async (req, res) => {
+    try {
+      requireCronAuth(req, env);
+      const data = await providerConnections.refreshInstagramConnection({
+        force: req.body?.force === true,
+        refreshWithinDays: req.body?.refreshWithinDays,
+        actor: { id: 'cron', role: 'system' },
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: data.mode === 'refreshed' ? 'provider.instagram.token_refresh' : `provider.instagram.token_refresh_${data.mode}`,
+        actor: { id: 'cron', role: 'system' },
+        targetType: 'provider_connection',
+        targetId: 'instagram',
+        metadata: {
+          mode: data.mode,
+          reason: data.reason ?? null,
+          status: data.connection?.status ?? null,
+          tokenExpiresAt: data.connection?.publicConfig?.tokenExpiresAt ?? null,
+        },
+      });
+      res.status(data.mode === 'error' ? 502 : 200).json({ ok: data.mode !== 'error', data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'INSTAGRAM_REFRESH_FAILED', error.statusCode || 401);
+    }
+  };
+  router.get('/cron/instagram-refresh', runInstagramCronRefresh);
+  router.post('/cron/instagram-refresh', runInstagramCronRefresh);
+
   router.post('/admin/auth/login', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('admin.auth.sessions');
@@ -363,6 +391,65 @@ export function createApiRouter({
       res.json({ ok: true, data });
     } catch (error) {
       sendApiError(res, error, 'ADMIN_PROVIDERS_UNAVAILABLE');
+    }
+  });
+
+  router.put('/admin/providers/instagram', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.upsertInstagramConnection({
+        instagramUserId: req.body.instagramUserId,
+        accessToken: req.body.accessToken,
+        tokenExpiresAt: req.body.tokenExpiresAt,
+        feedLimit: req.body.feedLimit,
+        apiVersion: req.body.apiVersion,
+        handle: req.body.handle,
+        profileUrl: req.body.profileUrl,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.instagram.update',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'instagram',
+        metadata: {
+          status: data.status,
+          externalAccountId: data.externalAccountId ?? null,
+          hasAccessToken: Boolean(req.body.accessToken),
+          tokenExpiresAt: data.publicConfig?.tokenExpiresAt ?? null,
+        },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_INSTAGRAM_UPDATE_FAILED');
+    }
+  });
+
+  router.post('/admin/providers/instagram/refresh', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.refreshInstagramConnection({
+        force: true,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: data.mode === 'refreshed' ? 'provider.instagram.token_refresh_manual' : `provider.instagram.token_refresh_manual_${data.mode}`,
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'instagram',
+        metadata: {
+          mode: data.mode,
+          status: data.connection?.status ?? null,
+          tokenExpiresAt: data.connection?.publicConfig?.tokenExpiresAt ?? null,
+        },
+      });
+      res.status(data.mode === 'error' ? 502 : 200).json({ ok: data.mode !== 'error', data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_INSTAGRAM_REFRESH_FAILED');
     }
   });
 
@@ -847,6 +934,18 @@ function readConfig(config, key) {
   const value = config?.[key];
   if (value !== undefined && value !== null && value !== '') return typeof value === 'string' ? value.trim() : value;
   return undefined;
+}
+
+function requireCronAuth(req, env = {}) {
+  const expected = env.MIDWAY_CRON_SECRET || env.CRON_SECRET || env.VERCEL_CRON_SECRET;
+  if (!expected && env.NODE_ENV !== 'production') return true;
+  const header = req.get('authorization') || req.get('x-cron-secret') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : header;
+  if (expected && token === expected) return true;
+  const error = new Error('Cron authentication is required.');
+  error.code = 'CRON_AUTH_REQUIRED';
+  error.statusCode = 401;
+  throw error;
 }
 
 function apiError(code, message) {

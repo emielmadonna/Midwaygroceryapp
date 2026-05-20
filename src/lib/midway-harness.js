@@ -197,6 +197,22 @@ export function createMidwayHarness({
         platformProviderConfigs,
       }).completeSquareOAuth(input);
     },
+    async upsertInstagramConnection(input) {
+      return createProviderConnectionService({
+        store: resolvedBookingStore,
+        tenantConfig: await resolveTenantConfig(),
+        platformProviderConfigs,
+        fetchImpl,
+      }).upsertInstagramConnection(input);
+    },
+    async refreshInstagramConnection(input) {
+      return createProviderConnectionService({
+        store: resolvedBookingStore,
+        tenantConfig: await resolveTenantConfig(),
+        platformProviderConfigs,
+        fetchImpl,
+      }).refreshInstagramConnection(input);
+    },
     async getPublicSiteUrl(options = {}) {
       const resolvedTenantConfig = await resolveTenantConfig(options);
       return resolvedTenantConfig.publicSite?.url || '';

@@ -150,7 +150,16 @@ els.instagramForm?.addEventListener('submit', async event => {
     instagramUrl: form.get('instagramUrl'),
     instagramPosts: splitTextList(form.get('instagramPosts')),
     instagramEnabled: form.get('instagramEnabled') === 'on',
+    instagramUserId: form.get('instagramUserId'),
+    instagramAccessToken: form.get('instagramAccessToken'),
+    instagramTokenExpiresAt: datetimeLocalToIso(form.get('instagramTokenExpiresAt')),
+    instagramFeedLimit: form.get('instagramFeedLimit'),
+    instagramApiVersion: form.get('instagramApiVersion'),
   });
+});
+
+els.instagramForm?.querySelector('[data-provider-action="instagram-refresh"]')?.addEventListener('click', async () => {
+  await refreshInstagramToken();
 });
 
 els.catalogSyncBtn?.addEventListener('click', async () => {
@@ -375,8 +384,34 @@ async function updateInstagramSettings(input) {
       },
     },
   });
+  await api('/api/admin/providers/instagram', {
+    method: 'PUT',
+    body: {
+      handle: input.instagramHandle,
+      profileUrl: input.instagramUrl,
+      instagramUserId: input.instagramUserId,
+      accessToken: input.instagramAccessToken,
+      tokenExpiresAt: input.instagramTokenExpiresAt,
+      feedLimit: input.instagramFeedLimit ? Number(input.instagramFeedLimit) : undefined,
+      apiVersion: input.instagramApiVersion,
+    },
+  });
   showToast('Instagram settings updated.', 'success');
   await loadAdminData();
+}
+
+async function refreshInstagramToken() {
+  if (state.user?.role !== 'owner') return;
+  try {
+    const data = await api('/api/admin/providers/instagram/refresh', {
+      method: 'POST',
+      body: {},
+    });
+    showToast(data.mode === 'refreshed' ? 'Instagram token refreshed.' : 'Instagram token refresh checked.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 async function startSquareConnection(event) {
@@ -646,11 +681,18 @@ function renderInstagramSettings() {
   const settings = state.settings ?? {};
   const business = settings.business ?? {};
   const publicSite = settings.publicSite ?? {};
+  const instagramProvider = state.providerStatuses.find(provider => provider.providerKey === 'instagram') || {};
+  const providerConfig = instagramProvider.publicConfig ?? {};
   const instagramSection = sectionByKey(publicSite.sections, 'instagram');
   const fields = {
     instagramHandle: business.instagramHandle,
     instagramUrl: business.instagramUrl,
     instagramPosts: (publicSite.instagramPosts ?? []).join('\n'),
+    instagramUserId: instagramProvider.externalAccountId || '',
+    instagramTokenExpiresAt: isoToDatetimeLocal(providerConfig.tokenExpiresAt),
+    instagramAccessToken: '',
+    instagramFeedLimit: providerConfig.feedLimit || '',
+    instagramApiVersion: providerConfig.apiVersion || '',
   };
 
   for (const [name, value] of Object.entries(fields)) {
@@ -667,7 +709,10 @@ function renderInstagramSettings() {
   if (els.instagramStatus) {
     const postCount = (publicSite.instagramPosts ?? []).length;
     const handle = business.instagramHandle ? `@${business.instagramHandle}` : 'No handle';
-    els.instagramStatus.textContent = `${handle} · ${postCount} post${postCount === 1 ? '' : 's'}`;
+    const apiState = instagramProvider.status === 'connected' && instagramProvider.hasEncryptedCredentials
+      ? 'API connected'
+      : 'manual links';
+    els.instagramStatus.textContent = `${handle} · ${postCount} post${postCount === 1 ? '' : 's'} · ${apiState}`;
   }
 }
 
@@ -726,6 +771,9 @@ function renderProviderStatuses() {
 
   els.providerStatusGrid.querySelectorAll('[data-provider-action="square-oauth"]').forEach(button => {
     button.addEventListener('click', startSquareConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="instagram-refresh"]').forEach(button => {
+    button.addEventListener('click', refreshInstagramToken);
   });
 }
 
@@ -1288,6 +1336,8 @@ function providerDetails(provider = {}) {
     feedSource: 'Feed source',
     feedLimit: 'Feed limit',
     apiVersion: 'API version',
+    tokenType: 'Token type',
+    tokenExpiresAt: 'Token expires',
   };
   const entries = Object.entries(config)
     .filter(([key, value]) => !/secret|token|password|key|credential/i.test(key) && value !== null && typeof value !== 'object')
@@ -1298,6 +1348,13 @@ function providerDetails(provider = {}) {
 
 function providerAction(provider = {}) {
   if (state.user?.role !== 'owner') return '';
+  if (provider.providerKey === 'instagram') {
+    return `
+      <div class="provider-status-card__actions">
+        <button class="admin-button" type="button" data-provider-action="instagram-refresh">Refresh Instagram token</button>
+      </div>
+    `;
+  }
   if (provider.providerKey !== 'square') return '';
 
   const connected = provider.status === 'connected';
@@ -1405,6 +1462,20 @@ function loginErrorMessage(error) {
 
 function formatProviderStatus(status) {
   return titleize(String(status || 'not_connected').replaceAll('_', ' '));
+}
+
+function isoToDatetimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function datetimeLocalToIso(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
 function titleize(value) {

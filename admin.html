@@ -113,11 +113,31 @@
                     <label>Instagram post URLs
                         <textarea name="instagramPosts" rows="4" placeholder="One Instagram post URL per line"></textarea>
                     </label>
+                    <div class="settings-grid">
+                        <label>Instagram user ID
+                            <input type="text" name="instagramUserId" placeholder="17841400000000000" autocomplete="off" />
+                        </label>
+                        <label>Token expires
+                            <input type="datetime-local" name="instagramTokenExpiresAt" />
+                        </label>
+                    </div>
+                    <label>Instagram access token
+                        <input type="password" name="instagramAccessToken" placeholder="Paste a new long-lived token only when connecting/replacing" autocomplete="off" />
+                    </label>
+                    <div class="settings-grid">
+                        <label>Feed limit
+                            <input type="number" name="instagramFeedLimit" min="1" max="25" placeholder="6" />
+                        </label>
+                        <label>Graph API version
+                            <input type="text" name="instagramApiVersion" placeholder="v24.0" autocomplete="off" />
+                        </label>
+                    </div>
                     <div class="instagram-form__controls">
                         <label class="section-control__toggle">
                             <input type="checkbox" name="instagramEnabled" />
                             Show Instagram on public site
                         </label>
+                        <button type="button" class="admin-button owner-only" data-provider-action="instagram-refresh">Refresh token now</button>
                         <button type="submit" class="btn btn--primary owner-only">Save Instagram</button>
                     </div>
                 </form>

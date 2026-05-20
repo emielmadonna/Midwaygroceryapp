@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 
+import { refreshInstagramAccessToken } from './instagram-api.js';
 import { getProviderConfig } from './tenant-config.js';
 
 export const PROVIDER_DEFINITIONS = [
@@ -78,6 +79,156 @@ export function createProviderConnectionService({
       const definition = getProviderDefinition(providerKey);
       const record = await getConnectionRecord({ store, tenantConfig: resolvedTenantConfig, providerKey, scope, now });
       return providerRuntimeConfig(record, definition);
+    },
+
+    async upsertInstagramConnection(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: resolvedTenantConfig?.tenantId,
+        locationId: resolvedTenantConfig?.locationId,
+        ...input,
+      });
+      const existing = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'instagram',
+        scope,
+        now,
+      });
+      const accessToken = String(input.accessToken || existing?.encryptedCredentials?.accessToken || '').trim();
+      const instagramUserId = String(input.instagramUserId || input.externalAccountId || existing?.externalAccountId || '').trim();
+      const tokenExpiresAt = normalizeIsoDate(input.tokenExpiresAt || input.expiresAt || existing?.publicConfig?.tokenExpiresAt);
+      const handle = input.handle ?? existing?.publicConfig?.handle;
+      const profileUrl = input.profileUrl ?? existing?.publicConfig?.profileUrl;
+      const connection = await upsertConnection({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        connection: {
+          ...existing,
+          tenantId: scope.tenantId,
+          locationId: scope.locationId,
+          providerKey: 'instagram',
+          providerKind: 'social',
+          status: accessToken && instagramUserId ? 'connected' : handle || profileUrl ? 'connected' : 'not_connected',
+          publicConfig: pickDefined({
+            ...(existing?.publicConfig ?? {}),
+            handle,
+            profileUrl,
+            feedSource: accessToken && instagramUserId ? 'Instagram Graph API' : '',
+            feedLimit: input.feedLimit ?? existing?.publicConfig?.feedLimit,
+            apiVersion: input.apiVersion ?? existing?.publicConfig?.apiVersion,
+            tokenExpiresAt,
+          }),
+          encryptedCredentials: pickDefined({
+            ...(existing?.encryptedCredentials ?? {}),
+            accessToken,
+          }),
+          externalAccountId: instagramUserId || null,
+          lastSyncAt: existing?.lastSyncAt ?? null,
+          errorMessage: null,
+          updatedBy: input.actor?.id ?? null,
+        },
+        now,
+      });
+      return toProviderStatus(connection, getProviderDefinition('instagram'));
+    },
+
+    async refreshInstagramConnection(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: resolvedTenantConfig?.tenantId,
+        locationId: resolvedTenantConfig?.locationId,
+        ...input,
+      });
+      const definition = getProviderDefinition('instagram');
+      const existing = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'instagram',
+        scope,
+        now,
+      });
+      const config = providerRuntimeConfig(existing, definition);
+      if (!config.accessToken) {
+        throw providerError('INSTAGRAM_TOKEN_MISSING', 'Instagram access token is not configured.', 400);
+      }
+
+      const tokenExpiresAt = normalizeIsoDate(config.tokenExpiresAt);
+      const shouldRefresh = input.force === true || shouldRefreshToken(tokenExpiresAt, now(), Number(input.refreshWithinDays ?? 21));
+      if (!shouldRefresh) {
+        return {
+          mode: 'skipped',
+          reason: 'not_due',
+          connection: toProviderStatus(existing, definition),
+        };
+      }
+
+      try {
+        const refreshed = await refreshInstagramAccessToken({
+          config,
+          fetchImpl,
+          now,
+        });
+        const refreshedAt = refreshed.refreshedAt || now().toISOString();
+        const connection = await upsertConnection({
+          store,
+          tenantConfig: resolvedTenantConfig,
+          connection: {
+            ...existing,
+            tenantId: scope.tenantId,
+            locationId: scope.locationId,
+            providerKey: 'instagram',
+            providerKind: 'social',
+            status: 'connected',
+            publicConfig: pickDefined({
+              ...(existing?.publicConfig ?? {}),
+              feedSource: 'Instagram Graph API',
+              tokenType: refreshed.tokenType,
+              tokenExpiresAt: refreshed.expiresAt,
+            }),
+            encryptedCredentials: pickDefined({
+              ...(existing?.encryptedCredentials ?? {}),
+              accessToken: refreshed.accessToken,
+            }),
+            externalAccountId: existing?.externalAccountId ?? config.instagramUserId ?? config.externalAccountId ?? null,
+            lastSyncAt: refreshedAt,
+            errorMessage: null,
+            updatedBy: input.actor?.id ?? 'instagram-refresh',
+          },
+          now,
+        });
+        return {
+          mode: 'refreshed',
+          refreshed: {
+            tokenType: refreshed.tokenType,
+            expiresIn: refreshed.expiresIn,
+            expiresAt: refreshed.expiresAt,
+            refreshedAt: refreshed.refreshedAt,
+          },
+          connection: toProviderStatus(connection, definition),
+        };
+      } catch (error) {
+        const connection = await upsertConnection({
+          store,
+          tenantConfig: resolvedTenantConfig,
+          connection: {
+            ...existing,
+            tenantId: scope.tenantId,
+            locationId: scope.locationId,
+            providerKey: 'instagram',
+            providerKind: 'social',
+            status: 'error',
+            errorMessage: error.message,
+            updatedBy: input.actor?.id ?? 'instagram-refresh',
+          },
+          now,
+        });
+        return {
+          mode: 'error',
+          errorMessage: error.message,
+          connection: toProviderStatus(connection, definition),
+        };
+      }
     },
 
     async startSquareOAuth(input = {}) {
@@ -464,6 +615,9 @@ function connectionFromTenantProviderConfig({
         feedSource: accessToken && instagramUserId ? 'Instagram Graph API' : '',
         feedLimit: config?.feedLimit,
         apiVersion: config?.apiVersion,
+        apiBaseUrl: config?.apiBaseUrl,
+        tokenType: config?.tokenType,
+        tokenExpiresAt: config?.tokenExpiresAt || config?.expiresAt,
         providerName: config?.providerName,
       }),
       encryptedCredentials: pickDefined({
@@ -607,6 +761,20 @@ function normalizeSquareEnvironment(value) {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
   return normalized === 'production' ? 'production' : 'sandbox';
+}
+
+function normalizeIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function shouldRefreshToken(tokenExpiresAt, checkedAt, refreshWithinDays) {
+  if (!tokenExpiresAt) return true;
+  const expiresAt = new Date(tokenExpiresAt);
+  if (Number.isNaN(expiresAt.getTime())) return true;
+  const thresholdMs = Math.max(1, refreshWithinDays) * 86400000;
+  return expiresAt.getTime() - checkedAt.getTime() <= thresholdMs;
 }
 
 function buildSquareAuthorizationUrl({ platformConfig, scopes, state, redirectUri }) {

@@ -172,10 +172,22 @@ INSTAGRAM_FEED_LIMIT=6
 
 Or from the `provider_connections` row for `provider_key = 'instagram'`:
 
-- `public_config.instagramUserId`
+- `external_account_id`
 - `public_config.apiVersion`
 - `public_config.feedLimit`
+- `public_config.tokenExpiresAt`
 - `encrypted_credentials.accessToken`
+
+Use the admin Instagram panel to save the user ID, long-lived token, expiry date, feed limit, and API version. The token is stored server-side only and is never returned to the browser.
+
+Long-lived Instagram tokens still expire. The app exposes a cron refresh endpoint:
+
+```text
+GET /api/cron/instagram-refresh
+Authorization: Bearer <MIDWAY_CRON_SECRET or CRON_SECRET>
+```
+
+`vercel.json` schedules that endpoint weekly. Set `MIDWAY_CRON_SECRET` or `CRON_SECRET` in production so the cron request can authenticate. The refresh is skipped unless the token is within the refresh window, and it saves the newly returned token plus `tokenExpiresAt` back into `provider_connections`.
 
 Manual Instagram post URLs remain as a fallback when the API feed is not configured or the Meta request fails.
 

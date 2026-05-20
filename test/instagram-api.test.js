@@ -5,6 +5,7 @@ import {
   fetchInstagramFeed,
   instagramProviderConfigFromEnv,
   normalizeInstagramMedia,
+  refreshInstagramAccessToken,
 } from '../src/lib/instagram-api.js';
 
 test('Instagram media normalizes API feed items for public rendering', () => {
@@ -92,4 +93,27 @@ test('Instagram env config ignores checked-in placeholder values', () => {
     INSTAGRAM_USER_ID: 'your_instagram_professional_account_id_here',
     INSTAGRAM_ACCESS_TOKEN: 'your_instagram_graph_api_access_token_here',
   }), {});
+});
+
+test('Instagram token refresh uses the Graph refresh endpoint and returns expiry metadata', async () => {
+  let requestedUrl;
+  const refreshed = await refreshInstagramAccessToken({
+    config: { accessToken: 'old-token' },
+    now: () => new Date('2026-05-20T12:00:00.000Z'),
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'new-token',
+          token_type: 'bearer',
+          expires_in: 5184000,
+        }),
+      };
+    },
+  });
+
+  assert.equal(requestedUrl, 'https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=old-token');
+  assert.equal(refreshed.accessToken, 'new-token');
+  assert.equal(refreshed.expiresAt, '2026-07-19T12:00:00.000Z');
 });
