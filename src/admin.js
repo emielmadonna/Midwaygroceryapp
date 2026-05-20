@@ -157,8 +157,8 @@ els.instagramForm?.addEventListener('submit', async event => {
   });
 });
 
-els.instagramForm?.querySelector('[data-provider-action="instagram-refresh"]')?.addEventListener('click', async () => {
-  await refreshInstagramToken();
+els.instagramForm?.querySelector('[data-provider-action="instagram-refresh"]')?.addEventListener('click', async event => {
+  await refreshInstagramToken(event);
 });
 
 els.catalogSyncBtn?.addEventListener('click', async () => {
@@ -394,13 +394,23 @@ async function updateInstagramSettings(input) {
       feedLimit: input.instagramFeedLimit ? Number(input.instagramFeedLimit) : undefined,
       apiVersion: input.instagramApiVersion,
     },
+  }).then(data => {
+    const connected = data.status === 'connected' && data.hasEncryptedCredentials;
+    showToast(
+      connected ? 'Instagram API feed is connected.' : 'Instagram settings saved. Connect Instagram before refreshing the token.',
+      connected ? 'success' : 'error',
+    );
   });
-  showToast('Instagram settings updated.', 'success');
   await loadAdminData();
 }
 
-async function refreshInstagramToken() {
+async function refreshInstagramToken(event) {
   if (state.user?.role !== 'owner') return;
+  const instagramProvider = getInstagramProviderStatus();
+  if (!(instagramProvider.status === 'connected' && instagramProvider.hasEncryptedCredentials)) {
+    await startInstagramConnection(event);
+    return;
+  }
   try {
     const data = await api('/api/admin/providers/instagram/refresh', {
       method: 'POST',
@@ -736,6 +746,12 @@ function renderInstagramSettings() {
   els.instagramForm.querySelectorAll('input, textarea, button').forEach(control => {
     control.disabled = !canEdit;
   });
+  const refreshButton = els.instagramForm.querySelector('[data-provider-action="instagram-refresh"]');
+  if (refreshButton) {
+    const connected = instagramProvider.status === 'connected' && instagramProvider.hasEncryptedCredentials;
+    refreshButton.textContent = connected ? 'Refresh token now' : 'Connect Instagram';
+    refreshButton.disabled = !canEdit;
+  }
 
   if (els.instagramStatus) {
     const handle = business.instagramHandle ? `@${business.instagramHandle}` : 'No handle';
@@ -744,6 +760,10 @@ function renderInstagramSettings() {
       : 'API token needed';
     els.instagramStatus.textContent = `${handle} · ${apiState}`;
   }
+}
+
+function getInstagramProviderStatus() {
+  return state.providerStatuses.find(provider => provider.providerKey === 'instagram') || {};
 }
 
 function renderSectionControls(sections = []) {

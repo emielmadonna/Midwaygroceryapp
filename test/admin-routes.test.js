@@ -687,6 +687,88 @@ test('owner can save and manually refresh Instagram API credentials', async () =
   }
 });
 
+test('manual Instagram token save discovers user id before refresh', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  const requests = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url) => {
+      requests.push(String(url));
+      if (String(url).startsWith('https://graph.instagram.com/me?')) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: '17841499999999999',
+            username: 'midwaygrocer',
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'ig-refreshed-token',
+          token_type: 'bearer',
+          expires_in: 5184000,
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const saved = await api(server, '/api/admin/providers/instagram', {
+      method: 'PUT',
+      token: owner.token,
+      body: {
+        handle: '',
+        profileUrl: 'https://www.instagram.com/midwaygrocer/',
+        accessToken: 'ig-manual-token',
+        feedLimit: 6,
+        apiVersion: 'v24.0',
+      },
+    });
+
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.data.status, 'connected');
+    assert.equal(saved.body.data.externalAccountId, '17841499999999999');
+    assert.equal(saved.body.data.publicConfig.handle, 'midwaygrocer');
+    assert.equal(requests[0], 'https://graph.instagram.com/me?fields=id%2Cusername&access_token=ig-manual-token');
+
+    const refreshed = await api(server, '/api/admin/providers/instagram/refresh', {
+      method: 'POST',
+      token: owner.token,
+      body: {},
+    });
+
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.body.data.mode, 'refreshed');
+    assert.equal(requests[1], 'https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=ig-manual-token');
+    assert.equal(JSON.stringify(saved.body.data).includes('ig-manual-token'), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('Instagram refresh tells owner to connect before token exists', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  const server = await createTestServer({ store });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const refreshed = await api(server, '/api/admin/providers/instagram/refresh', {
+      method: 'POST',
+      token: owner.token,
+      body: {},
+    });
+
+    assert.equal(refreshed.status, 400);
+    assert.equal(refreshed.body.error.code, 'INSTAGRAM_TOKEN_MISSING');
+    assert.match(refreshed.body.error.message, /Connect Instagram/);
+  } finally {
+    await server.close();
+  }
+});
+
 test('Instagram OAuth callback stores long-lived API credentials', async () => {
   const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
   const tokenRequests = [];

@@ -103,10 +103,23 @@ export function createProviderConnectionService({
         scope,
         now,
       });
+      const platformConfig = await getInstagramOAuthPlatformConfig({
+        store,
+        platformProviderConfigs,
+      });
       const accessToken = String(input.accessToken || existing?.encryptedCredentials?.accessToken || '').trim();
-      const instagramUserId = String(input.instagramUserId || input.externalAccountId || existing?.externalAccountId || '').trim();
+      let instagramUserId = String(input.instagramUserId || input.externalAccountId || existing?.externalAccountId || '').trim();
+      let tokenProfile = null;
+      if (accessToken && !instagramUserId) {
+        tokenProfile = await fetchInstagramTokenProfile({
+          accessToken,
+          apiBaseUrl: platformConfig.apiBaseUrl,
+          fetchImpl,
+        });
+        instagramUserId = String(tokenProfile.id || '').trim();
+      }
       const tokenExpiresAt = normalizeIsoDate(input.tokenExpiresAt || input.expiresAt || existing?.publicConfig?.tokenExpiresAt);
-      const handle = input.handle ?? existing?.publicConfig?.handle;
+      const handle = input.handle || tokenProfile?.username || existing?.publicConfig?.handle;
       const profileUrl = input.profileUrl ?? existing?.publicConfig?.profileUrl;
       const fullyConfigured = Boolean(accessToken && instagramUserId);
       const connection = await upsertConnection({
@@ -159,7 +172,7 @@ export function createProviderConnectionService({
       });
       const config = providerRuntimeConfig(existing, definition);
       if (!config.accessToken) {
-        throw providerError('INSTAGRAM_TOKEN_MISSING', 'Instagram access token is not configured.', 400);
+        throw providerError('INSTAGRAM_TOKEN_MISSING', 'Instagram access token is not stored yet. Connect Instagram or paste a long-lived token and save it before refreshing.', 400);
       }
 
       const tokenExpiresAt = normalizeIsoDate(config.tokenExpiresAt);
@@ -1113,6 +1126,22 @@ function buildInstagramAuthorizationUrl({ platformConfig, scopes, state, redirec
 
 function preferredOAuthRedirectUri({ inputRedirectUri, platformRedirectUri, pendingRedirectUri } = {}) {
   return pendingRedirectUri || platformRedirectUri || inputRedirectUri || '';
+}
+
+async function fetchInstagramTokenProfile({ accessToken, apiBaseUrl = 'https://graph.instagram.com', fetchImpl }) {
+  const url = new URL('/me', apiBaseUrl);
+  url.searchParams.set('fields', 'id,username');
+  url.searchParams.set('access_token', accessToken);
+  const response = await fetchImpl(url.toString(), { method: 'GET' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.id) {
+    throw providerError(
+      'INSTAGRAM_TOKEN_PROFILE_FAILED',
+      data.error?.message || 'Instagram token could not be verified. Paste a valid long-lived token or use Connect Instagram.',
+      400,
+    );
+  }
+  return data;
 }
 
 async function exchangeSquareOAuthCode({ code, redirectUri, platformConfig, fetchImpl }) {
