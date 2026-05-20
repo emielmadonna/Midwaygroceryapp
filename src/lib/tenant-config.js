@@ -132,7 +132,6 @@ export function publicSettingsFromTenantConfig(config) {
     timezone: config.business.timezone,
     instagramHandle: config.business.instagramHandle,
     instagramUrl: config.business.instagramUrl,
-    instagramPosts: config.publicSite.instagramPosts,
     sections: config.publicSite.sections,
     googleMapsUrl: config.business.googleMapsUrl,
     logoUrl: config.business.logoUrl,

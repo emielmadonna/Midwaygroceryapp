@@ -243,7 +243,7 @@ test('checkout reads Square and Instagram settings from tenant config', async ()
     assert.equal(bootstrap.body.data.settings.businessName, 'Demo Market');
     assert.equal(bootstrap.body.data.settings.phone, '(555) 010-4444');
     assert.equal(bootstrap.body.data.settings.instagramUrl, 'https://www.instagram.com/demo_market/');
-    assert.deepEqual(bootstrap.body.data.settings.instagramPosts, ['https://www.instagram.com/p/demo-post/']);
+    assert.equal(bootstrap.body.data.settings.instagramPosts, undefined);
 
     const checkout = await api(server, '/api/bookings/checkout', {
       method: 'POST',

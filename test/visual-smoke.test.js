@@ -47,7 +47,7 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(appJsx, /id="instagram"/);
   assert.doesNotMatch(appJsx, /title="Midway Instagram profile"/);
   assert.doesNotMatch(appJsx, /\/embed\/captioned/);
-  assert.match(appJsx, /settings\.instagramPosts/);
+  assert.match(appJsx, /settings\.instagramFeed/);
   assert.match(appJsx, /className="instagram-gallery"/);
   assert.doesNotMatch(appJsx, /className="instagram-fallback"/);
   assert.match(appJsx, /visibleSections\.instagram && <Instagram/);
@@ -143,7 +143,7 @@ test('public bootstrap and admin login endpoints expose launch-critical flags', 
     assert.equal(bootstrap.body.data.featureFlags.employeeMode, true);
     assert.equal(bootstrap.body.data.settings.instagramHandle, 'midwaygrocer');
     assert.equal(bootstrap.body.data.settings.instagramUrl, 'https://www.instagram.com/midwaygrocer/');
-    assert.deepEqual(bootstrap.body.data.settings.instagramPosts, []);
+    assert.equal(bootstrap.body.data.settings.instagramPosts, undefined);
     assert.ok(bootstrap.body.data.rvSites.length >= 24);
     assert.ok(bootstrap.body.data.rvSites.some(site => site.id === 'tent-01' && site.type === 'tent'));
 

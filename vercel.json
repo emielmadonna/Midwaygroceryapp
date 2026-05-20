@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/instagram-refresh",
-      "schedule": "0 9 * * 1"
+      "schedule": "0 9 * * *"
     }
   ],
   "builds": [

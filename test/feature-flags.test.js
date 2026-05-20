@@ -31,7 +31,7 @@ test('employee role disables owner-only booking features', () => {
   assert.equal(flags['payments.refunds'], false);
 });
 
-test('public bootstrap hides disabled RV booking and includes Instagram settings', async () => {
+test('public bootstrap hides disabled RV booking and does not use manual Instagram links as a feed', async () => {
   const store = createMidwayHarness({
     env: {
       NODE_ENV: 'test',
@@ -55,13 +55,11 @@ test('public bootstrap hides disabled RV booking and includes Instagram settings
 
   assert.equal(bootstrap.featureFlags.rvBooking, false);
   assert.equal(bootstrap.rvSites.length, 0);
-  assert.equal(bootstrap.featureFlags.instagram, true);
+  assert.equal(bootstrap.featureFlags.instagram, false);
   assert.equal(bootstrap.settings.instagramHandle, 'midwayplain');
   assert.equal(bootstrap.settings.instagramUrl, 'https://www.instagram.com/midwayplain/');
-  assert.deepEqual(bootstrap.settings.instagramPosts, [
-    'https://www.instagram.com/p/example-one/',
-    'https://www.instagram.com/reel/example-two/',
-  ]);
+  assert.equal(bootstrap.settings.instagramPosts, undefined);
+  assert.deepEqual(bootstrap.settings.instagramFeed, []);
 });
 
 test('public bootstrap can populate Instagram from the Graph API feed', async () => {

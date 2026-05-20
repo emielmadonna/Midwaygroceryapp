@@ -21,36 +21,12 @@ const DAY_LABELS = {
   friday: 'Fri',
   saturday: 'Sat',
 };
-const FALLBACK_INSTAGRAM_POSTS = [
-  'https://www.instagram.com/p/DWsMQddiQOW/',
-  'https://www.instagram.com/reel/DYTfenpxPJp/',
-  'https://www.instagram.com/reel/DYQiQ0YJGAT/',
-  'https://www.instagram.com/reel/DXwq_2QxqUG/',
-  'https://www.instagram.com/reel/DXmrC6ej8y1/',
-  'https://www.instagram.com/p/DXf22ZWjTmv/',
-];
 const FALLBACK_INSTAGRAM_SECTION = {
   key: 'instagram',
   enabled: true,
   title: 'Fresh from Midway.',
-  copy: 'Store moments, seasonal notes, and RV site updates from Midway Gas & Grocery.',
-  items: [
-    {
-      image: '/images/store-interior.jpg',
-      title: 'Coffee, shelves, and the morning stop',
-      description: 'Inside the store before the day heads toward Plain, Lake Wenatchee, and the pass.',
-    },
-    {
-      image: '/images/store-exterior.jpg',
-      title: 'Fuel before the valley roads',
-      description: 'The storefront, pumps, and quick-stop basics at 14193 Chiwawa Loop RD.',
-    },
-    {
-      image: '/images/exterior-wide.jpg',
-      title: 'Room for the weekend rig',
-      description: 'Full-hookup RV sites behind the store, close to coffee, ice, groceries, and firewood.',
-    },
-  ],
+  copy: 'Live updates from the Midway Instagram account.',
+  items: [],
 };
 const FALLBACK_SETTINGS = {
   businessName: 'Midway Gas & Grocery',
@@ -59,7 +35,6 @@ const FALLBACK_SETTINGS = {
   timezone: 'America/Los_Angeles',
   instagramHandle: 'midwaygrocer',
   instagramUrl: 'https://www.instagram.com/midwaygrocer/',
-  instagramPosts: FALLBACK_INSTAGRAM_POSTS,
   instagramFeed: [],
   sections: [FALLBACK_INSTAGRAM_SECTION],
 };
@@ -1108,8 +1083,7 @@ const Instagram = ({ settings = {} }) => {
 };
 
 function buildInstagramPosts(settings = {}) {
-  const section = (settings.sections || []).find(item => item.key === 'instagram');
-  const apiPosts = Array.isArray(settings.instagramFeed)
+  return Array.isArray(settings.instagramFeed)
     ? settings.instagramFeed.filter(post => post?.image && post?.permalink).slice(0, 6).map((post, index) => ({
         title: post.title || `Midway post ${String(index + 1).padStart(2, '0')}`,
         caption: post.caption || instagramPostCaption(post.permalink),
@@ -1118,24 +1092,6 @@ function buildInstagramPosts(settings = {}) {
         label: post.mediaType === 'VIDEO' ? 'Reel' : 'Post',
       }))
     : [];
-  const sectionPosts = (section?.items || []).map((item, index) => ({
-    title: item.title || item.name || `Midway update ${index + 1}`,
-    caption: item.description || item.copy || item.date || 'A quick look at what is happening at Midway.',
-    image: item.image || item.imageUrl || ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
-    href: item.url || item.href || '',
-    label: 'Post',
-  }));
-  const linkedPosts = Array.isArray(settings.instagramPosts)
-    ? settings.instagramPosts.filter(Boolean).slice(0, 6).map((postUrl, index) => ({
-        title: section?.items?.[index]?.title || `Midway update ${String(index + 1).padStart(2, '0')}`,
-        caption: section?.items?.[index]?.description || section?.items?.[index]?.copy || instagramPostCaption(postUrl),
-        image: section?.items?.[index]?.image || ['/images/store-interior.jpg', '/images/store-exterior.jpg', '/images/exterior-wide.jpg', '/images/exterior-detailed.jpg'][index % 4],
-        href: postUrl,
-        label: postUrl.includes('/reel/') ? 'Reel' : 'Post',
-      }))
-    : [];
-  const posts = (apiPosts.length ? apiPosts : linkedPosts.length ? linkedPosts : sectionPosts).slice(0, 6);
-  return posts;
 }
 
 function fallbackInstagramImage(index = 0) {
@@ -1154,16 +1110,11 @@ function normalizeBootstrap(data = {}) {
     : Array.isArray(data.sections)
       ? data.sections
       : FALLBACK_SETTINGS.sections;
-  const instagramPosts = Array.isArray(settings.instagramPosts) && settings.instagramPosts.length
-    ? settings.instagramPosts
-    : FALLBACK_INSTAGRAM_POSTS;
-
   return {
     ...data,
     settings: {
       ...FALLBACK_SETTINGS,
       ...settings,
-      instagramPosts,
       instagramFeed: Array.isArray(settings.instagramFeed) ? settings.instagramFeed : [],
       sections,
     },

@@ -43,37 +43,14 @@ function createFallbackTenantConfig() {
     },
     publicSite: {
       theme: 'midway_farmhouse',
-      instagramPosts: [
-        'https://www.instagram.com/p/DWsMQddiQOW/',
-        'https://www.instagram.com/reel/DYTfenpxPJp/',
-        'https://www.instagram.com/reel/DYQiQ0YJGAT/',
-        'https://www.instagram.com/reel/DXwq_2QxqUG/',
-        'https://www.instagram.com/reel/DXmrC6ej8y1/',
-        'https://www.instagram.com/p/DXf22ZWjTmv/',
-      ],
+      instagramPosts: [],
       sections: [
         {
           key: 'instagram',
           enabled: true,
           title: 'Fresh from Midway.',
-          copy: 'Store moments, seasonal notes, and RV site updates shown as a native gallery instead of a fragile social embed.',
-          items: [
-            {
-              title: 'Coffee, shelves, and the morning stop',
-              description: 'Inside the store before the day heads toward Plain, Lake Wenatchee, and the pass.',
-              image: '/images/store-interior.jpg',
-            },
-            {
-              title: 'Fuel before the valley roads',
-              description: 'The storefront, pumps, and quick-stop basics at 14193 Chiwawa Loop RD.',
-              image: '/images/store-exterior.jpg',
-            },
-            {
-              title: 'Room for the weekend rig',
-              description: 'Full-hookup RV sites behind the store, close to coffee, ice, groceries, and firewood.',
-              image: '/images/exterior-wide.jpg',
-            },
-          ],
+          copy: 'Live updates from the Midway Instagram account.',
+          items: [],
         },
       ],
     },
