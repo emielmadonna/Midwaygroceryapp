@@ -482,7 +482,7 @@ async function startSquareConnection(event) {
 async function completePendingProviderCallback() {
   const params = new URLSearchParams(window.location.search);
   const pending = readPendingProviderConnection();
-  const provider = params.get('provider') || pending?.provider;
+  const provider = params.get('provider') || pending?.provider || (params.has('code') || params.has('error') ? 'instagram' : '');
   if (!['instagram', 'square'].includes(provider)) return;
   if (!params.has('code') && !params.has('error')) return;
 
