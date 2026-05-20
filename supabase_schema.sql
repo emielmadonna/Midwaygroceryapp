@@ -214,11 +214,9 @@ CREATE INDEX rv_booking_holds_converted_booking_idx
   ON rv_booking_holds (converted_booking_id)
   WHERE converted_booking_id IS NOT NULL;
 
-CREATE INDEX booking_documents_booking_idx
-  ON booking_documents (booking_id, document_type, status);
+CREATE INDEX booking_documents_booking_idx ON booking_documents (booking_id, document_type, status);
 
-CREATE INDEX booking_documents_retention_idx
-  ON booking_documents (expires_at)
+CREATE INDEX booking_documents_retention_idx ON booking_documents (expires_at)
   WHERE expires_at IS NOT NULL AND status <> 'deleted';
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
