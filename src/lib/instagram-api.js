@@ -215,12 +215,21 @@ function buildInstagramMediaUrl({
   apiBaseUrl = 'https://graph.facebook.com',
 }) {
   const cleanBase = String(apiBaseUrl || 'https://graph.facebook.com').replace(/\/$/, '');
-  const cleanVersion = String(apiVersion || DEFAULT_GRAPH_API_VERSION).replace(/^\/?/, '');
-  const url = new URL(`${cleanBase}/${cleanVersion}/${encodeURIComponent(instagramUserId)}/media`);
+  const url = isInstagramLoginApiBase(cleanBase)
+    ? new URL(`${cleanBase}/me/media`)
+    : new URL(`${cleanBase}/${String(apiVersion || DEFAULT_GRAPH_API_VERSION).replace(/^\/?/, '')}/${encodeURIComponent(instagramUserId)}/media`);
   url.searchParams.set('fields', DEFAULT_MEDIA_FIELDS);
   url.searchParams.set('limit', String(Math.max(1, Math.min(25, Number(limit) || 6))));
   url.searchParams.set('access_token', accessToken);
   return url.toString();
+}
+
+function isInstagramLoginApiBase(apiBaseUrl) {
+  try {
+    return new URL(apiBaseUrl).hostname === 'graph.instagram.com';
+  } catch {
+    return false;
+  }
 }
 
 function instagramErrorMessage(body, status) {

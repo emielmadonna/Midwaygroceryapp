@@ -73,6 +73,40 @@ test('Instagram feed request uses server-side credentials and hides token from o
   assert.equal(JSON.stringify(posts).includes('secret-token'), false);
 });
 
+test('Instagram feed request uses me/media for Instagram Login API tokens', async () => {
+  let requestedUrl;
+  const posts = await fetchInstagramFeed({
+    config: {
+      instagramUserId: '26863148039990704',
+      accessToken: 'secret-token',
+      apiVersion: 'v24.0',
+      apiBaseUrl: 'https://graph.instagram.com',
+    },
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: 'ig-2',
+              media_type: 'IMAGE',
+              media_url: 'https://cdn.example/photo.jpg',
+              permalink: 'https://www.instagram.com/p/demo-two/',
+              username: 'midwaygrocer',
+            },
+          ],
+        }),
+      };
+    },
+  });
+
+  assert.equal(requestedUrl.startsWith('https://graph.instagram.com/me/media?'), true);
+  assert.equal(requestedUrl.includes('access_token=secret-token'), true);
+  assert.equal(posts[0].username, 'midwaygrocer');
+  assert.equal(JSON.stringify(posts).includes('secret-token'), false);
+});
+
 test('Instagram env config reads Meta credential aliases', () => {
   assert.deepEqual(instagramProviderConfigFromEnv({
     META_INSTAGRAM_USER_ID: 'ig-user',
