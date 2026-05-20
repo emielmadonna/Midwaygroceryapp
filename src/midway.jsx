@@ -201,11 +201,38 @@ const SquareMark = () => (
 // ─── Scroll reveal hook ────────────────────────────────────────────────────
 const useReveal = () => {
   useEffect(() => {
+    const observed = new WeakSet();
     const io = new IntersectionObserver((es) => {
       es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
     }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.reveal').forEach(el => io.observe(el));
-    return () => io.disconnect();
+
+    const observeReveals = (root = document) => {
+      root.querySelectorAll?.('.reveal').forEach(el => {
+        if (observed.has(el) || el.classList.contains('in')) return;
+        observed.add(el);
+        io.observe(el);
+      });
+    };
+
+    observeReveals();
+    const mutations = new MutationObserver(entries => {
+      entries.forEach(entry => {
+        entry.addedNodes.forEach(node => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+          if (node.matches?.('.reveal') && !observed.has(node) && !node.classList.contains('in')) {
+            observed.add(node);
+            io.observe(node);
+          }
+          observeReveals(node);
+        });
+      });
+    });
+    mutations.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      mutations.disconnect();
+      io.disconnect();
+    };
   }, []);
 };
 
