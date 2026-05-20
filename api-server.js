@@ -25,6 +25,7 @@ assertProductionRuntime(process.env);
 
 app.use(cors());
 app.use(express.json({
+  limit: '8mb',
   verify: (req, _res, buffer) => {
     req.rawBody = buffer.toString('utf8');
   },

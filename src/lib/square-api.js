@@ -147,8 +147,8 @@ export async function createRvCheckoutPaymentLink({
     throw error;
   }
 
-  const siteNumber = hold.quote.siteNumber;
-  const description = `RV Site ${siteNumber}, ${hold.startDate} to ${hold.endDate}`;
+  const siteNumbers = hold.quote.siteNumbers?.length ? hold.quote.siteNumbers : [hold.quote.siteNumber];
+  const description = `RV Site${siteNumbers.length === 1 ? '' : 's'} ${siteNumbers.join(', ')}, ${hold.startDate} to ${hold.endDate}`;
   const payload = {
     idempotency_key: `rv-${hold.id}`,
     description,
@@ -160,6 +160,7 @@ export async function createRvCheckoutPaymentLink({
         booking_code: bookingCode,
         hold_id: hold.id,
         rv_site_id: hold.rvSiteId,
+        rv_site_ids: (hold.rvSiteIds ?? hold.siteIds ?? hold.quote.siteIds ?? [hold.rvSiteId]).join(','),
       },
       line_items: createRvLineItems(hold),
     },
@@ -363,7 +364,30 @@ function createRvLineItem(hold) {
 }
 
 function createRvLineItems(hold) {
-  const lineItems = [createRvLineItem(hold)];
+  const siteLines = Array.isArray(hold.quote?.sites) && hold.quote.sites.length
+    ? hold.quote.sites
+    : null;
+  const lineItems = siteLines
+    ? siteLines.map(line => {
+      const lineItem = {
+        name: `RV Site ${line.siteNumber}`,
+        note: `${hold.startDate} to ${hold.endDate} · ${line.sku || 'RV nightly stay'}`,
+        quantity: String(line.nights || hold.quote.nights),
+        base_price_money: {
+          amount: line.nightlyPriceCents,
+          currency: hold.quote.currency,
+        },
+        metadata: {
+          rv_site_id: line.siteId,
+          start_date: hold.startDate,
+          end_date: hold.endDate,
+          sku: line.sku || '',
+        },
+      };
+      if (line.squareCatalogObjectId) lineItem.catalog_object_id = line.squareCatalogObjectId;
+      return lineItem;
+    })
+    : [createRvLineItem(hold)];
   const extraVehicles = Math.max(0, Number(hold.quote?.vehicles || 1) - 1);
   const extraVehicleFeeCents = Number(hold.quote?.extraVehicleFeeCents || 0);
 

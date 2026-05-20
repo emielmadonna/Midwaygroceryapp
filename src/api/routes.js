@@ -125,6 +125,7 @@ export function createApiRouter({
     try {
       const hold = await resolvedStore.hold({
         siteId: req.body.siteId,
+        siteIds: req.body.siteIds,
         startDate: req.body.startDate,
         endDate: req.body.endDate,
         guests: req.body.guests,
@@ -166,6 +167,22 @@ export function createApiRouter({
       });
     } catch (error) {
       res.status(409).json(apiError('CHECKOUT_UNAVAILABLE', error.message));
+    }
+  });
+
+  router.post('/bookings/:bookingCode/driver-license', async (req, res) => {
+    try {
+      const documentImage = parseDriverLicenseImage(req.body);
+      const document = await resolvedStore.recordDriverLicenseUpload?.({
+        bookingCode: req.params.bookingCode,
+        ...documentImage,
+      });
+      if (!document) {
+        return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+      }
+      res.json({ ok: true, data: { document } });
+    } catch (error) {
+      res.status(400).json(apiError('DOCUMENT_UPLOAD_FAILED', error.message));
     }
   });
 
@@ -802,6 +819,28 @@ function checkoutSurface(config = {}) {
 
 function isPaymentComplete(status) {
   return ['APPROVED', 'COMPLETED'].includes(String(status || '').toUpperCase());
+}
+
+function parseDriverLicenseImage(body = {}) {
+  const dataUrl = String(body.dataUrl || '');
+  const match = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([a-zA-Z0-9+/=]+)$/);
+  if (!match) {
+    throw new Error('Driver license image must be a JPG, PNG, or WebP file.');
+  }
+
+  const contentType = match[1] === 'image/jpg' ? 'image/jpeg' : match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length === 0) throw new Error('Driver license image is empty.');
+  if (buffer.length > 5 * 1024 * 1024) {
+    throw new Error('Driver license image must be under 5 MB.');
+  }
+
+  return {
+    buffer,
+    sizeBytes: buffer.length,
+    contentType,
+    fileName: String(body.fileName || 'driver-license.jpg').trim() || 'driver-license.jpg',
+  };
 }
 
 function readConfig(config, key) {

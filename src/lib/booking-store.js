@@ -5,13 +5,14 @@ import {
   getAvailableSites,
   isActiveHold,
   quoteBooking,
+  quoteMultiSiteBooking,
   toPublicSite,
 } from './rv-booking.js';
 
 const BLOCKING_BOOKING_STATUSES = ['hold', 'paid', 'confirmed', 'blocked'];
 
-export function createBookingStore({ supabase = null, sites = [], bookings = [], holds = [], providerConnections = [], now } = {}) {
-  if (supabase) return createSupabaseBookingStore({ supabase, now });
+export function createBookingStore({ supabase = null, sites = [], bookings = [], holds = [], providerConnections = [], now, env = process.env } = {}) {
+  if (supabase) return createSupabaseBookingStore({ supabase, now, env });
   return createMemoryBookingStore({ sites, bookings, holds, providerConnections, now });
 }
 
@@ -31,6 +32,7 @@ export function createMemoryBookingStore({
     squareEvents: [],
     auditLogs: [],
     notifications: [],
+    documents: [],
     providerConnections: providerConnections.map(clone),
   };
 
@@ -88,6 +90,9 @@ export function createMemoryBookingStore({
         id: crypto.randomUUID(),
         bookingCode: input.bookingCode ?? createBookingCode(),
         rvSiteId: hold.rvSiteId,
+        rvSiteIds: hold.rvSiteIds ?? hold.siteIds ?? quote.siteIds ?? [hold.rvSiteId],
+        siteIds: hold.rvSiteIds ?? hold.siteIds ?? quote.siteIds ?? [hold.rvSiteId],
+        siteLines: quote.sites ?? [],
         holdId: hold.id,
         customer,
         customerName: customerName(customer),
@@ -109,6 +114,7 @@ export function createMemoryBookingStore({
         checkoutUrl: input.checkoutUrl ?? null,
         expiresAt: hold.expiresAt,
         quote,
+        driverLicenseStatus: 'not_uploaded',
         source: input.source ?? 'website',
         createdAt,
         updatedAt: createdAt,
@@ -118,6 +124,29 @@ export function createMemoryBookingStore({
       hold.status = 'converted';
       hold.convertedBookingId = booking.id;
       return clone(booking);
+    },
+    async recordDriverLicenseUpload({ bookingCode, fileName, contentType, sizeBytes } = {}) {
+      const booking = state.bookings.find(candidate => candidate.bookingCode === bookingCode);
+      if (!booking) return null;
+      const uploadedAt = resolveNow(null, now).toISOString();
+      const document = {
+        id: crypto.randomUUID(),
+        bookingId: booking.id,
+        bookingCode,
+        documentType: 'driver_license',
+        fileName: fileName || 'driver-license',
+        contentType: contentType || 'application/octet-stream',
+        sizeBytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : null,
+        storagePath: `memory://${bookingCode}/driver-license`,
+        status: 'uploaded',
+        uploadedAt,
+        createdAt: uploadedAt,
+        updatedAt: uploadedAt,
+      };
+      state.documents.push(document);
+      booking.driverLicenseStatus = 'uploaded';
+      booking.updatedAt = uploadedAt;
+      return clone(document);
     },
     async getBooking(bookingCode) {
       const booking = state.bookings.find(candidate => candidate.bookingCode === bookingCode);
@@ -446,7 +475,7 @@ export function createMemoryBookingStore({
   };
 }
 
-export function createSupabaseBookingStore({ supabase, now = () => new Date() } = {}) {
+export function createSupabaseBookingStore({ supabase, now = () => new Date(), env = process.env } = {}) {
   if (!supabase) throw new Error('Supabase client is required.');
 
   return {
@@ -516,7 +545,7 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date() } 
       assertHoldCanConvert({ state, hold, now: checkedAt });
 
       const site = sites.find(candidate => candidate.id === hold.rvSiteId);
-      const quote = input.hold?.quote ?? quoteBooking({
+      const quote = input.hold?.quote ?? hold.quote ?? quoteBooking({
         site,
         startDate: hold.startDate,
         endDate: hold.endDate,
@@ -567,6 +596,62 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date() } 
         .maybeSingle();
       if (error) throw error;
       return data ? fromSupabaseBooking(data) : null;
+    },
+    async recordDriverLicenseUpload({
+      bookingCode,
+      fileName,
+      contentType,
+      buffer,
+      sizeBytes,
+    } = {}) {
+      if (!bookingCode) throw new Error('Booking code is required.');
+      if (!buffer || !buffer.length) throw new Error('Driver license image is required.');
+
+      const { data: booking, error: bookingError } = await supabase
+        .from('rv_bookings')
+        .select('*')
+        .eq('booking_code', bookingCode)
+        .maybeSingle();
+      if (bookingError) throw bookingError;
+      if (!booking) return null;
+
+      const uploadedAt = resolveNow(null, now).toISOString();
+      const storagePath = `${bookingCode}/${crypto.randomUUID()}-${safeDocumentFileName(fileName, contentType)}`;
+      const bucket = bookingDocumentsBucket(env);
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(storagePath, buffer, {
+          contentType: contentType || 'application/octet-stream',
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+
+      const row = {
+        booking_id: booking.id,
+        booking_code: bookingCode,
+        document_type: 'driver_license',
+        file_name: fileName || 'driver-license',
+        content_type: contentType || 'application/octet-stream',
+        size_bytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : buffer.length,
+        storage_bucket: bucket,
+        storage_path: storagePath,
+        status: 'uploaded',
+        uploaded_at: uploadedAt,
+        updated_at: uploadedAt,
+      };
+      const { data: document, error: documentError } = await supabase
+        .from('booking_documents')
+        .insert(row)
+        .select('*')
+        .single();
+      if (documentError) throw documentError;
+
+      await supabase
+        .from('rv_bookings')
+        .update({ driver_license_status: 'uploaded', updated_at: uploadedAt })
+        .eq('id', booking.id);
+
+      return fromSupabaseBookingDocument(document);
     },
     async listBookings({ from, to, status } = {}) {
       await expireSupabaseRecords(supabase, resolveNow(null, now));
@@ -1175,7 +1260,9 @@ function assertHoldCanConvert({ state, hold, now }) {
     now,
   });
 
-  if (!available.some(site => site.id === hold.rvSiteId)) {
+  const availableIds = new Set(available.map(site => site.id));
+  const holdSiteIds = hold.rvSiteIds ?? hold.siteIds ?? hold.quote?.siteIds ?? [hold.rvSiteId];
+  if (!holdSiteIds.every(siteId => availableIds.has(siteId))) {
     throw new Error('That RV site is no longer available for the selected dates.');
   }
 }
@@ -1203,11 +1290,13 @@ function toSupabaseHoldInsert(hold) {
   return {
     id: hold.id,
     rv_site_id: hold.rvSiteId,
+    rv_site_ids: hold.rvSiteIds ?? hold.siteIds ?? [hold.rvSiteId],
     start_date: hold.startDate,
     end_date: hold.endDate,
     customer_session_id: hold.customerSessionId,
     expires_at: hold.expiresAt,
     status: hold.status,
+    quote_snapshot: hold.quote ?? null,
     created_at: hold.createdAt,
   };
 }
@@ -1218,6 +1307,8 @@ function toSupabaseBookingInsert({ input, hold, quote, now }) {
     id: crypto.randomUUID(),
     booking_code: input.bookingCode ?? createBookingCode(),
     rv_site_id: hold.rvSiteId,
+    rv_site_ids: quote.siteIds ?? hold.rvSiteIds ?? hold.siteIds ?? [hold.rvSiteId],
+    site_lines: quote.sites ?? [],
     hold_id: hold.id,
     customer_name: customerName(customer),
     customer_phone: customer.phone ?? '',
@@ -1239,6 +1330,7 @@ function toSupabaseBookingInsert({ input, hold, quote, now }) {
     sku: quote.sku ?? null,
     checkout_url: input.checkoutUrl ?? null,
     expires_at: hold.expiresAt ?? null,
+    driver_license_status: 'not_uploaded',
     source: input.source ?? 'website',
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
@@ -1406,24 +1498,36 @@ function fromSupabaseInventory(row) {
 }
 
 function fromSupabaseHold(row) {
+  const rvSiteIds = normalizeJsonArray(row.rv_site_ids).length
+    ? normalizeJsonArray(row.rv_site_ids)
+    : [row.rv_site_id].filter(Boolean);
   return {
     id: row.id,
     rvSiteId: row.rv_site_id,
+    rvSiteIds,
+    siteIds: rvSiteIds,
     startDate: row.start_date,
     endDate: row.end_date,
     customerSessionId: row.customer_session_id,
     expiresAt: row.expires_at,
     convertedBookingId: row.converted_booking_id,
     status: row.status,
+    quote: row.quote_snapshot ?? null,
     createdAt: row.created_at,
   };
 }
 
 function fromSupabaseBooking(row) {
+  const rvSiteIds = normalizeJsonArray(row.rv_site_ids).length
+    ? normalizeJsonArray(row.rv_site_ids)
+    : [row.rv_site_id].filter(Boolean);
   return {
     id: row.id,
     bookingCode: row.booking_code,
     rvSiteId: row.rv_site_id,
+    rvSiteIds,
+    siteIds: rvSiteIds,
+    siteLines: normalizeJsonArray(row.site_lines),
     holdId: row.hold_id,
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
@@ -1455,6 +1559,7 @@ function fromSupabaseBooking(row) {
     refundReason: row.refund_reason,
     refundedAt: row.refunded_at,
     refundedBy: row.refunded_by,
+    driverLicenseStatus: row.driver_license_status ?? 'not_uploaded',
   };
 }
 
@@ -1500,6 +1605,24 @@ function fromSupabaseNotification(row) {
     errorMessage: row.error_message,
     createdAt: row.created_at,
     sentAt: row.sent_at,
+  };
+}
+
+function fromSupabaseBookingDocument(row) {
+  return {
+    id: row.id,
+    bookingId: row.booking_id,
+    bookingCode: row.booking_code,
+    documentType: row.document_type,
+    fileName: row.file_name,
+    contentType: row.content_type,
+    sizeBytes: row.size_bytes,
+    storageBucket: row.storage_bucket,
+    storagePath: row.storage_path,
+    status: row.status,
+    uploadedAt: row.uploaded_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -1587,6 +1710,39 @@ function availabilityError(error) {
     return new Error('That RV site is no longer available for the selected dates.');
   }
   return error;
+}
+
+function normalizeJsonArray(value) {
+  if (Array.isArray(value)) return value.filter(item => item !== null && item !== undefined);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(item => item !== null && item !== undefined) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function bookingDocumentsBucket(env = process.env) {
+  return env.SUPABASE_BOOKING_DOCUMENTS_BUCKET
+    || env.SUPABASE_STORAGE_BUCKET_DOCUMENTS
+    || 'booking-documents';
+}
+
+function safeDocumentFileName(fileName = '', contentType = '') {
+  const fallbackExtension = contentType === 'image/png'
+    ? 'png'
+    : contentType === 'image/webp'
+      ? 'webp'
+      : 'jpg';
+  const safe = String(fileName || `driver-license.${fallbackExtension}`)
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return safe || `driver-license.${fallbackExtension}`;
 }
 
 function clone(value) {

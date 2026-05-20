@@ -101,6 +101,8 @@ CREATE TABLE rv_bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_code TEXT UNIQUE NOT NULL,
   rv_site_id TEXT NOT NULL REFERENCES rv_sites(id),
+  rv_site_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  site_lines JSONB NOT NULL DEFAULT '[]'::jsonb,
   hold_id UUID,
   customer_name TEXT NOT NULL,
   customer_phone TEXT NOT NULL,
@@ -123,6 +125,7 @@ CREATE TABLE rv_bookings (
   sku TEXT,
   checkout_url TEXT,
   expires_at TIMESTAMPTZ,
+  driver_license_status TEXT NOT NULL DEFAULT 'not_uploaded' CHECK (driver_license_status IN ('not_uploaded', 'uploaded', 'verified', 'rejected', 'deleted')),
   confirmed_at TIMESTAMPTZ,
   confirmed_by TEXT,
   refund_amount_cents INTEGER,
@@ -139,14 +142,36 @@ CREATE TABLE rv_bookings (
 CREATE TABLE rv_booking_holds (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rv_site_id TEXT NOT NULL REFERENCES rv_sites(id),
+  rv_site_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   customer_session_id TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   converted_booking_id UUID REFERENCES rv_bookings(id),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'converted', 'expired', 'released')),
+  quote_snapshot JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   CHECK (end_date > start_date)
+);
+
+-- 9b. Private Booking Documents
+CREATE TABLE booking_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id UUID NOT NULL REFERENCES rv_bookings(id) ON DELETE CASCADE,
+  booking_code TEXT NOT NULL,
+  document_type TEXT NOT NULL CHECK (document_type IN ('driver_license')),
+  file_name TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  size_bytes INTEGER,
+  storage_bucket TEXT NOT NULL DEFAULT 'booking-documents',
+  storage_path TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'uploaded' CHECK (status IN ('uploaded', 'verified', 'rejected', 'deleted')),
+  uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (storage_bucket, storage_path)
 );
 
 CREATE INDEX rv_sites_status_sort_idx
@@ -155,6 +180,9 @@ CREATE INDEX rv_sites_status_sort_idx
 CREATE INDEX rv_bookings_availability_idx
   ON rv_bookings (rv_site_id, start_date, end_date)
   WHERE status IN ('hold', 'paid', 'confirmed', 'blocked');
+
+CREATE INDEX rv_bookings_site_ids_gin_idx
+  ON rv_bookings USING gin (rv_site_ids);
 
 CREATE INDEX rv_bookings_square_order_idx
   ON rv_bookings (square_order_id)
@@ -176,12 +204,22 @@ CREATE INDEX rv_booking_holds_active_availability_idx
   ON rv_booking_holds (rv_site_id, start_date, end_date, expires_at)
   WHERE status = 'active';
 
+CREATE INDEX rv_booking_holds_site_ids_gin_idx
+  ON rv_booking_holds USING gin (rv_site_ids);
+
 CREATE INDEX rv_booking_holds_expiry_idx
   ON rv_booking_holds (status, expires_at);
 
 CREATE INDEX rv_booking_holds_converted_booking_idx
   ON rv_booking_holds (converted_booking_id)
   WHERE converted_booking_id IS NOT NULL;
+
+CREATE INDEX booking_documents_booking_idx
+  ON booking_documents (booking_id, document_type, status);
+
+CREATE INDEX booking_documents_retention_idx
+  ON booking_documents (expires_at)
+  WHERE expires_at IS NOT NULL AND status <> 'deleted';
 
 ALTER TABLE rv_bookings
   ADD CONSTRAINT rv_bookings_hold_id_fkey

@@ -48,6 +48,56 @@ test('memory booking store availability excludes active holds', async () => {
   assert.deepEqual(available.map(site => site.id), ['site-2']);
 });
 
+test('memory booking store blocks all sites in a multi-site hold', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+
+  const hold = await store.createHold({
+    siteIds: ['site-1', 'site-2'],
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    customerSessionId: 'browser-1',
+  });
+  const booking = await store.createPendingBooking({
+    holdId: hold.id,
+    customer: { name: 'Group Guest', phone: '555-0102' },
+    bookingCode: 'MW-GROUP',
+  });
+  const available = await store.listAvailability({
+    startDate: '2026-05-16',
+    endDate: '2026-05-17',
+  });
+
+  assert.deepEqual(booking.siteIds, ['site-1', 'site-2']);
+  assert.deepEqual(available.map(site => site.id), []);
+});
+
+test('memory booking store records driver license upload metadata', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  const hold = await store.createHold({
+    siteId: 'site-1',
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    customerSessionId: 'browser-1',
+  });
+  await store.createPendingBooking({
+    holdId: hold.id,
+    customer: { name: 'Guest One', phone: '555-0100' },
+    bookingCode: 'MW-DOCS',
+  });
+
+  const document = await store.recordDriverLicenseUpload({
+    bookingCode: 'MW-DOCS',
+    fileName: 'license.jpg',
+    contentType: 'image/jpeg',
+    sizeBytes: 1234,
+  });
+  const booking = await store.getBooking('MW-DOCS');
+
+  assert.equal(document.documentType, 'driver_license');
+  assert.equal(document.status, 'uploaded');
+  assert.equal(booking.driverLicenseStatus, 'uploaded');
+});
+
 test('memory booking store releases holds back into availability', async () => {
   const store = createMemoryBookingStore({ sites, now: () => now });
   const hold = await store.createHold({

@@ -378,18 +378,29 @@ const MAP_WORLD = { minX: -360, minY: -260, maxX: 1560, maxY: 1060 };
 
 const SitePlan = ({ sel, setSel, sites }) => {
   const stageRef = useRef(null);
+  const selectedIds = Array.isArray(sel) ? sel : (sel ? [sel] : []);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds.join('|')]);
 
   // Zoom-to-site: compute transform that centers the selected pad in the viewport.
   const zoom = useMemo(() => {
-    const s = sites.find(x => x.id === sel);
+    const activeId = selectedIds[selectedIds.length - 1];
+    const s = sites.find(x => x.id === activeId);
     if (!s) return { tx: 0, ty: 0, sc: 1 };
     const sc = 1.28;
     const cx = 600, cy = 400;
     const tx = clamp(cx - s.x * sc, 1200 - MAP_WORLD.maxX * sc, -MAP_WORLD.minX * sc);
     const ty = clamp(cy - s.y * sc, 800 - MAP_WORLD.maxY * sc, -MAP_WORLD.minY * sc);
     return { tx, ty, sc };
-  }, [sel]);
+  }, [selectedIds.join('|'), sites]);
   const mapTransform = `matrix(${zoom.sc} 0 0 ${zoom.sc} ${zoom.tx} ${zoom.ty})`;
+  const toggleSite = (siteId) => {
+    setSel(current => {
+      const currentIds = Array.isArray(current) ? current : (current ? [current] : []);
+      return currentIds.includes(siteId)
+        ? currentIds.filter(id => id !== siteId)
+        : [...currentIds, siteId];
+    });
+  };
 
   const tree = (x, y, s = 1) => (
     <path key={`t${x}${y}`} d={`M${x} ${y-12*s} L${x-9*s} ${y+10*s} L${x-4*s} ${y+10*s} L${x-12*s} ${y+22*s} L${x-4*s} ${y+22*s} L${x-9*s} ${y+30*s} L${x+9*s} ${y+30*s} L${x+4*s} ${y+22*s} L${x+12*s} ${y+22*s} L${x+4*s} ${y+10*s} L${x+9*s} ${y+10*s} Z`}
@@ -397,8 +408,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
   );
 
   return (
-    <div className={`siteplan${sel ? ' zoomed' : ''}`}>
-      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" onClick={() => setSel(null)} style={{ cursor: sel ? 'zoom-out' : 'default' }}>
+    <div className={`siteplan${selectedIds.length ? ' zoomed' : ''}`}>
+      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" onClick={() => setSel([])} style={{ cursor: selectedIds.length ? 'zoom-out' : 'default' }}>
         <defs>
           <pattern id="forest" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
             <path d="M30 8 L22 28 L26 28 L18 42 L26 42 L22 52 L38 52 L34 42 L42 42 L34 28 L38 28 Z" fill="#4A4936" opacity=".22"/>
@@ -453,7 +464,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
 
         {/* Pads — enlarged for easier tapping */}
         {sites.map(s => {
-          const isSel = sel === s.id;
+          const isSel = selectedSet.has(s.id);
           const label = s.siteNumber || String(s.id).replace(/\D/g, '') || s.id;
           const padW = (s.w || 88) * 1.12;
           const padH = (s.h || 38) * 1.12;
@@ -461,7 +472,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
             <g key={s.id}
                className={`pad${s.taken ? ' taken' : ''}${isSel ? ' sel pulse' : ''}`}
                transform={`translate(${s.x} ${s.y}) rotate(${s.rot})`}
-               onClick={e => { e.stopPropagation(); !s.taken && setSel(s.id); }}>
+               onClick={e => { e.stopPropagation(); !s.taken && toggleSite(s.id); }}>
               <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
                     fill={s.type === 'tent' ? '#C5C3A2' : s.amp === '50A' ? '#F5F0E1' : '#EDE7D7'}
                     stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
@@ -483,7 +494,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
       <div className="legend">
         <div className="l"><i className="open" /> Open</div>
         <div className="l"><i className="t" /> Taken</div>
-        <div className="l"><i className="s" /> Your pick</div>
+        <div className="l"><i className="s" /> Your picks</div>
       </div>
     </div>
   );
@@ -582,7 +593,7 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
       <div className="modal payment-modal" onClick={e => e.stopPropagation()}>
         <button className="x" onClick={onCancel}>Close</button>
         <h3>Pay <em>securely.</em></h3>
-        <p>Site No. {String(session.site?.siteNumber || session.site?.id || '').padStart(2,'0')} is held for {session.nights} nights. Payment confirms the booking.</p>
+        <p>{formatSiteList(session.sites || [session.site])} {session.sites?.length > 1 ? 'are' : 'is'} held for {session.nights} nights. Payment confirms the booking.</p>
         <div className="payment-summary">
           <span>{session.bookingCode}</span>
           <strong>{amount}</strong>
@@ -603,9 +614,13 @@ const lastName = (name = '') => {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   return parts.length > 1 ? parts.slice(1).join(' ') : undefined;
 };
+const formatSiteList = (sites = []) => sites
+  .filter(Boolean)
+  .map(site => site.type === 'tent' ? site.siteNumber : `Site No. ${String(site.siteNumber || site.id || '').padStart(2,'0')}`)
+  .join(', ');
 
-const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRangeChange }) => {
-  const [sel, setSel] = useState(null);
+const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverLicenseUpload, onDateRangeChange }) => {
+  const [sel, setSel] = useState([]);
   const [arr, setArr] = useState(dateInput(1));
   const [dep, setDep] = useState(dateInput(4));
   const [rig, setRig] = useState('Class A');
@@ -613,6 +628,8 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   const [vehicles, setVehicles] = useState(1);
   const [guest, setGuest] = useState({ name: '', phone: '', email: '' });
   const [waiverAccepted, setWaiverAccepted] = useState(false);
+  const [driverLicenseFile, setDriverLicenseFile] = useState(null);
+  const [licenseStatus, setLicenseStatus] = useState('');
   const [step, setStep] = useState('site');
   const [confirmed, setConfirmed] = useState(null);
   const [paymentSession, setPaymentSession] = useState(null);
@@ -624,14 +641,20 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
     return Math.max(1, Math.round((d - a) / 86400000));
   }, [arr, dep]);
 
-  const selSite = useMemo(() => sites.find(s => s.id === sel), [sites, sel]);
-  const rateCents = selSite?.nightlyPriceCents || 0;
+  const selSites = useMemo(() => {
+    const ids = Array.isArray(sel) ? sel : (sel ? [sel] : []);
+    const byId = new Map(sites.map(site => [site.id, site]));
+    return ids.map(id => byId.get(id)).filter(Boolean);
+  }, [sites, sel]);
+  const selSite = selSites[selSites.length - 1] || null;
+  const selectedSiteIds = selSites.map(site => site.id);
+  const rateCents = selSites.reduce((sum, site) => sum + (site.nightlyPriceCents || 0), 0);
   const vehicleCount = clamp(Math.trunc(Number(vehicles) || 1), 1, 6);
   const extraVehicleFeeCents = Math.max(0, vehicleCount - 1) * 1000;
   const totalCents = (rateCents * nights) + extraVehicleFeeCents;
   const datesReady = Boolean(arr && dep && new Date(dep) > new Date(arr));
-  const siteReady = Boolean(selSite && !selSite.taken && datesReady);
-  const guestReady = Boolean(guest.name.trim() && guest.phone.trim() && waiverAccepted);
+  const siteReady = Boolean(selSites.length > 0 && selSites.every(site => !site.taken) && datesReady);
+  const guestReady = Boolean(guest.name.trim() && guest.phone.trim() && waiverAccepted && driverLicenseFile);
   const ready = siteReady && guestReady;
   const siteKindLabel = selSite?.type === 'tent'
     ? 'walk-in tent area'
@@ -647,19 +670,25 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
   }, [arr, dep]);
 
   useEffect(() => {
-    if (!selSite) return;
-    if (selSite.taken) {
-      setSel(null);
+    if (selSites.length === 0) return;
+    const availableSites = selSites.filter(site => !site.taken);
+    if (availableSites.length !== selSites.length) {
+      setSel(availableSites.map(site => site.id));
       return;
     }
     setRig(current => {
-      if (selSite.type === 'tent') return current === 'Tent' ? current : 'Tent';
+      if (selSites.every(site => site.type === 'tent')) return current === 'Tent' ? current : 'Tent';
       return current === 'Tent' ? 'Class A' : current;
     });
-  }, [selSite?.id, selSite?.taken, selSite?.type]);
+  }, [selSites.map(site => `${site.id}:${site.taken}:${site.type}`).join('|')]);
 
   const updateGuest = (field, value) => {
     setGuest(g => ({ ...g, [field]: value }));
+  };
+  const onLicenseChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setDriverLicenseFile(file);
+    setLicenseStatus(file ? `${file.name} ready to upload` : '');
   };
 
   const confirm = async () => {
@@ -668,7 +697,8 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
     setError('');
     try {
       const checkout = await onCheckout({
-        siteId: sel,
+        siteId: selectedSiteIds[0],
+        siteIds: selectedSiteIds,
         startDate: arr,
         endDate: dep,
         guests: heads,
@@ -679,11 +709,16 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
           waiverAccepted,
         },
       });
+      if (driverLicenseFile && onDriverLicenseUpload) {
+        setLicenseStatus('Uploading driver license...');
+        await onDriverLicenseUpload(checkout.bookingCode, driverLicenseFile);
+        setLicenseStatus('Driver license uploaded.');
+      }
       if (checkout.checkout?.checkoutUrl) {
         window.location.href = checkout.checkout.checkoutUrl;
         return;
       }
-      setPaymentSession({ ...checkout, site: selSite, guest, arr, dep, nights, rig, heads });
+      setPaymentSession({ ...checkout, site: selSite, sites: selSites, guest, arr, dep, nights, rig, heads });
     } catch (err) {
       setError(err.message || 'Checkout is unavailable right now.');
     } finally {
@@ -722,26 +757,23 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
 
           {step === 'site' && (
             <>
-              {selSite ? (
+              {selSites.length > 0 ? (
                 <div className="site-detail">
                   <div className="row1">
                     <div className="num">
-                      {selSite.type === 'tent'
-                        ? <><span className="site-type-badge tent">Tent</span> <em>{selSite.siteNumber}</em></>
-                        : <><span className="site-type-badge rv">RV Site</span> <em>No. {String(selSite.siteNumber).padStart(2,'0')}</em></>
-                      }
+                      <span className="site-type-badge rv">{selSites.length === 1 ? 'Selected' : `${selSites.length} sites`}</span>
+                      <em>{selSites.map(site => site.type === 'tent' ? site.siteNumber : `No. ${String(site.siteNumber).padStart(2,'0')}`).join(', ')}</em>
                     </div>
-                    <div className="amp">{selSite.type !== 'tent' && <>{selSite.amp} · </>}{siteKindLabel} · {selSite.shade} shade · {siteCapacityLabel}</div>
+                    <div className="amp">{selSites.length === 1 ? `${selSite.type !== 'tent' ? `${selSite.amp} · ` : ''}${siteKindLabel} · ${selSite.shade} shade · ${siteCapacityLabel}` : `${selSites.length} pads held together on one checkout`}</div>
                   </div>
                   <div className="feats">
-                    {selSite.feats.map(f => <span key={f}>{f}</span>)}
-                    {selSite.sku && <span>{selSite.sku}</span>}
+                    {selSites.map(site => <span key={site.id}>{site.type === 'tent' ? site.siteNumber : `Site ${site.siteNumber}`} · {money(site.nightlyPriceCents)}/night</span>)}
                   </div>
                 </div>
               ) : (
                 <>
                   <div className="kicker">Step 1  /  Site and dates</div>
-                  <h3>Pick a site, <em>then dates.</em></h3>
+                  <h3>Pick one or more sites, <em>then dates.</em></h3>
                 </>
               )}
 
@@ -803,10 +835,20 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
                 <input type="checkbox" checked={waiverAccepted} onChange={e => setWaiverAccepted(e.target.checked)} />
                 <span>I agree to the campground waiver and understand Midway may verify my driver license at check-in.</span>
               </label>
+              <div className="contact-row">
+                <label>Driver license photo</label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={onLicenseChange}
+                />
+                <div className="reserve-note">Uploaded privately with the reservation and used only for guest verification.</div>
+              </div>
               <div className="form-actions">
                 <button type="button" className="ghost-cta" onClick={() => setStep('site')}>Back</button>
                 <button className="cta" type="button" onClick={() => setStep('review')} disabled={!guestReady}>Review and pay →</button>
               </div>
+              {licenseStatus && <div className="reserve-note">{licenseStatus}</div>}
             </>
           )}
 
@@ -815,15 +857,17 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               <div className="kicker">Step 3  /  Secure payment</div>
               <h3>Review, <em>then pay.</em></h3>
               <div className="review-card">
-                <div><span>Site</span><strong>No. {String(selSite?.siteNumber || sel || '').padStart(2,'0')}</strong></div>
+                <div><span>Sites</span><strong>{selSites.map(site => site.type === 'tent' ? site.siteNumber : `No. ${String(site.siteNumber).padStart(2,'0')}`).join(', ')}</strong></div>
                 <div><span>Dates</span><strong>{arr} to {dep}</strong></div>
                 <div><span>Setup</span><strong>{rig} · {heads} guests · {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'}</strong></div>
                 <div><span>Guest</span><strong>{guest.name || 'Name required'}</strong></div>
               </div>
-              <div className="pick" style={{ marginTop: 20 }}>
-                <div><div className="det">Nights</div><div className="num">{nights}</div></div>
-                <div style={{ textAlign:'right' }}><div className="det">Rate</div><div className="num">{money(rateCents)}<span style={{fontSize:11,color:'var(--mute)',fontFamily:'var(--mono)',marginLeft:4}}>/NT</span></div></div>
-              </div>
+              {selSites.map(site => (
+                <div className="pick" style={{ marginTop: 12 }} key={site.id}>
+                  <div><div className="det">{site.type === 'tent' ? site.siteNumber : `Site ${site.siteNumber}`}</div><div className="num">{nights} night{nights === 1 ? '' : 's'}</div></div>
+                  <div style={{ textAlign:'right' }}><div className="det">Rate</div><div className="num">{money(site.nightlyPriceCents)}<span style={{fontSize:11,color:'var(--mute)',fontFamily:'var(--mono)',marginLeft:4}}>/NT</span></div></div>
+                </div>
+              ))}
               {extraVehicleFeeCents > 0 && (
                 <div className="reserve-note">Extra vehicle fee: {money(extraVehicleFeeCents)}</div>
               )}
@@ -836,7 +880,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
               <div className="form-actions">
                 <button type="button" className="ghost-cta" onClick={() => setStep('guest')}>Back</button>
                 <button className="cta" onClick={confirm} disabled={!ready || busy}>
-                  {busy ? 'Preparing payment...' : `Pay and reserve site no. ${String(selSite?.siteNumber || sel).padStart(2,'0')} →`}
+                  {busy ? (licenseStatus.includes('Uploading') ? 'Uploading license...' : 'Preparing payment...') : `Pay and reserve ${selSites.length} site${selSites.length === 1 ? '' : 's'} →`}
                 </button>
               </div>
               {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
@@ -848,7 +892,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
             <div className="reservation-mini-summary">
               <div>
                 <span>Site</span>
-                <strong>{selSite ? `No. ${String(selSite.siteNumber || selSite.id).padStart(2,'0')}` : 'Pick one'}</strong>
+                <strong>{selSites.length ? `${selSites.length} selected` : 'Pick one'}</strong>
               </div>
               <div>
                 <span>Total</span>
@@ -886,10 +930,10 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDateRan
             <div className="receipt">
               <div className="r"><span className="l">Guest</span><span>{confirmed.guest.name}</span></div>
               <div className="r"><span className="l">Phone</span><span>{confirmed.guest.phone}</span></div>
-              <div className="r"><span className="l">Site</span><span>No. {String(confirmed.site.siteNumber || confirmed.site.id).padStart(2,'0')}  ·  {confirmed.site.amp}</span></div>
+              <div className="r"><span className="l">Sites</span><span>{formatSiteList(confirmed.sites || [confirmed.site])}</span></div>
               <div className="r"><span className="l">Arrive</span><span>{confirmed.arr}</span></div>
               <div className="r"><span className="l">Depart</span><span>{confirmed.dep}</span></div>
-              <div className="r"><span className="l">Nights</span><span>{confirmed.nights} × {money(confirmed.site.nightlyPriceCents)}</span></div>
+              <div className="r"><span className="l">Nights</span><span>{confirmed.nights} × {confirmed.sites?.length || 1} site{(confirmed.sites?.length || 1) === 1 ? '' : 's'}</span></div>
               <div className="r"><span className="l">Setup</span><span>{confirmed.rig}  ·  {confirmed.heads} guests  ·  {confirmed.hold?.quote?.vehicles || 1} vehicle{(confirmed.hold?.quote?.vehicles || 1) === 1 ? '' : 's'}</span></div>
               <div className="r" style={{ borderTop: '1px solid var(--rule)', paddingTop: 10, marginTop: 6 }}>
                 <span className="l">Total</span><span style={{ fontFamily:'var(--serif)', fontSize: 22 }}>{money(confirmed.payment?.amountCents || confirmed.hold?.quote?.totalCents || 0)}</span>
@@ -1107,6 +1151,15 @@ const App = () => {
     }),
   });
 
+  const uploadDriverLicense = async (bookingCode, file) => api(`/bookings/${encodeURIComponent(bookingCode)}/driver-license`, {
+    method: 'POST',
+    body: JSON.stringify({
+      fileName: file.name,
+      contentType: file.type,
+      dataUrl: await fileToDataUrl(file),
+    }),
+  });
+
   const payBooking = async (payload) => api('/bookings/pay', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -1135,6 +1188,7 @@ const App = () => {
           fuelPrices={bootstrap.fuelPrices || []}
           phone={bootstrap.settings?.phone}
           onCheckout={startCheckout}
+          onDriverLicenseUpload={uploadDriverLicense}
           onPay={payBooking}
           onDateRangeChange={(startDate, endDate) => loadBootstrap({ startDate, endDate })}
         />
@@ -1159,6 +1213,15 @@ function getCustomerSessionId() {
     localStorage.setItem(key, id);
   }
   return id;
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the driver license image.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 createRoot(document.getElementById('root')).render(<App />);

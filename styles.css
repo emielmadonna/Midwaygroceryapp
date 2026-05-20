@@ -590,6 +590,14 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
   padding: 8px 0; font-family: var(--serif); font-size: 21px; color: var(--ink);
   outline: none; -webkit-appearance: none; appearance: none;
 }
+.book-form input[type="file"] {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 11px 0;
+  -webkit-appearance: auto;
+  appearance: auto;
+}
 .book-form .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .book-form .pick { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .book-form .pick .num { font-family: var(--serif); font-size: 26px; }

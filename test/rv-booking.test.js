@@ -5,6 +5,7 @@ import {
   createBookingHold,
   getAvailableSites,
   quoteBooking,
+  quoteMultiSiteBooking,
 } from '../src/lib/rv-booking.js';
 
 const now = new Date('2026-05-12T12:00:00.000Z');
@@ -92,6 +93,22 @@ test('quoteBooking adds the extra vehicle fee after the first car', () => {
   assert.equal(quote.totalCents, 10800);
 });
 
+test('quoteMultiSiteBooking totals multiple sites with one extra vehicle fee', () => {
+  const quote = quoteMultiSiteBooking({
+    sites,
+    siteIds: ['site-1', 'site-2'],
+    startDate: '2026-05-15',
+    endDate: '2026-05-17',
+    vehicles: 2,
+  });
+
+  assert.deepEqual(quote.siteIds, ['site-1', 'site-2']);
+  assert.equal(quote.nights, 2);
+  assert.equal(quote.subtotalCents, 20400);
+  assert.equal(quote.extraVehicleFeeCents, 1000);
+  assert.equal(quote.totalCents, 21400);
+});
+
 test('createBookingHold rejects a double-booked site', () => {
   assert.throws(
     () => createBookingHold({
@@ -130,4 +147,20 @@ test('createBookingHold creates a short-lived hold with a server quote', () => {
   assert.equal(hold.rvSiteId, 'site-2');
   assert.equal(hold.quote.totalCents, 17400);
   assert.equal(hold.expiresAt, '2026-05-12T12:12:00.000Z');
+});
+
+test('createBookingHold can hold multiple available sites together', () => {
+  const hold = createBookingHold({
+    sites,
+    siteIds: ['site-1', 'site-2'],
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    customerSessionId: 'browser-1',
+    now,
+  });
+
+  assert.deepEqual(hold.siteIds, ['site-1', 'site-2']);
+  assert.equal(hold.rvSiteId, 'site-1');
+  assert.equal(hold.quote.sites.length, 2);
+  assert.equal(hold.quote.totalCents, 30600);
 });

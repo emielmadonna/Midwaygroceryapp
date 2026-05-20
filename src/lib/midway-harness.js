@@ -7,7 +7,7 @@ import {
   instagramProviderConfigFromEnv,
   mergeInstagramProviderConfig,
 } from './instagram-api.js';
-import { quoteBooking } from './rv-booking.js';
+import { quoteBooking, quoteMultiSiteBooking } from './rv-booking.js';
 import {
   assertProductionPersistence,
   createSupabaseServerClient,
@@ -111,6 +111,7 @@ export function createMidwayHarness({
   let tenantConfigCache = hasExplicitTenantConfig ? createTenantConfig(tenantConfig) : null;
   const resolvedBookingStore = bookingStore ?? createBookingStore({
     supabase: resolvedSupabase,
+    env,
     sites: SEEDED_RV_SITES,
     bookings: SEEDED_RV_BOOKINGS,
     providerConnections: hasExplicitTenantConfig ? providerConnectionsFromTenantConfig(tenantConfigCache) : [],
@@ -253,6 +254,9 @@ export function createMidwayHarness({
     },
     async quote(input) {
       const sites = await resolvedBookingStore.listSites();
+      if (Array.isArray(input.siteIds) && input.siteIds.length > 1) {
+        return quoteMultiSiteBooking({ sites, ...input });
+      }
       const site = sites.find(candidate => candidate.id === input.siteId);
       return quoteBooking({ site, ...input });
     },
@@ -274,6 +278,9 @@ export function createMidwayHarness({
     },
     async getBooking(bookingCode) {
       return resolvedBookingStore.getBooking(bookingCode);
+    },
+    async recordDriverLicenseUpload(input) {
+      return resolvedBookingStore.recordDriverLicenseUpload?.(input);
     },
     async listBookings(input) {
       return resolvedBookingStore.listBookings(input);
