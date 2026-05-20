@@ -153,15 +153,26 @@ test('public web payment confirms a held booking through the payments endpoint',
   const server = await createTestServer({
     store,
     fetchImpl: async (url, options) => {
-      assert.match(url, /\/v2\/payments$/);
       const requestBody = JSON.parse(options.body);
+      if (/\/v2\/orders$/.test(url)) {
+        return {
+          ok: true,
+          json: async () => ({
+            order: {
+              id: 'order-live-test',
+              reference_id: requestBody.order.reference_id,
+            },
+          }),
+        };
+      }
+      assert.match(url, /\/v2\/payments$/);
       return {
         ok: true,
         json: async () => ({
           payment: {
             id: 'payment-live-test',
             status: 'COMPLETED',
-            order_id: requestBody.idempotency_key,
+            order_id: requestBody.order_id,
             amount_money: requestBody.amount_money,
           },
         }),

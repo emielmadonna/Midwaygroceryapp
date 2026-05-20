@@ -162,7 +162,9 @@ export async function createRvCheckoutPaymentLink({
         rv_site_id: hold.rvSiteId,
         rv_site_ids: (hold.rvSiteIds ?? hold.siteIds ?? hold.quote.siteIds ?? [hold.rvSiteId]).join(','),
       },
-      line_items: createRvLineItems(hold),
+      line_items: createRvLineItems(hold, {
+        extraVehicleCatalogObjectId: extraVehicleCatalogObjectId(env),
+      }),
     },
     checkout_options: {
       ask_for_shipping_address: false,
@@ -243,6 +245,12 @@ export async function createSquareWebPayment({
   }
 
   const squareConfig = validateSquareCheckoutConfig(env);
+  const orderId = booking.squareOrderId || await createRvOrderForBooking({
+    booking,
+    env,
+    fetchImpl,
+    idempotencyKey,
+  });
   const payload = {
     idempotency_key: idempotencyKey || `payment-${booking.bookingCode}`,
     source_id: sourceId,
@@ -251,6 +259,7 @@ export async function createSquareWebPayment({
       currency: booking.currency || 'USD',
     },
     location_id: squareConfig.locationId,
+    order_id: orderId || undefined,
     reference_id: booking.bookingCode,
     note: `RV booking ${booking.bookingCode}`,
     autocomplete: true,
@@ -274,8 +283,46 @@ export async function createSquareWebPayment({
     amountCents: Number(payment.amount_money?.amount ?? amountCents),
     currency: payment.amount_money?.currency ?? booking.currency ?? 'USD',
     receiptUrl: payment.receipt_url ?? null,
-    orderId: payment.order_id ?? null,
+    orderId: payment.order_id ?? orderId ?? null,
   };
+}
+
+export async function createRvOrderForBooking({
+  booking,
+  env = {},
+  fetchImpl = globalThis.fetch,
+  idempotencyKey,
+} = {}) {
+  if (!booking) throw new Error('Booking is required.');
+
+  const squareConfig = validateSquareCheckoutConfig({
+    ...env,
+    checkoutSurface: 'payment-link',
+  });
+  const hold = holdFromBooking(booking);
+  const result = await squareRequest('/v2/orders', {
+    method: 'POST',
+    env,
+    fetchImpl,
+    body: {
+      idempotency_key: `${idempotencyKey || `payment-${booking.bookingCode}`}-order`,
+      order: {
+        location_id: squareConfig.locationId,
+        reference_id: booking.bookingCode,
+        metadata: {
+          booking_code: booking.bookingCode,
+          hold_id: booking.holdId || '',
+          rv_site_id: booking.rvSiteId || '',
+          rv_site_ids: (booking.rvSiteIds ?? booking.siteIds ?? [booking.rvSiteId].filter(Boolean)).join(','),
+        },
+        line_items: createRvLineItems(hold, {
+          extraVehicleCatalogObjectId: extraVehicleCatalogObjectId(env),
+        }),
+      },
+    },
+  });
+
+  return result.order?.id ?? null;
 }
 
 export async function createSquareRefund({
@@ -363,7 +410,7 @@ function createRvLineItem(hold) {
   return lineItem;
 }
 
-function createRvLineItems(hold) {
+function createRvLineItems(hold, { extraVehicleCatalogObjectId = null } = {}) {
   const siteLines = Array.isArray(hold.quote?.sites) && hold.quote.sites.length
     ? hold.quote.sites
     : null;
@@ -392,7 +439,7 @@ function createRvLineItems(hold) {
   const extraVehicleFeeCents = Number(hold.quote?.extraVehicleFeeCents || 0);
 
   if (extraVehicles > 0 && extraVehicleFeeCents > 0) {
-    lineItems.push({
+    const lineItem = {
       name: 'Extra vehicle',
       note: `${extraVehicles} extra vehicle${extraVehicles === 1 ? '' : 's'} · ${hold.startDate} to ${hold.endDate}`,
       quantity: String(extraVehicles),
@@ -406,10 +453,54 @@ function createRvLineItems(hold) {
         end_date: hold.endDate,
         fee_type: 'extra_vehicle',
       },
-    });
+    };
+    if (extraVehicleCatalogObjectId) lineItem.catalog_object_id = extraVehicleCatalogObjectId;
+    lineItems.push(lineItem);
   }
 
   return lineItems;
+}
+
+function holdFromBooking(booking) {
+  const siteLines = Array.isArray(booking.siteLines) && booking.siteLines.length
+    ? booking.siteLines
+    : null;
+  const nights = Number(booking.nights || 1);
+  const currency = booking.currency || 'USD';
+  const siteIds = booking.rvSiteIds ?? booking.siteIds ?? [booking.rvSiteId].filter(Boolean);
+
+  return {
+    id: booking.holdId || booking.id || booking.bookingCode,
+    rvSiteId: booking.rvSiteId,
+    rvSiteIds: siteIds,
+    siteIds,
+    startDate: booking.startDate,
+    endDate: booking.endDate,
+    quote: {
+      siteNumber: siteNumberFromBooking(booking),
+      siteNumbers: siteLines?.map(line => line.siteNumber).filter(Boolean) ?? [siteNumberFromBooking(booking)].filter(Boolean),
+      siteIds,
+      sites: siteLines,
+      nights,
+      vehicles: Number(booking.vehicles || 1),
+      extraVehicleFeeCents: Number(booking.feeCents || 0),
+      nightlyPriceCents: nights > 0 ? Math.round(Number(booking.subtotalCents || 0) / nights) : Number(booking.subtotalCents || 0),
+      squareCatalogObjectId: booking.squareCatalogObjectId ?? null,
+      sku: booking.sku || '',
+      totalCents: Number(booking.totalCents || 0),
+      currency,
+    },
+  };
+}
+
+function siteNumberFromBooking(booking = {}) {
+  const raw = String(booking.siteNumber || booking.rvSiteId || booking.siteId || '').trim();
+  return raw.replace(/^rv-/, '').replace(/^tent-/, 'T') || raw;
+}
+
+function extraVehicleCatalogObjectId(config = {}) {
+  const ids = readSquareValue(config, 'rvVariationIds') || {};
+  return ids.extraVehicle || ids.extra_vehicle || ids.extraVehicleFee || null;
 }
 
 function isSquareItemHidden(object = {}, itemData = {}) {

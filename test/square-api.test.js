@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   createRvCheckoutPaymentLink,
+  createRvOrderForBooking,
   createRvWebPaymentSession,
   createSquareRefund,
   createSquareWebPayment,
@@ -365,14 +366,22 @@ test('web payments session exposes only public Square browser configuration', ()
 });
 
 test('web payment calls Square Payments API with tokenized source id', async () => {
-  let requestUrl;
-  let requestBody;
+  const requests = [];
   const payment = await createSquareWebPayment({
     booking: {
       bookingCode: 'MW-ABC123',
+      rvSiteId: 'rv-01',
+      startDate: '2026-06-01',
+      endDate: '2026-06-03',
+      nights: 2,
+      vehicles: 1,
+      subtotalCents: 11600,
+      feeCents: 0,
       totalCents: 11600,
       currency: 'USD',
       customerEmail: 'guest@example.com',
+      squareCatalogObjectId: 'SQUARE_VARIATION_50A',
+      sku: 'RV-50A-NIGHT',
     },
     sourceId: 'cnon:card-nonce-ok',
     verificationToken: 'verification-token',
@@ -385,8 +394,14 @@ test('web payment calls Square Payments API with tokenized source id', async () 
       nodeEnv: 'production',
     },
     fetchImpl: async (url, options) => {
-      requestUrl = url;
-      requestBody = JSON.parse(options.body);
+      const requestBody = JSON.parse(options.body);
+      requests.push({ url, body: requestBody });
+      if (url.endsWith('/v2/orders')) {
+        return {
+          ok: true,
+          json: async () => ({ order: { id: 'order-123' } }),
+        };
+      }
       return {
         ok: true,
         json: async () => ({
@@ -401,12 +416,15 @@ test('web payment calls Square Payments API with tokenized source id', async () 
     },
   });
 
-  assert.equal(requestUrl, 'https://connect.squareup.com/v2/payments');
-  assert.deepEqual(requestBody, {
+  assert.equal(requests[0].url, 'https://connect.squareup.com/v2/orders');
+  assert.equal(requests[0].body.order.line_items[0].catalog_object_id, 'SQUARE_VARIATION_50A');
+  assert.equal(requests[1].url, 'https://connect.squareup.com/v2/payments');
+  assert.deepEqual(requests[1].body, {
     idempotency_key: 'payment-key-123',
     source_id: 'cnon:card-nonce-ok',
     amount_money: { amount: 11600, currency: 'USD' },
     location_id: 'location',
+    order_id: 'order-123',
     reference_id: 'MW-ABC123',
     note: 'RV booking MW-ABC123',
     autocomplete: true,
@@ -416,6 +434,69 @@ test('web payment calls Square Payments API with tokenized source id', async () 
   assert.equal(payment.mode, 'square');
   assert.equal(payment.paymentId, 'payment-123');
   assert.equal(payment.status, 'COMPLETED');
+  assert.equal(payment.orderId, 'order-123');
+});
+
+test('web payment order builder uses multi-site catalog lines and extra vehicle mapping', async () => {
+  let requestBody;
+  const orderId = await createRvOrderForBooking({
+    booking: {
+      bookingCode: 'MW-MULTI',
+      rvSiteId: 'rv-03',
+      rvSiteIds: ['rv-03', 'rv-11'],
+      siteLines: [
+        {
+          siteId: 'rv-03',
+          siteNumber: '03',
+          nightlyPriceCents: 4500,
+          nights: 2,
+          sku: 'MIDWAY-RV-FULL-HOOKUP-NIGHT',
+          squareCatalogObjectId: 'VAR_FULL',
+        },
+        {
+          siteId: 'rv-11',
+          siteNumber: '11',
+          nightlyPriceCents: 4000,
+          nights: 2,
+          sku: 'MIDWAY-RV-PARTIAL-HOOKUP-NIGHT',
+          squareCatalogObjectId: 'VAR_PARTIAL',
+        },
+      ],
+      startDate: '2026-07-10',
+      endDate: '2026-07-12',
+      nights: 2,
+      vehicles: 3,
+      subtotalCents: 17000,
+      feeCents: 2000,
+      totalCents: 19000,
+      currency: 'USD',
+    },
+    idempotencyKey: 'payment-key-multi',
+    env: {
+      accessToken: 'token',
+      applicationId: 'app',
+      locationId: 'location',
+      environment: 'production',
+      nodeEnv: 'production',
+      rvVariationIds: {
+        extraVehicle: 'VAR_EXTRA',
+      },
+    },
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({ order: { id: 'order-multi' } }),
+      };
+    },
+  });
+
+  assert.equal(orderId, 'order-multi');
+  assert.equal(requestBody.order.line_items.length, 3);
+  assert.equal(requestBody.order.line_items[0].catalog_object_id, 'VAR_FULL');
+  assert.equal(requestBody.order.line_items[1].catalog_object_id, 'VAR_PARTIAL');
+  assert.equal(requestBody.order.line_items[2].catalog_object_id, 'VAR_EXTRA');
+  assert.equal(requestBody.order.line_items[2].quantity, '2');
 });
 
 test('refund rejects synthetic payment ids without Square credentials', async () => {
