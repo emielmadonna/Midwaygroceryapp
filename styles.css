@@ -99,14 +99,16 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
   display: grid;
   gap: 3px;
   justify-self: start;
+  justify-items: center;
   align-items: center;
+  width: max-content;
 }
 .nav-logo {
   width: min(210px, 28vw);
   height: auto;
   max-height: 46px;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
   display: block;
 }
 .nav-brand-sub {
@@ -116,6 +118,7 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
   text-transform: uppercase;
   color: var(--mute);
   white-space: nowrap;
+  text-align: center;
 }
 .nav-links {
   display: flex;
@@ -653,7 +656,7 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 
 .booking-steps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 24px;
 }
@@ -740,6 +743,120 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
   grid-template-columns: 1fr 1fr;
 }
 
+.agreement-panel {
+  margin-top: 16px;
+  border: 1px solid var(--ink);
+  background:
+    linear-gradient(180deg, rgba(237,231,215,.88), rgba(245,240,225,.96)),
+    var(--paper);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 14px 36px rgba(17,16,14,.08);
+}
+
+.agreement-panel .booking-check {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-2);
+  border-radius: 12px;
+  background: rgba(245,240,225,.72);
+}
+
+.agreement-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.agreement-topline strong {
+  color: var(--oxide);
+  font-weight: 600;
+}
+
+.agreement-panel h3 {
+  margin: 20px 0 8px;
+  font-family: var(--serif);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.agreement-panel h3 em {
+  color: var(--oxide);
+  font-style: italic;
+}
+
+.agreement-panel > p {
+  margin: 0 0 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.agreement-scroll {
+  max-height: 300px;
+  overflow: auto;
+  padding: 16px 18px;
+  border: 1px solid var(--rule-2);
+  background: var(--paper);
+  border-radius: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-2) transparent;
+}
+
+.agreement-scroll:focus {
+  outline: 2px solid var(--oxide);
+  outline-offset: 3px;
+}
+
+.agreement-scroll ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.agreement-scroll li,
+.waiver-copy p {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.waiver-copy {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+
+.waiver-copy strong {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--oxide);
+}
+
+.waiver-copy p {
+  margin: 0;
+}
+
+.agreement-checks {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 /* ─── Pumps row ─── */
 .pumps { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); margin-top: 80px; }
 .pumps > div { padding: 36px 32px; border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 8px; }
@@ -775,9 +892,19 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 
 /* ─── Find ─── */
 .find { display: grid; grid-template-columns: 1.3fr 1fr; gap: 64px; align-items: stretch; }
-.map { position: relative; aspect-ratio: 4/3; overflow: hidden; background: var(--paper); border: 1px solid var(--ink); }
+.map {
+  display: block;
+  position: relative;
+  aspect-ratio: 4 / 3;
+  min-height: 360px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
 .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.map iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; filter: saturate(.9) contrast(1.04); }
+.map iframe { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border: 0; filter: saturate(.9) contrast(1.04); }
 .hours .h-row { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--rule); font-size: 15px; }
 .hours .h-row.today { color: var(--oxide); }
 .hours .h-row.today::before { content: '›'; margin-right: 8px; }
@@ -1061,6 +1188,16 @@ body.density-compact .section .head { margin-bottom: 40px; }
   cursor: wait;
 }
 
+.google-pay-host {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+}
+
+.google-pay-host.hidden {
+  display: none;
+}
+
 .payment-divider {
   display: flex;
   align-items: center;
@@ -1094,6 +1231,23 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .payment-submit {
   width: 100%;
   margin-top: 16px;
+  min-height: 52px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+.payment-submit:hover:not(:disabled) {
+  background: var(--oxide);
+}
+
+.payment-submit:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 /* ─── Instagram ─── */
@@ -1273,6 +1427,9 @@ body.density-compact .section .head { margin-bottom: 40px; }
   .site-detail .row1 {
     grid-template-columns: 1fr;
   }
+  .map {
+    min-height: 320px;
+  }
   .siteplan {
     border-radius: 0;
     width: 100vw;
@@ -1293,9 +1450,20 @@ body.density-compact .section .head { margin-bottom: 40px; }
   .book-form {
     padding: 20px 16px 18px;
   }
+  .booking-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .book-form h3 {
     font-size: clamp(26px, 6vw, 34px);
     margin-bottom: 18px;
+  }
+  .agreement-panel {
+    padding: 16px;
+    border-radius: 14px;
+  }
+  .agreement-scroll {
+    max-height: 260px;
+    padding: 14px;
   }
   .pantry-row {
     grid-template-columns: 42px 88px 1fr;

@@ -105,6 +105,17 @@ const moneyExact = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const telHref = (phone = '') => `tel:${String(phone).replace(/[^\d+]/g, '')}`;
 const directionsHref = (address = '') => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+const MIDWAY_COORDS = '47.8188945,-120.7082358';
+const GOOGLE_MAPS_EMBED_KEY = import.meta.env.VITE_GOOGLE_MAPS_EMBED_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_SHARE_EMBED_SRC = 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2411.556640884445!2d-120.7109064!3d47.8186347!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x549b013d8d72a3dd%3A0x62d1c691d25b6866!2s14193%20Chiwawa%20Loop%20Road%2C%20Leavenworth%2C%20WA%2098826!5e1!3m2!1sen!2sus!4v1710000000000!5m2!1sen!2sus';
+const mapEmbedHref = (address = '') => {
+  if (!GOOGLE_MAPS_EMBED_KEY) return GOOGLE_MAPS_SHARE_EMBED_SRC;
+  return 'https://www.google.com/maps/embed/v1/place'
+    + `?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}`
+    + `&q=${encodeURIComponent(address || MIDWAY_COORDS)}`
+    + `&center=${MIDWAY_COORDS}`
+    + '&zoom=18&maptype=satellite';
+};
 const dateInput = (offsetDays) => {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
@@ -143,6 +154,21 @@ const GLYPHS = Object.freeze({
   jar: glyphUrl('JAR'),
   pump: glyphUrl('PUMP'),
 });
+const RV_RULES = [
+  'RV sites are to be left clean.',
+  'Campfires are allowed in provided fire pits only, when allowed.',
+  'Picnic tables are not to be moved from site to site without permission.',
+  'Pets are not allowed in cabins. No exceptions.',
+  'Pets are allowed in your RV, but must be kept on a leash at all times when outside. You are responsible if your pet bites, and animals must be cleaned up after. Please do not let pets use the grass as a restroom.',
+  'One vehicle and one tent are included per site. A second vehicle is $10 per night.',
+  'Noise must be kept to a minimum. Quiet time begins at 10:00 PM.',
+  'Off-road vehicles must be driven safely and slowly inside the park.',
+  'The speed limit is under 5 MPH at all times for all drivers.',
+  'Renters shall leave a credit card number for any damage caused.',
+  'No fireworks.',
+  'Alcohol is allowed in the RV park only.',
+];
+const RV_WAIVER_TEXT = 'I hereby waive and release, indemnify, hold harmless, and forever discharge Midway Village and Grocery and its agents, employees, affiliates, managers, volunteers, successors, and assigns of any and all claims, demands, debts, contracts, expenses, causes of action, lawsuits, damages, and liabilities of every kind and nature, whether known or unknown, in law or equity, that I ever had or may have arising from or in any way related to my participation in events or activities conducted by, on the premises of, or for the benefit of Midway Village and Grocery. This waiver does not apply to acts of gross negligence or intentional, willful, or wanton misconduct. By this waiver I assume any risk, take full responsibility, and waive any claims of personal injury, death, or damage to personal property associated with Midway Village and Grocery. I further agree that I and my party, guests, and friends will follow and respect all rules above and assume responsibility for watching and caring for minors, including guarding against all natural or man-made hazards whether expressly mentioned in this waiver and release or not.';
 
 async function api(path, options = {}) {
   const response = await fetch(`${API_ROOT}${path}`, {
@@ -424,6 +450,7 @@ function iconForProduct(product) {
 
 // ─── Site plan SVG ───────────────────────────────────────────────────────
 const SitePlan = ({ sel, setSel, sites }) => {
+  const sitePlanRef = useRef(null);
   const stageRef = useRef(null);
   const pointersRef = useRef(new Map());
   const gestureRef = useRef(null);
@@ -472,6 +499,12 @@ const SitePlan = ({ sel, setSel, sites }) => {
     event.preventDefault();
     zoomAt(event.clientX, event.clientY, zoom - (event.deltaY * 0.0012));
   };
+  useEffect(() => {
+    const sitePlan = sitePlanRef.current;
+    if (!sitePlan) return undefined;
+    sitePlan.addEventListener('wheel', onWheel, { passive: false });
+    return () => sitePlan.removeEventListener('wheel', onWheel);
+  }, [onWheel]);
   const onPointerDown = (event) => {
     draggedRef.current = false;
     movedRef.current = false;
@@ -571,8 +604,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
 
   return (
     <div
+      ref={sitePlanRef}
       className="siteplan"
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -680,8 +713,10 @@ const SitePlan = ({ sel, setSel, sites }) => {
 // ─── Hookup booking ──────────────────────────────────────────────────────
 const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
   const cardContainerId = useMemo(() => `square-card-${session.bookingCode}`, [session.bookingCode]);
+  const googlePayContainerId = useMemo(() => `google-pay-${session.bookingCode}`, [session.bookingCode]);
   const [card, setCard] = useState(null);
   const [applePay, setApplePay] = useState(null);
+  const [googlePay, setGooglePay] = useState(null);
   const [payments, setPayments] = useState(null);
   const [status, setStatus] = useState('Preparing secure payment form...');
   const [busy, setBusy] = useState(false);
@@ -689,11 +724,18 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
   const checkout = session.checkout || {};
   const amountCents = checkoutAmountCents({ checkout, session });
   const amount = money(amountCents);
+  const isPaymentLink = Boolean(checkout.checkoutUrl || session.checkoutUrl);
+  const checkoutUrl = checkout.checkoutUrl || session.checkoutUrl || '';
 
   useEffect(() => {
+    if (isPaymentLink) {
+      setStatus('Secure Square checkout link ready.');
+      return undefined;
+    }
     let disposed = false;
     let mountedCard = null;
     let mountedApplePay = null;
+    let mountedGooglePay = null;
 
     const setup = async () => {
       try {
@@ -704,21 +746,32 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
         const paymentClient = square.payments(checkout.applicationId, checkout.locationId);
         mountedCard = await paymentClient.card();
         await mountedCard.attach(`#${cardContainerId}`);
+        const paymentRequest = paymentClient.paymentRequest(
+          buildSquarePaymentRequest({ checkout, amountCents }),
+        );
         try {
-          const paymentRequest = paymentClient.paymentRequest(
-            buildSquarePaymentRequest({ checkout, amountCents }),
-          );
           mountedApplePay = await paymentClient.applePay(paymentRequest);
         } catch (walletError) {
           mountedApplePay = null;
         }
+        try {
+          mountedGooglePay = await paymentClient.googlePay(paymentRequest);
+          await mountedGooglePay.attach(`#${googlePayContainerId}`, {
+            buttonColor: 'black',
+            buttonType: 'pay',
+          });
+        } catch (walletError) {
+          mountedGooglePay = null;
+        }
         if (disposed) {
           mountedCard.destroy?.();
+          mountedGooglePay?.destroy?.();
           return;
         }
         setPayments(paymentClient);
         setCard(mountedCard);
         setApplePay(mountedApplePay);
+        setGooglePay(mountedGooglePay);
         setStatus('Secure card form ready.');
       } catch (err) {
         setError(err.message || 'Square payment form is unavailable.');
@@ -730,8 +783,9 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
     return () => {
       disposed = true;
       mountedCard?.destroy?.();
+      mountedGooglePay?.destroy?.();
     };
-  }, [checkout.mode, checkout.environment, checkout.applicationId, checkout.locationId, checkout.currency, amountCents, cardContainerId]);
+  }, [checkout.mode, checkout.environment, checkout.applicationId, checkout.locationId, checkout.currency, amountCents, cardContainerId, googlePayContainerId, isPaymentLink]);
 
   const submitPayment = async (paymentMethod = card, methodLabel = 'card') => {
     if (busy) return;
@@ -773,7 +827,7 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
   return (
     <div className="modal-bg" onClick={onCancel}>
       <div className="modal payment-modal" onClick={e => e.stopPropagation()}>
-        <button className="x" onClick={onCancel}>Close</button>
+        <button className="x" type="button" onClick={onCancel}>Close</button>
         <div className="payment-brand-row">
           <SquareMark />
           <span>Encrypted payment</span>
@@ -784,22 +838,75 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
           <span>{session.bookingCode}</span>
           <strong>{amount}</strong>
         </div>
-        {applePay && (
-          <button
-            className="apple-pay-button"
-            type="button"
-            aria-label={`Pay ${amount} with Apple Pay`}
-            onClick={() => submitPayment(applePay, 'Apple Pay')}
-            disabled={busy}
-          />
+        {isPaymentLink ? (
+          <>
+            <button className="cta payment-submit" type="button" onClick={() => { window.location.href = checkoutUrl; }}>
+              Open secure Square checkout
+            </button>
+            <div className="reserve-note">Square checkout may show card, Apple Pay, or Google Pay depending on your device, browser, and Square settings.</div>
+          </>
+        ) : (
+          <>
+            {applePay && (
+              <button
+                className="apple-pay-button"
+                type="button"
+                aria-label={`Pay ${amount} with Apple Pay`}
+                onClick={() => submitPayment(applePay, 'Apple Pay')}
+                disabled={busy}
+              />
+            )}
+            <div
+              id={googlePayContainerId}
+              className={`google-pay-host${googlePay ? '' : ' hidden'}`}
+              onClick={() => googlePay && submitPayment(googlePay, 'Google Pay')}
+            />
+            {(applePay || googlePay) && <div className="payment-divider"><span>or pay with card</span></div>}
+            <div id={cardContainerId} className="square-card-host" />
+            {status && <div className="reserve-note" aria-live="polite">{status}</div>}
+            {error && <div className="reserve-note" aria-live="polite" style={{ color: 'var(--oxide)' }}>{error}</div>}
+            <button className="cta payment-submit" type="button" onClick={() => submitPayment(card, 'Card')} disabled={busy || !card}>
+              {busy ? 'Processing payment...' : `Pay ${amount}`}
+            </button>
+          </>
         )}
-        {applePay && <div className="payment-divider"><span>or pay with card</span></div>}
-        <div id={cardContainerId} className="square-card-host" />
-        {status && <div className="reserve-note">{status}</div>}
-        {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
-        <button className="cta payment-submit" onClick={() => submitPayment(card, 'Card')} disabled={busy || !card}>
-          {busy ? 'Processing payment...' : `Pay ${amount}`}
-        </button>
+      </div>
+    </div>
+  );
+};
+
+const BookingAgreementPanel = ({
+  waiverAccepted,
+  quietHoursAccepted,
+  setWaiverAccepted,
+  setQuietHoursAccepted,
+}) => {
+  return (
+    <div className="agreement-panel">
+      <div className="agreement-topline">
+        <span>Required</span>
+        <strong>Before payment</strong>
+      </div>
+      <h3>Campground <em>agreement.</em></h3>
+      <p>Read the rules and release, then check both boxes to continue. Every guest in your party is expected to follow these policies.</p>
+      <div className="agreement-scroll" tabIndex="0">
+        <ol>
+          {RV_RULES.map(rule => <li key={rule}>{rule}</li>)}
+        </ol>
+        <div className="waiver-copy">
+          <strong>Waiver and release</strong>
+          <p>{RV_WAIVER_TEXT}</p>
+        </div>
+      </div>
+      <div className="agreement-checks">
+        <label className="booking-check">
+          <input type="checkbox" checked={waiverAccepted} onChange={event => setWaiverAccepted(event.target.checked)} />
+          <span>I have read and agree to the RV park rules and liability waiver.</span>
+        </label>
+        <label className="booking-check">
+          <input type="checkbox" checked={quietHoursAccepted} onChange={event => setQuietHoursAccepted(event.target.checked)} />
+          <span>I agree to quiet hours from 10:00 PM to 8:00 AM.</span>
+        </label>
       </div>
     </div>
   );
@@ -819,6 +926,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   const [vehicles, setVehicles] = useState(1);
   const [guest, setGuest] = useState({ name: '', phone: '', email: '' });
   const [waiverAccepted, setWaiverAccepted] = useState(false);
+  const [quietHoursAccepted, setQuietHoursAccepted] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(true);
   const [driverLicenseFile, setDriverLicenseFile] = useState(null);
   const [licenseStatus, setLicenseStatus] = useState('');
@@ -846,8 +954,9 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   const totalCents = (rateCents * nights) + extraVehicleFeeCents;
   const datesReady = Boolean(arr && dep && new Date(dep) > new Date(arr));
   const siteReady = Boolean(selSites.length > 0 && selSites.every(site => !site.taken) && datesReady);
-  const guestReady = Boolean(guest.name.trim() && guest.phone.trim() && guest.email.trim() && waiverAccepted && driverLicenseFile);
-  const ready = siteReady && guestReady;
+  const guestFieldsReady = Boolean(guest.name.trim() && guest.phone.trim() && guest.email.trim() && driverLicenseFile);
+  const agreementReady = Boolean(waiverAccepted && quietHoursAccepted);
+  const ready = siteReady && guestFieldsReady && agreementReady;
   const siteKindLabel = selSite?.type === 'tent'
     ? 'walk-in tent area'
     : selSite?.type === 'pull'
@@ -901,16 +1010,13 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
           waiverAccepted,
           marketingConsent,
           reminderConsent: true,
+          quietHoursAccepted,
         },
       });
       if (driverLicenseFile && onDriverLicenseUpload) {
         setLicenseStatus('Uploading driver license...');
         await onDriverLicenseUpload(checkout.bookingCode, driverLicenseFile);
         setLicenseStatus('Driver license uploaded.');
-      }
-      if (checkout.checkout?.checkoutUrl) {
-        window.location.href = checkout.checkout.checkoutUrl;
-        return;
       }
       setPaymentSession({ ...checkout, site: selSite, sites: selSites, guest, arr, dep, nights, rig, heads });
     } catch (err) {
@@ -947,13 +1053,14 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
             {[
               ['site', 'Site'],
               ['guest', 'Guest'],
+              ['agreement', 'Rules'],
               ['review', 'Pay'],
             ].map(([key, label]) => (
               <button
                 key={key}
                 type="button"
                 data-active={step === key ? 'true' : 'false'}
-                disabled={(key === 'guest' && !siteReady) || (key === 'review' && !ready)}
+                disabled={(key === 'guest' && !siteReady) || (key === 'agreement' && !guestFieldsReady) || (key === 'review' && !ready)}
                 onClick={() => setStep(key)}
               >
                 {label}
@@ -1038,10 +1145,6 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
                 <input type="email" value={guest.email} onChange={e => updateGuest('email', e.target.value)} placeholder="you@example.com" />
               </div>
               <label className="booking-check">
-                <input type="checkbox" checked={waiverAccepted} onChange={e => setWaiverAccepted(e.target.checked)} />
-                <span>I agree to the campground waiver and understand Midway may verify my driver license at check-in.</span>
-              </label>
-              <label className="booking-check">
                 <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)} />
                 <span>Keep my phone and email for reservation reminders, check-in/check-out messages, and occasional Midway updates.</span>
               </label>
@@ -1056,21 +1159,38 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
               </div>
               <div className="form-actions">
                 <button type="button" className="ghost-cta" onClick={() => setStep('site')}>Back</button>
-                <button className="cta" type="button" onClick={() => setStep('review')} disabled={!guestReady}>Review and pay →</button>
+                <button className="cta" type="button" onClick={() => setStep('agreement')} disabled={!guestFieldsReady}>Review campground rules →</button>
               </div>
               {licenseStatus && <div className="reserve-note">{licenseStatus}</div>}
             </>
           )}
 
+          {step === 'agreement' && (
+            <>
+              <div className="kicker">Step 3  /  Rules and waiver</div>
+              <BookingAgreementPanel
+                waiverAccepted={waiverAccepted}
+                quietHoursAccepted={quietHoursAccepted}
+                setWaiverAccepted={setWaiverAccepted}
+                setQuietHoursAccepted={setQuietHoursAccepted}
+              />
+              <div className="form-actions">
+                <button type="button" className="ghost-cta" onClick={() => setStep('guest')}>Back</button>
+                <button className="cta" type="button" onClick={() => setStep('review')} disabled={!agreementReady}>Continue to payment →</button>
+              </div>
+            </>
+          )}
+
           {step === 'review' && (
             <>
-              <div className="kicker">Step 3  /  Secure payment</div>
+              <div className="kicker">Step 4  /  Secure payment</div>
               <h3>Review, <em>then pay.</em></h3>
               <div className="review-card">
                 <div><span>Sites</span><strong>{selSites.map(site => site.type === 'tent' ? site.siteNumber : `No. ${String(site.siteNumber).padStart(2,'0')}`).join(', ')}</strong></div>
                 <div><span>Dates</span><strong>{arr} to {dep}</strong></div>
                 <div><span>Setup</span><strong>{rig} · {heads} guests · {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'}</strong></div>
                 <div><span>Guest</span><strong>{guest.name || 'Name required'}</strong></div>
+                <div><span>Rules</span><strong>Waiver and quiet hours accepted</strong></div>
               </div>
               {selSites.map(site => (
                 <div className="pick" style={{ marginTop: 12 }} key={site.id}>
@@ -1088,13 +1208,13 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
               </div>
 
               <div className="form-actions">
-                <button type="button" className="ghost-cta" onClick={() => setStep('guest')}>Back</button>
+                <button type="button" className="ghost-cta" onClick={() => setStep('agreement')}>Back</button>
                 <button className="cta" onClick={confirm} disabled={!ready || busy}>
                   {busy ? (licenseStatus.includes('Uploading') ? 'Uploading license...' : 'Preparing payment...') : `Pay and reserve ${selSites.length} site${selSites.length === 1 ? '' : 's'} →`}
                 </button>
               </div>
               {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
-              <div className="reserve-note">Square payment opens on this page. Your booking is confirmed after payment is complete.</div>
+              <div className="reserve-note">Square payment opens next. Your booking is confirmed after payment is complete.</div>
             </>
           )}
 
@@ -1208,7 +1328,7 @@ const Instagram = ({ settings = {} }) => {
     <section className="section reveal instagram-section" id="instagram">
       <div className="head">
         <h2>{section?.title || <>Fresh from <em>Midway.</em></>}</h2>
-        <p>{section?.copy || 'Store updates, seasonal road notes, new arrivals, and RV site moments shown as first-party content instead of a fragile social embed.'}</p>
+        <p>{section?.copy || 'Fresh store updates, seasonal notes, and a closer look at life around Midway.'}</p>
       </div>
       <div className="instagram-gallery" aria-label="Midway Instagram gallery">
         {posts.map((post, index) => (
@@ -1274,17 +1394,17 @@ function normalizeBootstrap(data = {}) {
 // ─── Find us ─────────────────────────────────────────────────────────────
 const Find = ({ phone = '', address = '', hours = [] }) => {
   const rows = normalizedHours(hours);
-  const mapSrc = address ? `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed` : '';
+  const mapSrc = address ? mapEmbedHref(address) : '';
   return (
-    <section className="section reveal" id="find" style={{ background: 'var(--paper)' }}>
+    <section className="section" id="find" style={{ background: 'var(--paper)' }}>
       <div className="head">
         <h2>Find <em>us.</em></h2>
         <p>Midway sits at 14193 Chiwawa Loop RD in Leavenworth, just outside Plain and close to the road into Lake Wenatchee.</p>
       </div>
       <div className="find">
         <div className="map">
-          {mapSrc && <iframe title="Map to Midway Gas & Grocery" src={mapSrc} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />}
-      </div>
+          <iframe title="Map to Midway Gas & Grocery" src={mapSrc} loading="eager" allowFullScreen referrerPolicy="no-referrer-when-downgrade" />
+        </div>
         <div className="hours">
           {rows.length > 0 && <div className="eyebrow" style={{ marginBottom: 16 }}>Hours</div>}
           {rows.map(row => (
