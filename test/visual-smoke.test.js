@@ -66,8 +66,9 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(styles, /\.square-card-host\s*\{[\s\S]*min-height:\s*96px;/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-links\s*\{\s*display:\s*none;/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.instagram-gallery\s*\{\s*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
-  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-actions\s*\{\s*display:\s*none;/);
-  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-brand-sub\s*\{[\s\S]*right:\s*var\(--pad\);/);
+  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-actions\s*\{\s*display:\s*flex;\s*gap:\s*8px;/);
+  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-action\s*\{\s*display:\s*none;/);
+  assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-brand-sub\s*\{\s*display:\s*none;/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.hero-actions\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*1fr;/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.instagram-gallery,[\s\S]*\.book-form \.row2/);
 });
@@ -83,6 +84,7 @@ test('admin page keeps login shell, session flow, and mobile guardrails', async 
   assert.match(adminHtml, /<form\s+id="loginForm"/);
   assert.match(adminHtml, /type="email"\s+id="loginEmail"/);
   assert.match(adminHtml, /type="password"\s+id="loginPassword"/);
+  assert.match(adminHtml, /id="loginStatus"/);
   assert.match(adminHtml, /id="adminDashboard"\s+hidden/);
   assert.match(adminHtml, /id="settingsPanel"/);
   assert.match(adminHtml, /id="businessSettingsForm"/);
@@ -99,6 +101,9 @@ test('admin page keeps login shell, session flow, and mobile guardrails', async 
   assert.match(adminJs, /document\.body\.dataset\.siteStatus/);
   assert.match(adminJs, /\/api\/admin\/settings/);
   assert.match(adminJs, /\/api\/admin\/providers/);
+  assert.match(adminJs, /\/api\/admin\/providers\/square\/oauth\/start/);
+  assert.match(adminJs, /\/api\/admin\/providers\/square\/oauth\/callback/);
+  assert.match(adminJs, /data-provider-action="square-oauth"/);
   assert.match(adminJs, /method:\s*'PATCH'/);
   assert.match(adminJs, /document\.body\.dataset\.tenantConfig/);
   assert.match(adminJs, /document\.body\.dataset\.dynamicSections/);

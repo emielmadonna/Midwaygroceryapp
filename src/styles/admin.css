@@ -76,6 +76,17 @@ select {
   font-size: 13px;
 }
 
+.admin-login__status {
+  margin: 12px 0 0;
+  border: 1px solid rgba(159, 61, 50, .25);
+  border-radius: 6px;
+  background: rgba(159, 61, 50, .08);
+  color: var(--admin-red);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .admin-login input,
 .admin-form input,
 .admin-form select,
@@ -434,6 +445,12 @@ select {
   margin: 12px 0 0;
   color: var(--admin-red);
   font-size: 13px;
+}
+
+.provider-status-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 .admin-list {

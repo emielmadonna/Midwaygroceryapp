@@ -1,4 +1,5 @@
 const tokenKey = 'midway_admin_session';
+const pendingProviderKey = 'midway_pending_provider_connection';
 const state = {
   token: sessionStorage.getItem(tokenKey) || '',
   user: null,
@@ -21,6 +22,7 @@ const els = {
   loginForm: document.getElementById('loginForm'),
   loginEmail: document.getElementById('loginEmail'),
   loginPassword: document.getElementById('loginPassword'),
+  loginStatus: document.getElementById('loginStatus'),
   logoutBtn: document.getElementById('logoutBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
   userRole: document.getElementById('userRole'),
@@ -61,11 +63,18 @@ const els = {
 
 els.loginForm?.addEventListener('submit', async event => {
   event.preventDefault();
+  setLoginStatus('');
   const email = els.loginEmail.value.trim();
   const password = els.loginPassword.value;
   if (!email || !password) {
-    showToast('Enter your email and password.', 'error');
+    setLoginStatus('Enter your email and password.');
     return;
+  }
+
+  const submitButton = els.loginForm.querySelector('[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = 'Signing in...';
   }
 
   try {
@@ -79,7 +88,13 @@ els.loginForm?.addEventListener('submit', async event => {
     sessionStorage.setItem(tokenKey, session.token);
     await boot();
   } catch (error) {
+    setLoginStatus(loginErrorMessage(error));
     showToast(error.message, 'error');
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Sign In';
+    }
   }
 });
 
@@ -209,7 +224,12 @@ async function boot() {
   state.user = me.user;
   state.featureFlags = me.featureFlags || {};
   showDashboard();
-  await loadAdminData();
+  await completePendingProviderCallback();
+  try {
+    await loadAdminData();
+  } catch (error) {
+    showToast(`Signed in, but dashboard data could not load: ${error.message}`, 'error');
+  }
 }
 
 async function loadAdminData() {
@@ -304,6 +324,60 @@ async function updateSettings(body) {
   });
   showToast('Site settings updated.', 'success');
   await loadAdminData();
+}
+
+async function startSquareConnection() {
+  const redirectUri = squareRedirectUri();
+  try {
+    const data = await api('/api/admin/providers/square/oauth/start', {
+      method: 'POST',
+      body: { redirectUri },
+    });
+    if (data.authorizationUrl) {
+      sessionStorage.setItem(pendingProviderKey, JSON.stringify({
+        provider: 'square',
+        state: data.state || '',
+        redirectUri,
+      }));
+      window.location.assign(data.authorizationUrl);
+      return;
+    }
+
+    showToast(providerPlaceholderMessage(data), 'error');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function completePendingProviderCallback() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('provider') !== 'square') return;
+  if (!params.has('code') && !params.has('error')) return;
+
+  const pending = readPendingProviderConnection();
+  const redirectUri = pending?.redirectUri || squareRedirectUri();
+
+  try {
+    const data = await api('/api/admin/providers/square/oauth/callback', {
+      method: 'POST',
+      body: {
+        code: params.get('code') || '',
+        state: params.get('state') || pending?.state || '',
+        error: params.get('error') || '',
+        errorDescription: params.get('error_description') || '',
+        redirectUri,
+      },
+    });
+    sessionStorage.removeItem(pendingProviderKey);
+    clearProviderCallbackQuery();
+    showToast(data.mode === 'placeholder'
+      ? providerPlaceholderMessage(data)
+      : 'Square is connected.', data.mode === 'placeholder' ? 'error' : 'success');
+  } catch (error) {
+    clearProviderCallbackQuery();
+    showToast(`Square connection failed: ${error.message}`, 'error');
+  }
 }
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
@@ -548,10 +622,15 @@ function renderProviderStatuses() {
   els.providerStatusGrid.innerHTML = providers.length
     ? providers.map(renderProviderStatus).join('')
     : '<p class="empty">No provider adapters configured.</p>';
+
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="square-oauth"]').forEach(button => {
+    button.addEventListener('click', startSquareConnection);
+  });
 }
 
 function renderProviderStatus(provider) {
   const details = providerDetails(provider);
+  const action = providerAction(provider);
   return `
     <article class="provider-status-card">
       <div class="provider-status-card__header">
@@ -570,6 +649,7 @@ function renderProviderStatus(provider) {
         `).join('') : '<div><dt>Status</dt><dd>No public connection details</dd></div>'}
       </dl>
       ${provider.errorMessage ? `<p class="provider-status-card__error">${escapeHtml(provider.errorMessage)}</p>` : ''}
+      ${action}
     </article>
   `;
 }
@@ -1110,6 +1190,63 @@ function providerDetails(provider = {}) {
     .map(([key, value]) => [labels[key] || titleize(key), value]);
   if (provider.lastSyncAt) entries.push(['Last sync', provider.lastSyncAt]);
   return entries;
+}
+
+function providerAction(provider = {}) {
+  if (state.user?.role !== 'owner') return '';
+  if (provider.providerKey !== 'square') return '';
+
+  const connected = provider.status === 'connected';
+  const label = connected ? 'Reconnect Square' : 'Connect Square';
+  return `
+    <div class="provider-status-card__actions">
+      <button class="admin-button" type="button" data-provider-action="square-oauth">${escapeHtml(label)}</button>
+    </div>
+  `;
+}
+
+function squareRedirectUri() {
+  const url = new URL(window.location.href);
+  url.pathname = '/admin.html';
+  url.search = '?provider=square';
+  url.hash = '';
+  return url.toString();
+}
+
+function readPendingProviderConnection() {
+  try {
+    return JSON.parse(sessionStorage.getItem(pendingProviderKey) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function clearProviderCallbackQuery() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('provider');
+  url.searchParams.delete('code');
+  url.searchParams.delete('state');
+  url.searchParams.delete('error');
+  url.searchParams.delete('error_description');
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
+function providerPlaceholderMessage(data = {}) {
+  const missing = (data.missing ?? []).length ? ` Missing: ${data.missing.join(', ')}.` : '';
+  return `Square OAuth is not configured yet.${missing}`;
+}
+
+function setLoginStatus(message) {
+  if (!els.loginStatus) return;
+  els.loginStatus.textContent = message;
+  els.loginStatus.hidden = !message;
+}
+
+function loginErrorMessage(error) {
+  if (/Request failed with 404|Failed to fetch|Unexpected token/i.test(error.message)) {
+    return 'The admin API is not responding. Start the API server or open the admin page from the full Midway server.';
+  }
+  return error.message;
 }
 
 function formatProviderStatus(status) {
