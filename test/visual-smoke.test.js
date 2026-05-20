@@ -54,6 +54,14 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(appJsx, /https:\/\/sandbox\.web\.squarecdn\.com\/v1\/square\.js/);
   assert.match(appJsx, /const SquarePaymentForm = \(\{ session, onPay, onSuccess, onCancel \}\) =>/);
   assert.match(appJsx, /\/bookings\/pay/);
+  assert.match(appJsx, /applePay\(paymentRequest\)/);
+  assert.match(appJsx, /buildSquarePaymentRequest/);
+  assert.match(appJsx, /buildSquareVerificationDetails/);
+  assert.match(appJsx, /createPaymentIdempotencyKey/);
+  assert.doesNotMatch(appJsx, /payment-\$\{session\.bookingCode\}-\$\{methodLabel/);
+  assert.match(appJsx, /onWheel=\{onWheel\}/);
+  assert.match(appJsx, /onPointerDown=\{onPointerDown\}/);
+  assert.doesNotMatch(appJsx, /className="map-zoom"/);
   assert.doesNotMatch(appJsx, /synthetic-card-token|DEFAULT_SITES|RESERVATION_KEY/);
 
   await assertAssetExists('src/midway.jsx');
@@ -64,6 +72,8 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(styles, /\.instagram-gallery\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(styles, /\.instagram-card\s*\{[\s\S]*grid-template-rows:\s*auto 1fr;/);
   assert.match(styles, /\.square-card-host\s*\{[\s\S]*min-height:\s*96px;/);
+  assert.match(styles, /\.apple-pay-button\s*\{[\s\S]*-webkit-named-image\(apple-pay-logo-white\)/);
+  assert.doesNotMatch(styles, /\.map-zoom\s*\{/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-links\s*\{\s*display:\s*none;/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.instagram-gallery\s*\{\s*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(styles, /@media\s*\(max-width:\s*920px\)\s*\{[\s\S]*\.nav-actions\s*\{\s*display:\s*flex;\s*gap:\s*8px;/);

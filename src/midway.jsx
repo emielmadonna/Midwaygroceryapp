@@ -1,6 +1,12 @@
 /* global Square */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import {
+  buildSquarePaymentRequest,
+  buildSquareVerificationDetails,
+  checkoutAmountCents,
+  createPaymentIdempotencyKey,
+} from './lib/public-checkout.js';
 import { bookableMapSites as STATIC_RV_SITES, denormalizeMapSite } from './lib/rv-map-data.js';
 
 // ─── Data ───────────────────────────────────────────────────────────────────
@@ -96,7 +102,6 @@ const emptyBootstrap = {
 
 const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(0)}`;
 const moneyExact = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
-const squareAmount = (cents) => (Number(cents || 0) / 100).toFixed(2);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const telHref = (phone = '') => `tel:${String(phone).replace(/[^\d+]/g, '')}`;
 const directionsHref = (address = '') => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
@@ -393,12 +398,124 @@ function iconForProduct(product) {
 // ─── Site plan SVG ───────────────────────────────────────────────────────
 const SitePlan = ({ sel, setSel, sites }) => {
   const stageRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const gestureRef = useRef(null);
+  const draggedRef = useRef(false);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const selectedIds = Array.isArray(sel) ? sel : (sel ? [sel] : []);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds.join('|')]);
 
-  const mapTransform = `translate(${(1 - zoom) * 600} ${(1 - zoom) * 400}) scale(${zoom})`;
-  const zoomMap = (delta) => setZoom(current => clamp(Number((current + delta).toFixed(2)), 1, 1.55));
+  const mapTransform = `translate(${pan.x} ${pan.y}) scale(${zoom})`;
+  const clampPan = (candidate, nextZoom = zoom) => {
+    const maxX = 0;
+    const maxY = 0;
+    const minX = -1200 * (nextZoom - 1);
+    const minY = -800 * (nextZoom - 1);
+    return {
+      x: clamp(candidate.x, minX, maxX),
+      y: clamp(candidate.y, minY, maxY),
+    };
+  };
+  const pointInViewBox = (clientX, clientY) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 600, y: 400 };
+    return {
+      x: ((clientX - rect.left) / rect.width) * 1200,
+      y: ((clientY - rect.top) / rect.height) * 800,
+    };
+  };
+  const zoomAt = (clientX, clientY, nextZoom) => {
+    const targetZoom = clamp(Number(nextZoom.toFixed(3)), 1, 2.25);
+    const focal = pointInViewBox(clientX, clientY);
+    const ratio = targetZoom / zoom;
+    setPan(current => clampPan({
+      x: focal.x - (focal.x - current.x) * ratio,
+      y: focal.y - (focal.y - current.y) * ratio,
+    }, targetZoom));
+    setZoom(targetZoom);
+  };
+  const pointerDistance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const pointerCenter = (a, b) => ({
+    clientX: (a.clientX + b.clientX) / 2,
+    clientY: (a.clientY + b.clientY) / 2,
+  });
+  const onWheel = (event) => {
+    event.preventDefault();
+    zoomAt(event.clientX, event.clientY, zoom - (event.deltaY * 0.0012));
+  };
+  const onPointerDown = (event) => {
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    pointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    const pointers = Array.from(pointersRef.current.values());
+    if (pointers.length >= 2) {
+      const [first, second] = pointers;
+      const center = pointerCenter(first, second);
+      gestureRef.current = {
+        mode: 'pinch',
+        startDistance: pointerDistance(first, second),
+        startZoom: zoom,
+        startPan: pan,
+        startCenter: pointInViewBox(center.clientX, center.clientY),
+      };
+    } else {
+      gestureRef.current = {
+        mode: 'pan',
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPan: pan,
+      };
+    }
+  };
+  const onPointerMove = (event) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    const gesture = gestureRef.current;
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!gesture || !rect) return;
+    const pointers = Array.from(pointersRef.current.values());
+    draggedRef.current = true;
+    if (gesture.mode === 'pinch' && pointers.length >= 2) {
+      const [first, second] = pointers;
+      const nextZoom = clamp(gesture.startZoom * (pointerDistance(first, second) / gesture.startDistance), 1, 2.25);
+      const ratio = nextZoom / gesture.startZoom;
+      setZoom(nextZoom);
+      setPan(clampPan({
+        x: gesture.startCenter.x - (gesture.startCenter.x - gesture.startPan.x) * ratio,
+        y: gesture.startCenter.y - (gesture.startCenter.y - gesture.startPan.y) * ratio,
+      }, nextZoom));
+      return;
+    }
+    if (gesture.mode === 'pan' && pointers.length === 1) {
+      const dx = ((event.clientX - gesture.startClientX) / rect.width) * 1200;
+      const dy = ((event.clientY - gesture.startClientY) / rect.height) * 800;
+      setPan(clampPan({
+        x: gesture.startPan.x + dx,
+        y: gesture.startPan.y + dy,
+      }));
+    }
+  };
+  const onPointerUp = (event) => {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size === 1) {
+      const [remaining] = Array.from(pointersRef.current.values());
+      gestureRef.current = {
+        mode: 'pan',
+        startClientX: remaining.clientX,
+        startClientY: remaining.clientY,
+        startPan: pan,
+      };
+    } else if (pointersRef.current.size === 0) {
+      gestureRef.current = null;
+    }
+    window.setTimeout(() => { draggedRef.current = false; }, 0);
+  };
   const toggleSite = (siteId) => {
     setSel(current => {
       const currentIds = Array.isArray(current) ? current : (current ? [current] : []);
@@ -414,7 +531,14 @@ const SitePlan = ({ sel, setSel, sites }) => {
   );
 
   return (
-    <div className="siteplan">
+    <div
+      className="siteplan"
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
       <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
         <defs>
           <pattern id="forest" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
@@ -482,7 +606,11 @@ const SitePlan = ({ sel, setSel, sites }) => {
             <g key={s.id}
                className={`pad${s.taken ? ' taken' : ''}${isSel ? ' sel pulse' : ''}`}
                transform={`translate(${s.x} ${s.y}) rotate(${s.rot})`}
-               onClick={e => { e.stopPropagation(); !s.taken && toggleSite(s.id); }}>
+               onClick={e => {
+                 e.stopPropagation();
+                 if (draggedRef.current) return;
+                 !s.taken && toggleSite(s.id);
+               }}>
               <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
                     fill={s.type === 'tent' ? '#C5C3A2' : s.amp === '50A' ? '#F5F0E1' : '#EDE7D7'}
                     stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
@@ -506,11 +634,6 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <div className="l"><i className="t" /> Taken</div>
         <div className="l"><i className="s" /> Your picks</div>
       </div>
-      <div className="map-zoom" aria-label="Map zoom controls">
-        <button type="button" onClick={() => zoomMap(-0.15)} disabled={zoom <= 1.01} aria-label="Zoom map out">-</button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button type="button" onClick={() => zoomMap(0.15)} disabled={zoom >= 1.54} aria-label="Zoom map in">+</button>
-      </div>
     </div>
   );
 };
@@ -525,8 +648,8 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const checkout = session.checkout || {};
-  const amount = money(checkout.amountCents || session.hold?.quote?.totalCents || 0);
-  const amountCents = checkout.amountCents || session.hold?.quote?.totalCents || 0;
+  const amountCents = checkoutAmountCents({ checkout, session });
+  const amount = money(amountCents);
 
   useEffect(() => {
     let disposed = false;
@@ -543,14 +666,9 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
         mountedCard = await paymentClient.card();
         await mountedCard.attach(`#${cardContainerId}`);
         try {
-          const paymentRequest = paymentClient.paymentRequest({
-            countryCode: 'US',
-            currencyCode: checkout.currency || 'USD',
-            total: {
-              amount: squareAmount(amountCents),
-              label: 'Midway reservation',
-            },
-          });
+          const paymentRequest = paymentClient.paymentRequest(
+            buildSquarePaymentRequest({ checkout, amountCents }),
+          );
           mountedApplePay = await paymentClient.applePay(paymentRequest);
         } catch (walletError) {
           mountedApplePay = null;
@@ -592,17 +710,10 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
       sourceId = result.token;
 
       if (payments?.verifyBuyer) {
-        const verification = await payments.verifyBuyer(sourceId, {
-          amount: ((checkout.amountCents || 0) / 100).toFixed(2),
-          billingContact: {
-            email: session.guest?.email || undefined,
-            phone: session.guest?.phone || undefined,
-            givenName: firstName(session.guest?.name),
-            familyName: lastName(session.guest?.name),
-          },
-          currencyCode: checkout.currency || 'USD',
-          intent: 'CHARGE',
-        });
+        const verification = await payments.verifyBuyer(
+          sourceId,
+          buildSquareVerificationDetails({ checkout, session, amountCents }),
+        );
         verificationToken = verification?.token || null;
       }
 
@@ -610,7 +721,7 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
         bookingCode: session.bookingCode,
         sourceId,
         verificationToken,
-        idempotencyKey: `payment-${session.bookingCode}-${methodLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        idempotencyKey: createPaymentIdempotencyKey(session.bookingCode, methodLabel),
       });
       onSuccess(paid);
     } catch (err) {
@@ -655,11 +766,6 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
   );
 };
 
-const firstName = (name = '') => String(name).trim().split(/\s+/)[0] || undefined;
-const lastName = (name = '') => {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? parts.slice(1).join(' ') : undefined;
-};
 const formatSiteList = (sites = []) => sites
   .filter(Boolean)
   .map(site => site.type === 'tent' ? site.siteNumber : `Site No. ${String(site.siteNumber || site.id || '').padStart(2,'0')}`)

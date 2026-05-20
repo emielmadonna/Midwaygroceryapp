@@ -848,10 +848,13 @@ body.density-compact .section .head { margin-bottom: 40px; }
   position: relative; aspect-ratio: 3 / 2;
   background: linear-gradient(180deg, #E9E3CF 0%, #DCD4B8 100%);
   border: 1px solid var(--ink); border-radius: 14px; overflow: hidden;
-  touch-action: pan-y pinch-zoom;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
 }
+.siteplan:active { cursor: grabbing; }
 .siteplan .stage { width: 100%; height: 100%; }
-.siteplan .map-world { transition: transform 1.1s cubic-bezier(.65,.05,.2,1); transform-origin: 0 0; }
+.siteplan .map-world { transform-origin: 0 0; }
 .siteplan .pulse { animation: padPulse 1.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
 @keyframes padPulse { 0%, 100% { filter: drop-shadow(0 0 0 rgba(176,52,30,0)); } 50% { filter: drop-shadow(0 0 12px rgba(176,52,30,0.8)); } }
 .siteplan .rover {
@@ -884,42 +887,6 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .siteplan .legend i.t { background-image: repeating-linear-gradient(45deg, transparent 0 2px, var(--rule-2) 2px 3px); background-color: var(--bone-2); }
 .siteplan .legend i.s { background: var(--oxide); border-color: var(--oxide); }
 .siteplan .legend i.open { background: var(--paper); }
-.map-zoom {
-  position: absolute;
-  right: 16px;
-  top: 16px;
-  display: inline-grid;
-  grid-template-columns: 34px auto 34px;
-  align-items: center;
-  gap: 7px;
-  padding: 8px;
-  background: rgba(245,240,225,0.92);
-  border: 1px solid var(--rule-2);
-  border-radius: 999px;
-  backdrop-filter: blur(8px);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: .12em;
-  color: var(--ink-2);
-}
-.map-zoom button {
-  width: 34px;
-  height: 30px;
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
-  font: 700 18px/1 var(--mono);
-}
-.map-zoom button:disabled {
-  opacity: .35;
-  cursor: not-allowed;
-}
-.map-zoom span {
-  min-width: 38px;
-  text-align: center;
-}
-
 /* Selected site detail card (replaces "Pick a site" header when a site is chosen) */
 .site-detail { padding: 18px 20px; background: var(--bone); border: 1px solid var(--ink); border-radius: 10px; margin-bottom: 20px; }
 .site-detail .row1 { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
@@ -1322,16 +1289,6 @@ body.density-compact .section .head { margin-bottom: 40px; }
     gap: 4px;
     font-size: 8px;
     letter-spacing: .12em;
-  }
-  .map-zoom {
-    right: 10px;
-    top: 10px;
-    grid-template-columns: 30px auto 30px;
-    padding: 6px;
-  }
-  .map-zoom button {
-    width: 30px;
-    height: 28px;
   }
   .book-form {
     padding: 20px 16px 18px;

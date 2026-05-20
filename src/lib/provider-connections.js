@@ -297,11 +297,15 @@ export function createProviderConnectionService({
       }
 
       const oauthState = crypto.randomBytes(24).toString('base64url');
+      const redirectUri = preferredOAuthRedirectUri({
+        inputRedirectUri: input.redirectUri,
+        platformRedirectUri: platformConfig.redirectUri,
+      });
       const authorizationUrl = buildInstagramAuthorizationUrl({
         platformConfig,
         scopes,
         state: oauthState,
-        redirectUri: input.redirectUri,
+        redirectUri,
       });
       const connection = await upsertConnection({
         store,
@@ -324,7 +328,7 @@ export function createProviderConnectionService({
               configured: true,
               state: oauthState,
               requestedScopes: scopes,
-              redirectUri: input.redirectUri || platformConfig.redirectUri || '',
+              redirectUri,
               startedAt: now().toISOString(),
             },
           },
@@ -339,6 +343,7 @@ export function createProviderConnectionService({
         mode: 'oauth',
         authorizationUrl,
         state: oauthState,
+        redirectUri,
         connection: toProviderStatus(connection, getProviderDefinition('instagram')),
       };
     },
@@ -420,9 +425,14 @@ export function createProviderConnectionService({
         };
       }
 
+      const redirectUri = preferredOAuthRedirectUri({
+        inputRedirectUri: input.redirectUri,
+        platformRedirectUri: platformConfig.redirectUri,
+        pendingRedirectUri: existing?.publicConfig?.oauth?.redirectUri,
+      });
       const shortLived = await exchangeInstagramOAuthCode({
         code: input.code,
-        redirectUri: input.redirectUri || platformConfig.redirectUri,
+        redirectUri,
         clientId: platformConfig.applicationId,
         clientSecret: platformConfig.clientSecret,
         fetchImpl,
@@ -1099,6 +1109,10 @@ function buildInstagramAuthorizationUrl({ platformConfig, scopes, state, redirec
   url.searchParams.set('scope', scopes.join(','));
   url.searchParams.set('state', state);
   return url.toString();
+}
+
+function preferredOAuthRedirectUri({ inputRedirectUri, platformRedirectUri, pendingRedirectUri } = {}) {
+  return pendingRedirectUri || platformRedirectUri || inputRedirectUri || '';
 }
 
 async function exchangeSquareOAuthCode({ code, redirectUri, platformConfig, fetchImpl }) {

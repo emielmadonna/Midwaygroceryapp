@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import express from 'express';
 
 import { createAdminAuthService, requireAdminRole } from '../lib/admin-auth.js';
@@ -244,7 +245,7 @@ export function createApiRouter({
         booking,
         sourceId: req.body.sourceId,
         verificationToken: req.body.verificationToken,
-        idempotencyKey: req.body.idempotencyKey || `payment-${booking.bookingCode}`,
+        idempotencyKey: req.body.idempotencyKey || paymentAttemptIdempotencyKey(booking.bookingCode, req.body.sourceId),
         env: await squareProviderConfig(),
         fetchImpl,
       });
@@ -1008,6 +1009,21 @@ function checkoutSurface(config = {}) {
   const surface = readConfig(config, 'checkoutSurface');
   if (surface) return surface;
   return 'web-payments';
+}
+
+function paymentAttemptIdempotencyKey(bookingCode, sourceId) {
+  const booking = String(bookingCode || 'booking')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'booking';
+  const source = sourceId || crypto.randomUUID();
+  const digest = crypto
+    .createHash('sha256')
+    .update(String(source))
+    .digest('hex')
+    .slice(0, 18);
+  return `payment-${booking}-${digest}`.slice(0, 192);
 }
 
 function isPaymentComplete(status) {

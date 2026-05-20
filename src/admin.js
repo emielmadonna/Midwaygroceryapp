@@ -426,7 +426,7 @@ async function startInstagramConnection(event) {
       sessionStorage.setItem(pendingProviderKey, JSON.stringify({
         provider: 'instagram',
         state: data.state || '',
-        redirectUri,
+        redirectUri: data.redirectUri || redirectUri,
       }));
       window.location.assign(data.authorizationUrl);
       return;
@@ -1467,20 +1467,29 @@ function clearProviderCallbackQuery() {
 
 function providerPlaceholderMessage(data = {}) {
   const missing = (data.missing ?? [])
-    .map(squareMissingLabel)
+    .map(providerMissingLabel)
     .filter(Boolean);
+  const label = data.connection?.providerLabel || providerLabelFromMissing(data.missing) || 'Provider';
   return missing.length
-    ? `Square OAuth is not configured yet. Missing ${missing.join(', ')}.`
-    : 'Square OAuth is not configured yet.';
+    ? `${label} OAuth is not configured yet. Missing ${missing.join(', ')}.`
+    : `${label} OAuth is not configured yet.`;
 }
 
-function squareMissingLabel(value) {
+function providerMissingLabel(value) {
   const labels = {
     'platform_provider_configs.square.environment': 'Square environment',
     'platform_provider_configs.square.public_config.applicationId': 'Square application ID',
     'platform_provider_configs.square.encrypted_credentials.clientSecret': 'Square OAuth client secret',
+    'platform_provider_configs.instagram.public_config.applicationId': 'Instagram app ID',
+    'platform_provider_configs.instagram.encrypted_credentials.clientSecret': 'Instagram app secret',
   };
   return labels[value] || value;
+}
+
+function providerLabelFromMissing(missing = []) {
+  if (missing.some(value => String(value).includes('.instagram.'))) return 'Instagram';
+  if (missing.some(value => String(value).includes('.square.'))) return 'Square';
+  return '';
 }
 
 function setLoginStatus(message) {

@@ -150,6 +150,7 @@ test('employee can read dashboard but cannot create bookings', async () => {
 test('public web payment confirms a held booking through the payments endpoint', async () => {
   const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
   await store.upsertProviderConnection(squareProviderConnection());
+  let paymentRequest = null;
   const server = await createTestServer({
     store,
     fetchImpl: async (url, options) => {
@@ -166,6 +167,7 @@ test('public web payment confirms a held booking through the payments endpoint',
         };
       }
       assert.match(url, /\/v2\/payments$/);
+      paymentRequest = requestBody;
       return {
         ok: true,
         json: async () => ({
@@ -200,12 +202,220 @@ test('public web payment confirms a held booking through the payments endpoint',
       body: {
         bookingCode: checkout.body.data.bookingCode,
         sourceId: 'cnon:card-nonce-ok',
+        verificationToken: 'buyer-verification-token',
+        idempotencyKey: 'payment-attempt-123',
       },
     });
     assert.equal(paid.status, 200);
     assert.equal(paid.body.data.payment.mode, 'square');
     assert.equal(paid.body.data.booking.status, 'confirmed');
     assert.equal(paid.body.data.booking.squarePaymentId, 'payment-live-test');
+    assert.equal(paymentRequest.idempotency_key, 'payment-attempt-123');
+    assert.equal(paymentRequest.verification_token, 'buyer-verification-token');
+  } finally {
+    await server.close();
+  }
+});
+
+test('public checkout supports multiple sites, license upload, extra cars, and Square pay', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const squareRequests = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      const requestBody = JSON.parse(options.body);
+      squareRequests.push({ url: String(url), body: requestBody });
+      if (/\/v2\/orders$/.test(url)) {
+        return {
+          ok: true,
+          json: async () => ({
+            order: {
+              id: 'order-multi-site-test',
+              reference_id: requestBody.order.reference_id,
+            },
+          }),
+        };
+      }
+      assert.match(url, /\/v2\/payments$/);
+      return {
+        ok: true,
+        json: async () => ({
+          payment: {
+            id: 'payment-multi-site-test',
+            status: 'COMPLETED',
+            order_id: requestBody.order_id,
+            amount_money: requestBody.amount_money,
+          },
+        }),
+      };
+    },
+  });
+
+  try {
+    const checkout = await api(server, '/api/bookings/checkout', {
+      method: 'POST',
+      body: {
+        siteIds: ['rv-03', 'rv-11'],
+        startDate: '2026-07-13',
+        endDate: '2026-07-14',
+        guests: 2,
+        vehicles: 2,
+        customer: { name: 'Multi Guest', phone: '555-0195', email: 'multi@example.com' },
+      },
+    });
+    assert.equal(checkout.status, 200);
+    assert.equal(checkout.body.data.hold.quote.totalCents, 9500);
+    assert.equal(checkout.body.data.checkout.amountCents, 9500);
+    assert.deepEqual(checkout.body.data.hold.quote.siteIds, ['rv-03', 'rv-11']);
+
+    const uploaded = await api(server, `/api/bookings/${checkout.body.data.bookingCode}/driver-license`, {
+      method: 'POST',
+      body: {
+        fileName: 'license.png',
+        dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    });
+    assert.equal(uploaded.status, 200);
+    assert.equal(uploaded.body.data.document.contentType, 'image/png');
+    assert.equal(uploaded.body.data.document.bookingCode, checkout.body.data.bookingCode);
+
+    const paid = await api(server, '/api/bookings/pay', {
+      method: 'POST',
+      body: {
+        bookingCode: checkout.body.data.bookingCode,
+        sourceId: 'cnon:multi-site-card',
+        verificationToken: 'multi-site-buyer-token',
+        idempotencyKey: 'payment-multi-site-attempt',
+      },
+    });
+    assert.equal(paid.status, 200);
+    assert.equal(paid.body.data.booking.status, 'confirmed');
+    assert.deepEqual(paid.body.data.booking.rvSiteIds, ['rv-03', 'rv-11']);
+    assert.equal(paid.body.data.booking.totalCents, 9500);
+
+    const payment = squareRequests.find(request => request.url.endsWith('/v2/payments')).body;
+    assert.equal(payment.amount_money.amount, 9500);
+    assert.equal(payment.idempotency_key, 'payment-multi-site-attempt');
+    assert.equal(payment.verification_token, 'multi-site-buyer-token');
+  } finally {
+    await server.close();
+  }
+});
+
+test('public Square payment retries use a fresh fallback idempotency key for each card nonce', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const paymentBodies = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      const requestBody = JSON.parse(options.body);
+      if (/\/v2\/orders$/.test(url)) {
+        return {
+          ok: true,
+          json: async () => ({
+            order: {
+              id: `order-${paymentBodies.length}`,
+              reference_id: requestBody.order.reference_id,
+            },
+          }),
+        };
+      }
+      assert.match(url, /\/v2\/payments$/);
+      paymentBodies.push(requestBody);
+      return {
+        ok: true,
+        json: async () => ({
+          payment: {
+            id: `payment-failed-${paymentBodies.length}`,
+            status: 'FAILED',
+            order_id: requestBody.order_id,
+            amount_money: requestBody.amount_money,
+          },
+        }),
+      };
+    },
+  });
+
+  try {
+    const checkout = await api(server, '/api/bookings/checkout', {
+      method: 'POST',
+      body: {
+        siteId: 'rv-06',
+        startDate: '2026-08-01',
+        endDate: '2026-08-02',
+        guests: 2,
+        vehicles: 1,
+        customer: { name: 'Retry Guest', phone: '555-0196', email: 'retry@example.com' },
+      },
+    });
+    assert.equal(checkout.status, 200);
+
+    const first = await api(server, '/api/bookings/pay', {
+      method: 'POST',
+      body: {
+        bookingCode: checkout.body.data.bookingCode,
+        sourceId: 'cnon:first-card-token',
+      },
+    });
+    const second = await api(server, '/api/bookings/pay', {
+      method: 'POST',
+      body: {
+        bookingCode: checkout.body.data.bookingCode,
+        sourceId: 'cnon:second-card-token',
+      },
+    });
+
+    assert.equal(first.status, 402);
+    assert.equal(second.status, 402);
+    assert.equal(paymentBodies.length, 2);
+    assert.notEqual(paymentBodies[0].idempotency_key, paymentBodies[1].idempotency_key);
+  } finally {
+    await server.close();
+  }
+});
+
+test('canceling a checkout releases the held site back to availability', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const server = await createTestServer({ store });
+
+  try {
+    const checkout = await api(server, '/api/bookings/checkout', {
+      method: 'POST',
+      body: {
+        siteId: 'rv-07',
+        startDate: '2026-08-10',
+        endDate: '2026-08-11',
+        guests: 2,
+        vehicles: 1,
+        customerSessionId: 'browser-session-7',
+        customer: { name: 'Cancel Guest', phone: '555-0197', email: 'cancel@example.com' },
+      },
+    });
+    assert.equal(checkout.status, 200);
+
+    const held = await api(server, '/api/public/bootstrap?startDate=2026-08-10&endDate=2026-08-11');
+    assert.equal(held.status, 200);
+    assert.equal(held.body.data.rvAvailability.includes('rv-07'), false);
+
+    const released = await api(server, `/api/bookings/holds/${checkout.body.data.hold.id}/release`, {
+      method: 'POST',
+      body: {
+        customerSessionId: 'browser-session-7',
+      },
+    });
+    assert.equal(released.status, 200);
+    assert.equal(released.body.data.hold.status, 'released');
+
+    const available = await api(server, '/api/public/bootstrap?startDate=2026-08-10&endDate=2026-08-11');
+    assert.equal(available.status, 200);
+    assert.equal(available.body.data.rvAvailability.includes('rv-07'), true);
+
+    const booking = await api(server, `/api/bookings/${checkout.body.data.bookingCode}`);
+    assert.equal(booking.status, 200);
+    assert.equal(booking.body.data.status, 'expired');
   } finally {
     await server.close();
   }
@@ -488,6 +698,7 @@ test('Instagram OAuth callback stores long-lived API credentials', async () => {
         providerKey: 'instagram',
         publicConfig: {
           applicationId: 'instagram-app',
+          redirectUri: 'https://www.midwayplain.com/admin.html?provider=instagram',
           apiVersion: 'v24.0',
           apiBaseUrl: 'https://graph.instagram.com',
           feedLimit: 6,
@@ -532,7 +743,15 @@ test('Instagram OAuth callback stores long-lived API credentials', async () => {
     assert.equal(started.status, 200);
     assert.equal(started.body.data.mode, 'oauth');
     assert.match(started.body.data.authorizationUrl, /^https:\/\/www\.instagram\.com\/oauth\/authorize/);
-    assert.equal(started.body.data.authorizationUrl.includes('instagram_business_basic'), true);
+    assert.equal(started.body.data.redirectUri, 'https://www.midwayplain.com/admin.html?provider=instagram');
+    const authorization = new URL(started.body.data.authorizationUrl);
+    assert.equal(authorization.searchParams.get('client_id'), 'instagram-app');
+    assert.equal(authorization.searchParams.get('redirect_uri'), 'https://www.midwayplain.com/admin.html?provider=instagram');
+    assert.equal(authorization.searchParams.get('response_type'), 'code');
+    assert.equal(authorization.searchParams.get('scope'), 'instagram_business_basic');
+    assert.equal(authorization.searchParams.get('enable_fb_login'), '0');
+    assert.equal(authorization.searchParams.get('force_authentication'), '1');
+    assert.equal(authorization.searchParams.get('state'), started.body.data.state);
 
     const completed = await api(server, '/api/admin/providers/instagram/oauth/callback', {
       method: 'POST',
@@ -553,6 +772,7 @@ test('Instagram OAuth callback stores long-lived API credentials', async () => {
     assert.equal(tokenRequests.length, 2);
     assert.equal(tokenRequests[0].body.client_id, 'instagram-app');
     assert.equal(tokenRequests[0].body.client_secret, 'instagram-secret');
+    assert.equal(tokenRequests[0].body.redirect_uri, 'https://www.midwayplain.com/admin.html?provider=instagram');
     assert.equal(String(tokenRequests[1].url).startsWith('https://graph.instagram.com/access_token?'), true);
   } finally {
     await server.close();
