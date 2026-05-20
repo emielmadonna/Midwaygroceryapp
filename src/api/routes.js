@@ -930,31 +930,31 @@ export function createApiRouter({
 }
 
 function platformProviderConfigsFromEnv(env = {}) {
-  const squareApplicationId = env.SQUARE_OAUTH_APPLICATION_ID
-    || env.SQUARE_APPLICATION_ID
-    || env.VITE_SQUARE_APPLICATION_ID;
-  const squareClientSecret = env.SQUARE_OAUTH_CLIENT_SECRET
-    || env.SQUARE_CLIENT_SECRET;
-  const squareEnvironment = env.SQUARE_OAUTH_ENVIRONMENT
-    || env.SQUARE_ENVIRONMENT
-    || env.VITE_SQUARE_ENVIRONMENT
+  const squareApplicationId = envValue(env, 'SQUARE_OAUTH_APPLICATION_ID')
+    || envValue(env, 'SQUARE_APPLICATION_ID')
+    || envValue(env, 'VITE_SQUARE_APPLICATION_ID');
+  const squareClientSecret = envValue(env, 'SQUARE_OAUTH_CLIENT_SECRET')
+    || envValue(env, 'SQUARE_CLIENT_SECRET');
+  const squareEnvironment = envValue(env, 'SQUARE_OAUTH_ENVIRONMENT')
+    || envValue(env, 'SQUARE_ENVIRONMENT')
+    || envValue(env, 'VITE_SQUARE_ENVIRONMENT')
     || '';
-  const squareRedirectUri = env.SQUARE_OAUTH_REDIRECT_URI
-    || env.SQUARE_REDIRECT_URI
+  const squareRedirectUri = envValue(env, 'SQUARE_OAUTH_REDIRECT_URI')
+    || envValue(env, 'SQUARE_REDIRECT_URI')
     || '';
-  const instagramApplicationId = env.INSTAGRAM_OAUTH_APPLICATION_ID
-    || env.INSTAGRAM_APP_ID
-    || env.META_APP_ID
+  const instagramApplicationId = envValue(env, 'INSTAGRAM_OAUTH_APPLICATION_ID')
+    || envValue(env, 'INSTAGRAM_APP_ID')
+    || envValue(env, 'META_APP_ID')
     || '';
-  const instagramClientSecret = env.INSTAGRAM_OAUTH_CLIENT_SECRET
-    || env.INSTAGRAM_APP_SECRET
-    || env.META_APP_SECRET
+  const instagramClientSecret = envValue(env, 'INSTAGRAM_OAUTH_CLIENT_SECRET')
+    || envValue(env, 'INSTAGRAM_APP_SECRET')
+    || envValue(env, 'META_APP_SECRET')
     || '';
-  const instagramRedirectUri = env.INSTAGRAM_OAUTH_REDIRECT_URI
-    || env.INSTAGRAM_REDIRECT_URI
+  const instagramRedirectUri = envValue(env, 'INSTAGRAM_OAUTH_REDIRECT_URI')
+    || envValue(env, 'INSTAGRAM_REDIRECT_URI')
     || '';
-  const instagramApiVersion = env.INSTAGRAM_GRAPH_API_VERSION || 'v24.0';
-  const instagramFeedLimit = Number(env.INSTAGRAM_FEED_LIMIT || 6);
+  const instagramApiVersion = envValue(env, 'INSTAGRAM_GRAPH_API_VERSION') || 'v24.0';
+  const instagramFeedLimit = Number(envValue(env, 'INSTAGRAM_FEED_LIMIT') || 6);
 
   const configs = [];
 
@@ -991,6 +991,11 @@ function platformProviderConfigsFromEnv(env = {}) {
   }
 
   return configs;
+}
+
+function envValue(env, name) {
+  const value = env[name];
+  return typeof value === 'string' ? value.trim() : value;
 }
 
 async function buildBookingReturnUrl(req, bookingCode, store) {
