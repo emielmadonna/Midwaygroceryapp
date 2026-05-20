@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
 
-import { refreshInstagramAccessToken } from './instagram-api.js';
+import {
+  exchangeInstagramLongLivedToken,
+  exchangeInstagramOAuthCode,
+  refreshInstagramAccessToken,
+} from './instagram-api.js';
 import { getProviderConfig } from './tenant-config.js';
 
 export const PROVIDER_DEFINITIONS = [
@@ -39,6 +43,10 @@ const DEFAULT_SQUARE_OAUTH_SCOPES = [
   'ITEMS_READ',
 ];
 const SQUARE_OAUTH_API_VERSION = '2026-01-22';
+const DEFAULT_INSTAGRAM_OAUTH_SCOPES = [
+  'instagram_business_basic',
+];
+const DEFAULT_INSTAGRAM_GRAPH_VERSION = 'v24.0';
 
 export function createProviderConnectionService({
   store = null,
@@ -230,6 +238,243 @@ export function createProviderConnectionService({
           connection: toProviderStatus(connection, definition),
         };
       }
+    },
+
+    async startInstagramOAuth(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: resolvedTenantConfig?.tenantId,
+        locationId: resolvedTenantConfig?.locationId,
+        ...input,
+      });
+      const existing = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'instagram',
+        scope,
+        now,
+      });
+      const platformConfig = await getInstagramOAuthPlatformConfig({
+        store,
+        platformProviderConfigs,
+      });
+      const scopes = normalizeScopes(input.scopes || platformConfig.scopes || DEFAULT_INSTAGRAM_OAUTH_SCOPES);
+
+      if (!platformConfig.configured) {
+        const connection = await upsertConnection({
+          store,
+          tenantConfig: resolvedTenantConfig,
+          connection: {
+            ...existing,
+            tenantId: scope.tenantId,
+            locationId: scope.locationId,
+            providerKey: 'instagram',
+            providerKind: 'social',
+            status: 'not_connected',
+            publicConfig: {
+              ...(existing?.publicConfig ?? {}),
+              handle: resolvedTenantConfig?.business?.instagramHandle || existing?.publicConfig?.handle || '',
+              profileUrl: resolvedTenantConfig?.business?.instagramUrl || existing?.publicConfig?.profileUrl || '',
+              oauth: {
+                configured: false,
+                missing: platformConfig.missing,
+                requestedScopes: scopes,
+              },
+            },
+            scopes,
+            errorMessage: 'Instagram OAuth app credentials are not configured.',
+            updatedBy: input.actor?.id ?? null,
+          },
+          now,
+        });
+        return {
+          mode: 'placeholder',
+          authorizationUrl: null,
+          message: 'Instagram OAuth app credentials are not configured yet.',
+          missing: platformConfig.missing,
+          connection: toProviderStatus(connection, getProviderDefinition('instagram')),
+        };
+      }
+
+      const oauthState = crypto.randomBytes(24).toString('base64url');
+      const authorizationUrl = buildInstagramAuthorizationUrl({
+        platformConfig,
+        scopes,
+        state: oauthState,
+        redirectUri: input.redirectUri,
+      });
+      const connection = await upsertConnection({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        connection: {
+          ...existing,
+          tenantId: scope.tenantId,
+          locationId: scope.locationId,
+          providerKey: 'instagram',
+          providerKind: 'social',
+          status: 'connecting',
+          publicConfig: {
+            ...(existing?.publicConfig ?? {}),
+            handle: resolvedTenantConfig?.business?.instagramHandle || existing?.publicConfig?.handle || '',
+            profileUrl: resolvedTenantConfig?.business?.instagramUrl || existing?.publicConfig?.profileUrl || '',
+            feedLimit: existing?.publicConfig?.feedLimit || platformConfig.feedLimit || 6,
+            apiVersion: platformConfig.apiVersion,
+            apiBaseUrl: platformConfig.apiBaseUrl,
+            oauth: {
+              configured: true,
+              state: oauthState,
+              requestedScopes: scopes,
+              redirectUri: input.redirectUri || platformConfig.redirectUri || '',
+              startedAt: now().toISOString(),
+            },
+          },
+          scopes,
+          errorMessage: null,
+          updatedBy: input.actor?.id ?? null,
+        },
+        now,
+      });
+
+      return {
+        mode: 'oauth',
+        authorizationUrl,
+        state: oauthState,
+        connection: toProviderStatus(connection, getProviderDefinition('instagram')),
+      };
+    },
+
+    async completeInstagramOAuth(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: input.tenantId || resolvedTenantConfig?.tenantId,
+        locationId: input.locationId || resolvedTenantConfig?.locationId,
+      });
+      const definition = getProviderDefinition('instagram');
+      const existing = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'instagram',
+        scope,
+        now,
+      });
+      const platformConfig = await getInstagramOAuthPlatformConfig({
+        store,
+        platformProviderConfigs,
+      });
+
+      if (input.error) {
+        const connection = await upsertConnection({
+          store,
+          tenantConfig: resolvedTenantConfig,
+          connection: {
+            ...existing,
+            tenantId: scope.tenantId,
+            locationId: scope.locationId,
+            providerKey: 'instagram',
+            providerKind: 'social',
+            status: 'error',
+            errorMessage: input.errorDescription || input.error,
+            updatedBy: input.actor?.id ?? null,
+          },
+          now,
+        });
+        return { mode: 'error', connection: toProviderStatus(connection, definition) };
+      }
+
+      const expectedState = existing?.publicConfig?.oauth?.state;
+      if (expectedState && input.state !== expectedState) {
+        throw providerError('PROVIDER_OAUTH_STATE_MISMATCH', 'Instagram OAuth state did not match the pending connection.', 400);
+      }
+      if (!input.code) {
+        throw providerError('PROVIDER_OAUTH_CODE_REQUIRED', 'Instagram authorization code is required.', 400);
+      }
+      if (!platformConfig.configured) {
+        const connection = await upsertConnection({
+          store,
+          tenantConfig: resolvedTenantConfig,
+          connection: {
+            ...existing,
+            tenantId: scope.tenantId,
+            locationId: scope.locationId,
+            providerKey: 'instagram',
+            providerKind: 'social',
+            status: 'error',
+            publicConfig: {
+              ...(existing?.publicConfig ?? {}),
+              oauth: {
+                ...(existing?.publicConfig?.oauth ?? {}),
+                configured: false,
+                missing: platformConfig.missing,
+              },
+            },
+            errorMessage: 'Instagram OAuth app credentials are not configured.',
+            updatedBy: input.actor?.id ?? null,
+          },
+          now,
+        });
+        return {
+          mode: 'placeholder',
+          message: 'Instagram OAuth callback was received, but app credentials are not configured.',
+          missing: platformConfig.missing,
+          connection: toProviderStatus(connection, definition),
+        };
+      }
+
+      const shortLived = await exchangeInstagramOAuthCode({
+        code: input.code,
+        redirectUri: input.redirectUri || platformConfig.redirectUri,
+        clientId: platformConfig.applicationId,
+        clientSecret: platformConfig.clientSecret,
+        fetchImpl,
+      });
+      const longLived = await exchangeInstagramLongLivedToken({
+        accessToken: shortLived.accessToken,
+        clientSecret: platformConfig.clientSecret,
+        fetchImpl,
+        now,
+      });
+      const connection = await upsertConnection({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        connection: {
+          ...existing,
+          tenantId: scope.tenantId,
+          locationId: scope.locationId,
+          providerKey: 'instagram',
+          providerKind: 'social',
+          status: 'connected',
+          publicConfig: {
+            ...(existing?.publicConfig ?? {}),
+            handle: resolvedTenantConfig?.business?.instagramHandle || existing?.publicConfig?.handle || '',
+            profileUrl: resolvedTenantConfig?.business?.instagramUrl || existing?.publicConfig?.profileUrl || '',
+            feedSource: 'Instagram Graph API',
+            feedLimit: existing?.publicConfig?.feedLimit || platformConfig.feedLimit || 6,
+            apiVersion: platformConfig.apiVersion,
+            apiBaseUrl: platformConfig.apiBaseUrl,
+            tokenType: longLived.tokenType,
+            tokenExpiresAt: longLived.expiresAt,
+            oauth: {
+              configured: true,
+              connectedAt: now().toISOString(),
+              requestedScopes: existing?.scopes?.length ? existing.scopes : DEFAULT_INSTAGRAM_OAUTH_SCOPES,
+            },
+          },
+          encryptedCredentials: {
+            accessToken: longLived.accessToken,
+          },
+          scopes: existing?.scopes?.length ? existing.scopes : DEFAULT_INSTAGRAM_OAUTH_SCOPES,
+          externalAccountId: shortLived.userId,
+          lastSyncAt: longLived.refreshedAt || now().toISOString(),
+          errorMessage: null,
+          updatedBy: input.actor?.id ?? null,
+        },
+        now,
+      });
+
+      return {
+        mode: 'oauth',
+        connection: toProviderStatus(connection, definition),
+      };
     },
 
     async startSquareOAuth(input = {}) {
@@ -738,8 +983,56 @@ async function getSquareOAuthPlatformConfig({ store, platformProviderConfigs = [
   };
 }
 
+async function getInstagramOAuthPlatformConfig({ store, platformProviderConfigs = [] } = {}) {
+  const configuredRecord = await resolvePlatformProviderConfig({
+    store,
+    platformProviderConfigs,
+    providerKey: 'instagram',
+  });
+  const publicConfig = cloneJson(configuredRecord?.publicConfig ?? configuredRecord?.public_config ?? {});
+  const credentials = cloneJson(configuredRecord?.encryptedCredentials ?? configuredRecord?.encrypted_credentials ?? {});
+  const applicationId = configuredRecord?.applicationId
+    || publicConfig.applicationId
+    || publicConfig.application_id
+    || publicConfig.clientId
+    || publicConfig.client_id;
+  const clientSecret = configuredRecord?.clientSecret
+    || credentials.clientSecret
+    || credentials.client_secret
+    || credentials.appSecret
+    || credentials.app_secret;
+  const redirectUri = configuredRecord?.redirectUri
+    || publicConfig.redirectUri
+    || publicConfig.redirect_uri;
+  const scopes = normalizeScopes(
+    configuredRecord?.scopes
+      || publicConfig.scopes
+      || DEFAULT_INSTAGRAM_OAUTH_SCOPES,
+  );
+  const apiVersion = publicConfig.apiVersion || publicConfig.api_version || DEFAULT_INSTAGRAM_GRAPH_VERSION;
+  const apiBaseUrl = publicConfig.apiBaseUrl || publicConfig.api_base_url || 'https://graph.instagram.com';
+  const feedLimit = Number(publicConfig.feedLimit || publicConfig.feed_limit || 6);
+  const missing = [
+    ['platform_provider_configs.instagram.public_config.applicationId', applicationId],
+    ['platform_provider_configs.instagram.encrypted_credentials.clientSecret', clientSecret],
+  ].filter(([, value]) => !value).map(([name]) => name);
+
+  return {
+    providerKey: 'instagram',
+    applicationId,
+    clientSecret,
+    redirectUri,
+    scopes,
+    apiVersion,
+    apiBaseUrl,
+    feedLimit: Number.isFinite(feedLimit) ? feedLimit : 6,
+    configured: missing.length === 0,
+    missing,
+  };
+}
+
 async function resolvePlatformProviderConfig({ store, platformProviderConfigs, providerKey, environment }) {
-  const requestedEnvironment = normalizeSquareEnvironment(environment);
+  const requestedEnvironment = providerKey === 'square' ? normalizeSquareEnvironment(environment) : environment;
   const stored = await store?.getPlatformProviderConfig?.({
     providerKey,
     environment: requestedEnvironment,
@@ -793,6 +1086,18 @@ function buildSquareAuthorizationUrl({ platformConfig, scopes, state, redirectUr
   url.searchParams.set('state', state);
   if (platformConfig.environment === 'production') url.searchParams.set('session', 'false');
   if (redirectUri || platformConfig.redirectUri) url.searchParams.set('redirect_uri', redirectUri || platformConfig.redirectUri);
+  return url.toString();
+}
+
+function buildInstagramAuthorizationUrl({ platformConfig, scopes, state, redirectUri }) {
+  const url = new URL('https://www.instagram.com/oauth/authorize');
+  url.searchParams.set('enable_fb_login', '0');
+  url.searchParams.set('force_authentication', '1');
+  url.searchParams.set('client_id', platformConfig.applicationId);
+  url.searchParams.set('redirect_uri', redirectUri || platformConfig.redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', scopes.join(','));
+  url.searchParams.set('state', state);
   return url.toString();
 }
 

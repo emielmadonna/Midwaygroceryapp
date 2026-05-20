@@ -477,6 +477,88 @@ test('owner can save and manually refresh Instagram API credentials', async () =
   }
 });
 
+test('Instagram OAuth callback stores long-lived API credentials', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  const tokenRequests = [];
+  const server = await createTestServer({
+    env: baseEnv,
+    store,
+    platformProviderConfigs: [
+      {
+        providerKey: 'instagram',
+        publicConfig: {
+          applicationId: 'instagram-app',
+          apiVersion: 'v24.0',
+          apiBaseUrl: 'https://graph.instagram.com',
+          feedLimit: 6,
+        },
+        encryptedCredentials: {
+          clientSecret: 'instagram-secret',
+        },
+      },
+    ],
+    fetchImpl: async (url, options = {}) => {
+      tokenRequests.push({
+        url,
+        body: options.body ? Object.fromEntries(new URLSearchParams(options.body.toString())) : null,
+      });
+      if (String(url).includes('/oauth/access_token')) {
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'ig-short-token',
+            user_id: '17841400000000000',
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'ig-long-token',
+          token_type: 'bearer',
+          expires_in: 5184000,
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const started = await api(server, '/api/admin/providers/instagram/oauth/start', {
+      method: 'POST',
+      token: owner.token,
+      body: { redirectUri: 'https://midway.example/admin.html?provider=instagram' },
+    });
+    assert.equal(started.status, 200);
+    assert.equal(started.body.data.mode, 'oauth');
+    assert.match(started.body.data.authorizationUrl, /^https:\/\/www\.instagram\.com\/oauth\/authorize/);
+    assert.equal(started.body.data.authorizationUrl.includes('instagram_business_basic'), true);
+
+    const completed = await api(server, '/api/admin/providers/instagram/oauth/callback', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        code: 'instagram-auth-code',
+        state: started.body.data.state,
+        redirectUri: 'https://midway.example/admin.html?provider=instagram',
+      },
+    });
+
+    assert.equal(completed.status, 200);
+    assert.equal(completed.body.data.connection.status, 'connected');
+    assert.equal(completed.body.data.connection.externalAccountId, '17841400000000000');
+    assert.equal(completed.body.data.connection.hasEncryptedCredentials, true);
+    assert.deepEqual(completed.body.data.connection.credentialKeys, ['accessToken']);
+    assert.equal(JSON.stringify(completed.body.data).includes('ig-long-token'), false);
+    assert.equal(tokenRequests.length, 2);
+    assert.equal(tokenRequests[0].body.client_id, 'instagram-app');
+    assert.equal(tokenRequests[0].body.client_secret, 'instagram-secret');
+    assert.equal(String(tokenRequests[1].url).startsWith('https://graph.instagram.com/access_token?'), true);
+  } finally {
+    await server.close();
+  }
+});
+
 test('cron refreshes Instagram token with cron secret', async () => {
   const env = { ...baseEnv, NODE_ENV: 'production', MIDWAY_CRON_SECRET: 'cron-secret' };
   const store = createMidwayHarness({ env: { ...env, MIDWAY_ALLOW_MEMORY_STORE: 'true' }, tenantConfig: createTestTenantConfig() });

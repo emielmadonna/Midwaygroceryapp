@@ -413,8 +413,36 @@ async function refreshInstagramToken() {
   }
 }
 
+async function startInstagramConnection(event) {
+  const redirectUri = providerRedirectUri('instagram');
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Connecting...');
+  try {
+    const data = await api('/api/admin/providers/instagram/oauth/start', {
+      method: 'POST',
+      body: { redirectUri },
+    });
+    if (data.authorizationUrl) {
+      sessionStorage.setItem(pendingProviderKey, JSON.stringify({
+        provider: 'instagram',
+        state: data.state || '',
+        redirectUri,
+      }));
+      window.location.assign(data.authorizationUrl);
+      return;
+    }
+
+    showToast(providerPlaceholderMessage(data), 'error');
+    await loadAdminData();
+  } catch (error) {
+    showToast(providerConnectionErrorMessage('Instagram', error), 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
 async function startSquareConnection(event) {
-  const redirectUri = squareRedirectUri();
+  const redirectUri = providerRedirectUri('square');
   const trigger = event?.currentTarget;
   setButtonBusy(trigger, 'Connecting...');
   try {
@@ -435,7 +463,7 @@ async function startSquareConnection(event) {
     showToast(providerPlaceholderMessage(data), 'error');
     await loadAdminData();
   } catch (error) {
-    showToast(squareConnectionErrorMessage(error), 'error');
+    showToast(providerConnectionErrorMessage('Square', error), 'error');
   } finally {
     setButtonBusy(trigger, null);
   }
@@ -443,14 +471,19 @@ async function startSquareConnection(event) {
 
 async function completePendingProviderCallback() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('provider') !== 'square') return;
+  const provider = params.get('provider');
+  if (!['instagram', 'square'].includes(provider)) return;
   if (!params.has('code') && !params.has('error')) return;
 
   const pending = readPendingProviderConnection();
-  const redirectUri = pending?.redirectUri || squareRedirectUri();
+  const redirectUri = pending?.redirectUri || providerRedirectUri(provider);
+  const endpoint = provider === 'instagram'
+    ? '/api/admin/providers/instagram/oauth/callback'
+    : '/api/admin/providers/square/oauth/callback';
+  const label = provider === 'instagram' ? 'Instagram' : 'Square';
 
   try {
-    const data = await api('/api/admin/providers/square/oauth/callback', {
+    const data = await api(endpoint, {
       method: 'POST',
       body: {
         code: params.get('code') || '',
@@ -464,10 +497,10 @@ async function completePendingProviderCallback() {
     clearProviderCallbackQuery();
     showToast(data.mode === 'placeholder'
       ? providerPlaceholderMessage(data)
-      : 'Square is connected.', data.mode === 'placeholder' ? 'error' : 'success');
+      : `${label} is connected.`, data.mode === 'placeholder' ? 'error' : 'success');
   } catch (error) {
     clearProviderCallbackQuery();
-    showToast(`Square connection failed: ${error.message}`, 'error');
+    showToast(`${label} connection failed: ${error.message}`, 'error');
   }
 }
 
@@ -771,6 +804,9 @@ function renderProviderStatuses() {
   });
   els.providerStatusGrid.querySelectorAll('[data-provider-action="instagram-refresh"]').forEach(button => {
     button.addEventListener('click', refreshInstagramToken);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="instagram-oauth"]').forEach(button => {
+    button.addEventListener('click', startInstagramConnection);
   });
 }
 
@@ -1346,9 +1382,12 @@ function providerDetails(provider = {}) {
 function providerAction(provider = {}) {
   if (state.user?.role !== 'owner') return '';
   if (provider.providerKey === 'instagram') {
+    const connected = provider.status === 'connected';
+    const label = connected ? 'Reconnect Instagram' : 'Connect Instagram';
     return `
       <div class="provider-status-card__actions">
-        <button class="admin-button" type="button" data-provider-action="instagram-refresh">Refresh Instagram token</button>
+        <button class="admin-button" type="button" data-provider-action="instagram-oauth">${escapeHtml(label)}</button>
+        ${connected ? '<button class="admin-button" type="button" data-provider-action="instagram-refresh">Refresh Instagram token</button>' : ''}
       </div>
     `;
   }
@@ -1383,11 +1422,11 @@ function setButtonBusy(button, label) {
   delete button.dataset.previousLabel;
 }
 
-function squareConnectionErrorMessage(error) {
+function providerConnectionErrorMessage(providerName, error) {
   if (/Admin API could not be reached|Failed to fetch|NetworkError/i.test(error.message)) {
-    return `Square connection could not reach the admin API. Expected API root: ${API_ROOT}.`;
+    return `${providerName} connection could not reach the admin API. Expected API root: ${API_ROOT}.`;
   }
-  return `Square connection failed: ${error.message}`;
+  return `${providerName} connection failed: ${error.message}`;
 }
 
 function sectionByKey(sections = [], key) {
@@ -1400,10 +1439,10 @@ function mergeSectionSettings(sections = [], updatedSection = {}) {
   return [...existing.values()];
 }
 
-function squareRedirectUri() {
+function providerRedirectUri(provider) {
   const url = new URL(window.location.href);
   url.pathname = '/admin.html';
-  url.search = '?provider=square';
+  url.search = `?provider=${encodeURIComponent(provider)}`;
   url.hash = '';
   return url.toString();
 }

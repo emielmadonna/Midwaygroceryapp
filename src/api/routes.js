@@ -465,6 +465,63 @@ export function createApiRouter({
     }
   });
 
+  router.post('/admin/providers/instagram/oauth/start', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.startInstagramOAuth({
+        redirectUri: req.body.redirectUri,
+        scopes: req.body.scopes,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: data.mode === 'placeholder' ? 'provider.instagram.oauth_placeholder' : 'provider.instagram.oauth_start',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'instagram',
+        metadata: {
+          mode: data.mode,
+          missing: data.missing ?? [],
+          status: data.connection?.status ?? null,
+        },
+      });
+      res.status(data.mode === 'placeholder' ? 202 : 200).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_INSTAGRAM_OAUTH_START_FAILED');
+    }
+  });
+
+  router.post('/admin/providers/instagram/oauth/callback', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.completeInstagramOAuth({
+        code: req.body.code,
+        state: req.body.state,
+        error: req.body.error,
+        errorDescription: req.body.errorDescription,
+        redirectUri: req.body.redirectUri,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: data.mode === 'placeholder' ? 'provider.instagram.oauth_placeholder_complete' : 'provider.instagram.oauth_complete',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'instagram',
+        metadata: {
+          mode: data.mode,
+          status: data.connection?.status ?? null,
+          externalAccountId: data.connection?.externalAccountId ?? null,
+        },
+      });
+      res.status(data.mode === 'placeholder' ? 202 : 200).json({ ok: data.mode !== 'error', data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_INSTAGRAM_OAUTH_COMPLETE_FAILED');
+    }
+  });
+
   router.post('/admin/providers/square/oauth/start', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
@@ -885,11 +942,24 @@ function platformProviderConfigsFromEnv(env = {}) {
   const squareRedirectUri = env.SQUARE_OAUTH_REDIRECT_URI
     || env.SQUARE_REDIRECT_URI
     || '';
+  const instagramApplicationId = env.INSTAGRAM_OAUTH_APPLICATION_ID
+    || env.INSTAGRAM_APP_ID
+    || env.META_APP_ID
+    || '';
+  const instagramClientSecret = env.INSTAGRAM_OAUTH_CLIENT_SECRET
+    || env.INSTAGRAM_APP_SECRET
+    || env.META_APP_SECRET
+    || '';
+  const instagramRedirectUri = env.INSTAGRAM_OAUTH_REDIRECT_URI
+    || env.INSTAGRAM_REDIRECT_URI
+    || '';
+  const instagramApiVersion = env.INSTAGRAM_GRAPH_API_VERSION || 'v24.0';
+  const instagramFeedLimit = Number(env.INSTAGRAM_FEED_LIMIT || 6);
 
-  if (!squareApplicationId && !squareClientSecret && !squareEnvironment && !squareRedirectUri) return [];
+  const configs = [];
 
-  return [
-    {
+  if (squareApplicationId || squareClientSecret || squareEnvironment || squareRedirectUri) {
+    configs.push({
       providerKey: 'square',
       environment: squareEnvironment,
       publicConfig: {
@@ -900,8 +970,27 @@ function platformProviderConfigsFromEnv(env = {}) {
       encryptedCredentials: {
         clientSecret: squareClientSecret,
       },
-    },
-  ];
+    });
+  }
+
+  if (instagramApplicationId || instagramClientSecret || instagramRedirectUri) {
+    configs.push({
+      providerKey: 'instagram',
+      publicConfig: {
+        applicationId: instagramApplicationId,
+        redirectUri: instagramRedirectUri,
+        apiVersion: instagramApiVersion,
+        apiBaseUrl: 'https://graph.instagram.com',
+        feedLimit: Number.isFinite(instagramFeedLimit) ? instagramFeedLimit : 6,
+        scopes: ['instagram_business_basic'],
+      },
+      encryptedCredentials: {
+        clientSecret: instagramClientSecret,
+      },
+    });
+  }
+
+  return configs;
 }
 
 async function buildBookingReturnUrl(req, bookingCode, store) {
