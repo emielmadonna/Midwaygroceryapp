@@ -38,7 +38,7 @@ function createFallbackTenantConfig() {
       phone: '(206) 669-5880',
       address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
-      instagramHandle: 'midwayplain',
+      instagramHandle: 'midwaygrocer',
     },
     publicSite: {
       theme: 'midway_farmhouse',

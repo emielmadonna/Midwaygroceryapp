@@ -141,8 +141,8 @@ test('public bootstrap and admin login endpoints expose launch-critical flags', 
     assert.equal(bootstrap.body.data.featureFlags.adminPropertyMap, true);
     assert.equal(bootstrap.body.data.featureFlags.refunds, true);
     assert.equal(bootstrap.body.data.featureFlags.employeeMode, true);
-    assert.equal(bootstrap.body.data.settings.instagramHandle, 'midwayplain');
-    assert.equal(bootstrap.body.data.settings.instagramUrl, 'https://www.instagram.com/midwayplain/');
+    assert.equal(bootstrap.body.data.settings.instagramHandle, 'midwaygrocer');
+    assert.equal(bootstrap.body.data.settings.instagramUrl, 'https://www.instagram.com/midwaygrocer/');
     assert.deepEqual(bootstrap.body.data.settings.instagramPosts, []);
     assert.ok(bootstrap.body.data.rvSites.length >= 24);
     assert.ok(bootstrap.body.data.rvSites.some(site => site.id === 'tent-01' && site.type === 'tent'));
@@ -217,7 +217,7 @@ function createVisualTenantConfig() {
       phone: '(206) 669-5880',
       address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
       timezone: 'America/Los_Angeles',
-      instagramHandle: 'midwayplain',
+      instagramHandle: 'midwaygrocer',
     },
     publicSite: {
       theme: 'midway_farmhouse',

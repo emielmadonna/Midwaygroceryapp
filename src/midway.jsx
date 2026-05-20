@@ -26,8 +26,8 @@ const FALLBACK_SETTINGS = {
   phone: '(206) 669-5880',
   address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
   timezone: 'America/Los_Angeles',
-  instagramHandle: 'midwayplain',
-  instagramUrl: 'https://www.instagram.com/midwayplain/',
+  instagramHandle: 'midwaygrocer',
+  instagramUrl: 'https://www.instagram.com/midwaygrocer/',
 };
 const FALLBACK_HOURS = [
   { day: 'monday', open: '6:00 AM', close: '9:00 PM' },
@@ -1100,7 +1100,7 @@ function buildInstagramPosts(settings = {}) {
         label: 'Post',
       }))
     : [];
-  const posts = (apiPosts.length ? apiPosts : sectionPosts.length ? sectionPosts : linkedPosts).slice(0, 6);
+  const posts = (apiPosts.length ? apiPosts : linkedPosts.length ? linkedPosts : sectionPosts).slice(0, 6);
   return posts;
 }
 

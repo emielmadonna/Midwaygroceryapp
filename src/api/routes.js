@@ -364,7 +364,7 @@ export function createApiRouter({
       resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
       requireAdminRole(req.adminUser);
       const featureFlags = resolvedStore.flags?.({ role: req.adminUser.role }) ?? {};
-      const data = await resolvedStore.getAdminSettings?.({ featureFlags });
+      const data = await resolvedStore.getAdminSettings?.({ featureFlags, refresh: true });
       res.json({ ok: true, data: data ?? {} });
     } catch (error) {
       sendApiError(res, error, 'ADMIN_SETTINGS_UNAVAILABLE');

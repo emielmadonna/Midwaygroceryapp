@@ -222,7 +222,7 @@ export function createMidwayHarness({
       return adminSettingsFromTenantConfig(resolvedTenantConfig, { featureFlags });
     },
     async updateAdminSettings(input) {
-      const resolvedTenantConfig = await resolveTenantConfig();
+      const resolvedTenantConfig = await resolveTenantConfig({ refresh: true });
       updateTenantConfigSettings(resolvedTenantConfig, input);
       if (resolvedSupabase) {
         await updateTenantRuntimeConfig(resolvedSupabase, resolvedTenantConfig, input);
@@ -235,7 +235,7 @@ export function createMidwayHarness({
       return createFeatureFlagEvaluator({ env, overrides: featureFlagOverrides, role }).require(flag);
     },
     async publicBootstrap({ startDate, endDate } = {}) {
-      const resolvedTenantConfig = await resolveTenantConfig();
+      const resolvedTenantConfig = await resolveTenantConfig({ refresh: true });
       const flags = flagEvaluator.all();
       const sites = await resolvedBookingStore.listSites({ publicOnly: true });
       const persistedProducts = await resolvedBookingStore.listStoreInventory?.({ activeOnly: true }) ?? [];
