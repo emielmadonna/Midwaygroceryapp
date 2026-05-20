@@ -132,7 +132,7 @@ export function publicSettingsFromTenantConfig(config) {
     timezone: config.business.timezone,
     instagramHandle: config.business.instagramHandle,
     instagramUrl: config.business.instagramUrl,
-    sections: config.publicSite.sections,
+    sections: sanitizePublicSections(config.publicSite.sections),
     googleMapsUrl: config.business.googleMapsUrl,
     logoUrl: config.business.logoUrl,
     theme: config.publicSite.theme,
@@ -262,14 +262,15 @@ function providerStatusesFromTenantConfig(config) {
     }),
     providerStatus('instagram', 'Instagram', 'social', {
       ...config.providers?.instagram,
+      status: config.providers?.instagram?.accessToken && config.providers?.instagram?.externalAccountId ? 'connected' : 'not_connected',
       handle: config.business.instagramHandle,
       profileUrl: config.business.instagramUrl,
       postsConfigured: config.publicSite.instagramPosts.length,
-      feedSource: config.providers?.instagram?.accessToken || config.providers?.instagram?.externalAccountId ? 'Instagram Graph API' : '',
+      feedSource: config.providers?.instagram?.accessToken && config.providers?.instagram?.externalAccountId ? 'Instagram Graph API' : '',
       feedLimit: config.providers?.instagram?.feedLimit,
       apiVersion: config.providers?.instagram?.apiVersion,
     }, {
-      configuredKeys: ['accessToken', 'externalAccountId', 'handle', 'profileUrl', 'postsConfigured'],
+      configuredKeys: ['accessToken', 'externalAccountId'],
       publicKeys: ['handle', 'profileUrl', 'postsConfigured', 'feedSource', 'feedLimit', 'apiVersion'],
     }),
   ];
@@ -371,6 +372,14 @@ function normalizeSections(value) {
       items: Array.isArray(section?.items) ? section.items : [],
     }))
     .filter(section => section.key);
+}
+
+function sanitizePublicSections(sections) {
+  return normalizeSections(sections).map(section => (
+    section.key === 'instagram'
+      ? { ...section, items: [] }
+      : section
+  ));
 }
 
 function buildInstagramUrl(handle) {

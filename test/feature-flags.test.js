@@ -62,6 +62,32 @@ test('public bootstrap hides disabled RV booking and does not use manual Instagr
   assert.deepEqual(bootstrap.settings.instagramFeed, []);
 });
 
+test('public bootstrap does not publish static Instagram section items as feed content', async () => {
+  const store = createMidwayHarness({
+    env: {
+      NODE_ENV: 'test',
+      FEATURE_FLAGS_JSON: JSON.stringify({
+        'public.section.instagram': true,
+      }),
+    },
+    tenantConfig: createTenantConfig({
+      business: { instagramHandle: 'midwayplain' },
+      publicSite: {
+        sections: [{
+          key: 'instagram',
+          enabled: true,
+          items: [{ title: 'Static card', image: '/images/store.jpg' }],
+        }],
+      },
+    }),
+  });
+
+  const bootstrap = await store.publicBootstrap();
+
+  assert.equal(bootstrap.featureFlags.instagram, false);
+  assert.deepEqual(bootstrap.settings.sections.find(section => section.key === 'instagram')?.items, []);
+});
+
 test('public bootstrap can populate Instagram from the Graph API feed', async () => {
   const store = createMidwayHarness({
     env: {

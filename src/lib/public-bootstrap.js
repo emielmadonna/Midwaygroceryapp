@@ -122,8 +122,7 @@ function contentFromSections(sections) {
 }
 
 function hasInstagramContent(settings, sections) {
-  const instagramSection = sections.find(section => section.key === 'instagram');
-  return Boolean(settings.instagramFeed?.length || instagramSection?.items?.length);
+  return Boolean(settings.instagramFeed?.length);
 }
 
 function normalizeSectionItems(items = []) {

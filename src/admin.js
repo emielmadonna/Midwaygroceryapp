@@ -134,7 +134,7 @@ els.settingsForm?.addEventListener('submit', async event => {
     publicSite: {
       url: form.get('publicSiteUrl'),
       theme: form.get('theme'),
-      instagramPosts: state.settings?.publicSite?.instagramPosts || [],
+      instagramPosts: [],
       sections: collectSectionSettings(form),
     },
   });
@@ -148,7 +148,6 @@ els.instagramForm?.addEventListener('submit', async event => {
   await updateInstagramSettings({
     instagramHandle: form.get('instagramHandle'),
     instagramUrl: form.get('instagramUrl'),
-    instagramPosts: splitTextList(form.get('instagramPosts')),
     instagramEnabled: form.get('instagramEnabled') === 'on',
     instagramUserId: form.get('instagramUserId'),
     instagramAccessToken: form.get('instagramAccessToken'),
@@ -379,7 +378,7 @@ async function updateInstagramSettings(input) {
       publicSite: {
         url: publicSite.url,
         theme: publicSite.theme,
-        instagramPosts: input.instagramPosts,
+        instagramPosts: [],
         sections: mergeSectionSettings(publicSite.sections, instagramSection),
       },
     },
@@ -687,7 +686,6 @@ function renderInstagramSettings() {
   const fields = {
     instagramHandle: business.instagramHandle,
     instagramUrl: business.instagramUrl,
-    instagramPosts: (publicSite.instagramPosts ?? []).join('\n'),
     instagramUserId: instagramProvider.externalAccountId || '',
     instagramTokenExpiresAt: isoToDatetimeLocal(providerConfig.tokenExpiresAt),
     instagramAccessToken: '',
@@ -707,12 +705,11 @@ function renderInstagramSettings() {
   });
 
   if (els.instagramStatus) {
-    const postCount = (publicSite.instagramPosts ?? []).length;
     const handle = business.instagramHandle ? `@${business.instagramHandle}` : 'No handle';
     const apiState = instagramProvider.status === 'connected' && instagramProvider.hasEncryptedCredentials
       ? 'API connected'
-      : 'manual links';
-    els.instagramStatus.textContent = `${handle} · ${postCount} post${postCount === 1 ? '' : 's'} · ${apiState}`;
+      : 'API token needed';
+    els.instagramStatus.textContent = `${handle} · ${apiState}`;
   }
 }
 
@@ -720,7 +717,7 @@ function renderSectionControls(sections = []) {
   if (!els.sectionControlsGrid) return;
   const configured = new Map((sections ?? []).map(section => [section.key, section]));
   const descriptors = [
-    { key: 'instagram', label: 'Instagram', content: (state.settings?.publicSite?.instagramPosts ?? []).length || state.settings?.business?.instagramHandle ? 1 : 0 },
+    { key: 'instagram', label: 'Instagram', content: state.providerStatuses.some(provider => provider.providerKey === 'instagram' && provider.status === 'connected') ? 1 : 0 },
     { key: 'events', label: 'Events', content: sectionItemCount(configured.get('events')) },
     { key: 'coffee', label: 'Coffee/menu', content: sectionItemCount(configured.get('coffee')) },
     { key: 'products', label: 'Store products', content: state.catalogProducts.length },

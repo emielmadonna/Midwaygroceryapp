@@ -88,7 +88,7 @@ test('admin page keeps login shell, session flow, and mobile guardrails', async 
   assert.match(adminHtml, /id="adminDashboard"\s+hidden/);
   assert.match(adminHtml, /id="settingsPanel"/);
   assert.match(adminHtml, /id="businessSettingsForm"/);
-  assert.match(adminHtml, /name="instagramPosts"/);
+  assert.doesNotMatch(adminHtml, /name="instagramPosts"/);
   assert.match(adminHtml, /id="providerStatusGrid"/);
   assert.match(adminHtml, /type="module"\s+src="\/src\/admin\.js"/);
 
@@ -136,7 +136,7 @@ test('public bootstrap and admin login endpoints expose launch-critical flags', 
     assert.equal(bootstrap.status, 200);
     assert.equal(bootstrap.body.ok, true);
     assert.equal(bootstrap.body.data.featureFlags['public.section.instagram'], true);
-    assert.equal(bootstrap.body.data.featureFlags.instagram, true);
+    assert.equal(bootstrap.body.data.featureFlags.instagram, false);
     assert.equal(bootstrap.body.data.featureFlags.adminCalendar, true);
     assert.equal(bootstrap.body.data.featureFlags.adminPropertyMap, true);
     assert.equal(bootstrap.body.data.featureFlags.refunds, true);

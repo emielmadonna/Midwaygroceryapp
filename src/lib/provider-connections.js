@@ -100,6 +100,7 @@ export function createProviderConnectionService({
       const tokenExpiresAt = normalizeIsoDate(input.tokenExpiresAt || input.expiresAt || existing?.publicConfig?.tokenExpiresAt);
       const handle = input.handle ?? existing?.publicConfig?.handle;
       const profileUrl = input.profileUrl ?? existing?.publicConfig?.profileUrl;
+      const fullyConfigured = Boolean(accessToken && instagramUserId);
       const connection = await upsertConnection({
         store,
         tenantConfig: resolvedTenantConfig,
@@ -109,12 +110,12 @@ export function createProviderConnectionService({
           locationId: scope.locationId,
           providerKey: 'instagram',
           providerKind: 'social',
-          status: accessToken && instagramUserId ? 'connected' : handle || profileUrl ? 'connected' : 'not_connected',
+          status: fullyConfigured ? 'connected' : 'not_connected',
           publicConfig: pickDefined({
             ...(existing?.publicConfig ?? {}),
             handle,
             profileUrl,
-            feedSource: accessToken && instagramUserId ? 'Instagram Graph API' : '',
+            feedSource: fullyConfigured ? 'Instagram Graph API' : '',
             feedLimit: input.feedLimit ?? existing?.publicConfig?.feedLimit,
             apiVersion: input.apiVersion ?? existing?.publicConfig?.apiVersion,
             tokenExpiresAt,
@@ -125,7 +126,7 @@ export function createProviderConnectionService({
           }),
           externalAccountId: instagramUserId || null,
           lastSyncAt: existing?.lastSyncAt ?? null,
-          errorMessage: null,
+          errorMessage: fullyConfigured ? null : 'Instagram API feed is missing an access token or user ID.',
           updatedBy: input.actor?.id ?? null,
         },
         now,
@@ -604,15 +605,16 @@ function connectionFromTenantProviderConfig({
     const posts = tenantConfig?.publicSite?.instagramPosts || [];
     const accessToken = config?.accessToken || config?.access_token || '';
     const instagramUserId = config?.instagramUserId || config?.instagram_user_id || config?.userId || config?.user_id || '';
+    const fullyConfigured = Boolean(accessToken && instagramUserId);
     return normalizeProviderConnection({
       ...base,
-      status: config?.status || (accessToken && instagramUserId ? 'connected' : handle || profileUrl || posts.length ? 'connected' : 'not_connected'),
+      status: fullyConfigured ? 'connected' : 'not_connected',
       externalAccountId: config?.externalAccountId || instagramUserId || null,
       publicConfig: pickDefined({
         handle,
         profileUrl,
         postsConfigured: posts.length,
-        feedSource: accessToken && instagramUserId ? 'Instagram Graph API' : '',
+        feedSource: fullyConfigured ? 'Instagram Graph API' : '',
         feedLimit: config?.feedLimit,
         apiVersion: config?.apiVersion,
         apiBaseUrl: config?.apiBaseUrl,
@@ -647,18 +649,22 @@ function providerRuntimeConfig(connection, definition) {
 function toProviderStatus(connection, definition) {
   const normalized = normalizeProviderConnection(connection);
   const credentialKeys = Object.keys(normalized.encryptedCredentials || {});
+  const missingInstagramCredentials = definition.providerKey === 'instagram'
+    && !(normalized.encryptedCredentials?.accessToken && normalized.externalAccountId);
   return {
     providerKey: definition.providerKey,
     providerKind: definition.providerKind,
     displayName: definition.displayName,
     requiredFor: definition.requiredFor,
-    status: normalized.status,
+    status: missingInstagramCredentials ? 'not_connected' : normalized.status,
     publicConfig: normalized.publicConfig,
     scopes: normalized.scopes,
     externalAccountId: normalized.externalAccountId,
     externalLocationId: normalized.externalLocationId,
     lastSyncAt: normalized.lastSyncAt,
-    errorMessage: normalized.errorMessage,
+    errorMessage: missingInstagramCredentials
+      ? 'Instagram API feed is missing an access token or user ID.'
+      : normalized.errorMessage,
     hasSecretRef: Boolean(normalized.secretRef),
     hasEncryptedCredentials: credentialKeys.length > 0,
     credentialKeys,

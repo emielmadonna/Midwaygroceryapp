@@ -324,7 +324,7 @@ test('protected admin settings expose editable site fields and sanitized provide
     assert.equal(JSON.stringify(settings.body.data).includes('hooks.slack.test'), false);
 
     const instagram = settings.body.data.providers.find(provider => provider.providerKey === 'instagram');
-    assert.equal(instagram.status, 'connected');
+    assert.equal(instagram.status, 'not_connected');
     assert.equal(instagram.publicConfig.handle, 'midway_test');
 
     const patched = await api(server, '/api/admin/settings', {
@@ -412,7 +412,7 @@ test('admin provider status lists business connection state without secrets', as
     assert.equal(square.publicConfig.locationId, 'sandbox-location');
     assert.equal(square.hasEncryptedCredentials, true);
     const instagram = providers.body.data.find(provider => provider.providerKey === 'instagram');
-    assert.equal(instagram.status, 'connected');
+    assert.equal(instagram.status, 'not_connected');
     assert.equal(instagram.publicConfig.handle, 'midwayplain');
     assert.equal(instagram.publicConfig.postsConfigured, 1);
     assert.equal(JSON.stringify(providers.body.data).includes('square-secret-token'), false);
