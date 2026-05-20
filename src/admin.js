@@ -481,11 +481,11 @@ async function startSquareConnection(event) {
 
 async function completePendingProviderCallback() {
   const params = new URLSearchParams(window.location.search);
-  const provider = params.get('provider');
+  const pending = readPendingProviderConnection();
+  const provider = params.get('provider') || pending?.provider;
   if (!['instagram', 'square'].includes(provider)) return;
   if (!params.has('code') && !params.has('error')) return;
 
-  const pending = readPendingProviderConnection();
   const redirectUri = pending?.redirectUri || providerRedirectUri(provider);
   const endpoint = provider === 'instagram'
     ? '/api/admin/providers/instagram/oauth/callback'
@@ -1462,7 +1462,7 @@ function mergeSectionSettings(sections = [], updatedSection = {}) {
 function providerRedirectUri(provider) {
   const url = new URL(window.location.href);
   url.pathname = '/admin.html';
-  url.search = `?provider=${encodeURIComponent(provider)}`;
+  url.search = provider === 'instagram' ? '' : `?provider=${encodeURIComponent(provider)}`;
   url.hash = '';
   return url.toString();
 }
