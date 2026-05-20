@@ -374,25 +374,12 @@ function iconForProduct(product) {
 }
 
 // ─── Site plan SVG ───────────────────────────────────────────────────────
-const MAP_WORLD = { minX: -360, minY: -260, maxX: 1560, maxY: 1060 };
-
 const SitePlan = ({ sel, setSel, sites }) => {
   const stageRef = useRef(null);
   const selectedIds = Array.isArray(sel) ? sel : (sel ? [sel] : []);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds.join('|')]);
 
-  // Zoom-to-site: compute transform that centers the selected pad in the viewport.
-  const zoom = useMemo(() => {
-    const activeId = selectedIds[selectedIds.length - 1];
-    const s = sites.find(x => x.id === activeId);
-    if (!s) return { tx: 0, ty: 0, sc: 1 };
-    const sc = 1.28;
-    const cx = 600, cy = 400;
-    const tx = clamp(cx - s.x * sc, 1200 - MAP_WORLD.maxX * sc, -MAP_WORLD.minX * sc);
-    const ty = clamp(cy - s.y * sc, 800 - MAP_WORLD.maxY * sc, -MAP_WORLD.minY * sc);
-    return { tx, ty, sc };
-  }, [selectedIds.join('|'), sites]);
-  const mapTransform = `matrix(${zoom.sc} 0 0 ${zoom.sc} ${zoom.tx} ${zoom.ty})`;
+  const mapTransform = 'matrix(1 0 0 1 0 0)';
   const toggleSite = (siteId) => {
     setSel(current => {
       const currentIds = Array.isArray(current) ? current : (current ? [current] : []);
@@ -408,8 +395,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
   );
 
   return (
-    <div className={`siteplan${selectedIds.length ? ' zoomed' : ''}`}>
-      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" onClick={() => setSel([])} style={{ cursor: selectedIds.length ? 'zoom-out' : 'default' }}>
+    <div className="siteplan">
+      <svg ref={stageRef} className="stage" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
         <defs>
           <pattern id="forest" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
             <path d="M30 8 L22 28 L26 28 L18 42 L26 42 L22 52 L38 52 L34 42 L42 42 L34 28 L38 28 Z" fill="#4A4936" opacity=".22"/>
