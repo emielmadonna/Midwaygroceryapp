@@ -177,6 +177,13 @@ const Photo = ({ src, alt, label }) => (
   </>
 );
 
+const SquareMark = () => (
+  <span className="square-mark" aria-label="Square checkout">
+    <span className="square-mark__icon" aria-hidden="true" />
+    <span>Square checkout</span>
+  </span>
+);
+
 // ─── Scroll reveal hook ────────────────────────────────────────────────────
 const useReveal = () => {
   useEffect(() => {
@@ -608,6 +615,10 @@ const SquarePaymentForm = ({ session, onPay, onSuccess, onCancel }) => {
     <div className="modal-bg" onClick={onCancel}>
       <div className="modal payment-modal" onClick={e => e.stopPropagation()}>
         <button className="x" onClick={onCancel}>Close</button>
+        <div className="payment-brand-row">
+          <SquareMark />
+          <span>Encrypted payment</span>
+        </div>
         <h3>Pay <em>securely.</em></h3>
         <p>{formatSiteList(session.sites || [session.site])} {session.sites?.length > 1 ? 'are' : 'is'} held for {session.nights} nights. Payment confirms the booking.</p>
         <div className="payment-summary">
@@ -654,6 +665,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   const [vehicles, setVehicles] = useState(1);
   const [guest, setGuest] = useState({ name: '', phone: '', email: '' });
   const [waiverAccepted, setWaiverAccepted] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(true);
   const [driverLicenseFile, setDriverLicenseFile] = useState(null);
   const [licenseStatus, setLicenseStatus] = useState('');
   const [step, setStep] = useState('site');
@@ -680,7 +692,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   const totalCents = (rateCents * nights) + extraVehicleFeeCents;
   const datesReady = Boolean(arr && dep && new Date(dep) > new Date(arr));
   const siteReady = Boolean(selSites.length > 0 && selSites.every(site => !site.taken) && datesReady);
-  const guestReady = Boolean(guest.name.trim() && guest.phone.trim() && waiverAccepted && driverLicenseFile);
+  const guestReady = Boolean(guest.name.trim() && guest.phone.trim() && guest.email.trim() && waiverAccepted && driverLicenseFile);
   const ready = siteReady && guestReady;
   const siteKindLabel = selSite?.type === 'tent'
     ? 'walk-in tent area'
@@ -733,6 +745,8 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
         customer: {
           ...guest,
           waiverAccepted,
+          marketingConsent,
+          reminderConsent: true,
         },
       });
       if (driverLicenseFile && onDriverLicenseUpload) {
@@ -866,12 +880,16 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
                 </div>
               </div>
               <div className="contact-row">
-                <label>Email <span style={{ color:'var(--mute)', letterSpacing:'0.08em' }}>(optional)</span></label>
+                <label>Email</label>
                 <input type="email" value={guest.email} onChange={e => updateGuest('email', e.target.value)} placeholder="you@example.com" />
               </div>
               <label className="booking-check">
                 <input type="checkbox" checked={waiverAccepted} onChange={e => setWaiverAccepted(e.target.checked)} />
                 <span>I agree to the campground waiver and understand Midway may verify my driver license at check-in.</span>
+              </label>
+              <label className="booking-check">
+                <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)} />
+                <span>Keep my phone and email for reservation reminders, check-in/check-out messages, and occasional Midway updates.</span>
               </label>
               <div className="contact-row">
                 <label>Driver license photo</label>

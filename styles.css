@@ -987,7 +987,7 @@ body.density-compact .section .head { margin-bottom: 40px; }
 /* ─── Modal ─── */
 .modal-bg { position: fixed; inset: 0; background: rgba(17,16,14,0.65); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(6px); animation: fade .3s; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-.modal { background: var(--paper); color: var(--ink); max-width: 520px; width: 100%; padding: 48px 40px; position: relative; border: 1px solid var(--ink); animation: slide .4s cubic-bezier(.2,.7,.3,1); }
+.modal { background: var(--paper); color: var(--ink); max-width: 520px; width: 100%; padding: 48px 40px; position: relative; border: 1px solid var(--ink); border-radius: 22px; animation: slide .4s cubic-bezier(.2,.7,.3,1); box-shadow: 0 24px 80px rgba(17,16,14,.24); }
 @keyframes slide { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .modal .x { position: absolute; top: 16px; right: 16px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--mute); }
 .modal .x:hover { color: var(--ink); }
@@ -1010,6 +1010,44 @@ body.density-compact .section .head { margin-bottom: 40px; }
 
 .payment-modal {
   max-width: 560px;
+  border-radius: 28px;
+}
+
+.payment-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 18px;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.square-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.square-mark__icon {
+  width: 19px;
+  height: 19px;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  position: relative;
+  display: inline-block;
+}
+
+.square-mark__icon::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
 }
 
 .payment-summary {
@@ -1021,6 +1059,7 @@ body.density-compact .section .head { margin-bottom: 40px; }
   background: var(--bone);
   padding: 14px 16px;
   margin: 16px 0;
+  border-radius: 16px;
 }
 
 .payment-summary span {
@@ -1078,9 +1117,11 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .square-card-host {
   min-height: 96px;
   border: 1px solid var(--ink);
+  border-radius: 18px;
   background: white;
   padding: 14px;
   margin: 16px 0;
+  overflow: hidden;
 }
 
 .payment-submit {
