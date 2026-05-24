@@ -103,14 +103,17 @@ export function createApiRouter({
 
   router.get('/public/bootstrap', async (req, res) => {
     try {
-      const squareConfig = await squareProviderConfig();
-      const persistedProducts = await resolvedStore.listStoreInventory?.({ activeOnly: true }) ?? [];
-      if (persistedProducts.length) {
-        resolvedStore.state.squareProducts = persistedProducts;
-      } else if (squareConfig.accessToken) {
+      const featureFlags = resolvedStore.flags?.() ?? {};
+      if (featureFlags.products) {
         try {
-          const items = await listSquareCatalogItems({ env: squareConfig, fetchImpl });
-          resolvedStore.state.squareProducts = normalizeSquareCatalogItemsForInventory(items);
+          const squareConfig = await squareProviderConfig();
+          const persistedProducts = await resolvedStore.listStoreInventory?.({ activeOnly: true }) ?? [];
+          if (persistedProducts.length) {
+            resolvedStore.state.squareProducts = persistedProducts;
+          } else if (squareConfig.accessToken) {
+            const items = await listSquareCatalogItems({ env: squareConfig, fetchImpl });
+            resolvedStore.state.squareProducts = normalizeSquareCatalogItemsForInventory(items);
+          }
         } catch (error) {
           console.warn('[Square] Product sync unavailable:', error.message);
           resolvedStore.state.squareProducts = [];
@@ -125,7 +128,7 @@ export function createApiRouter({
         }),
       });
     } catch (error) {
-      res.status(502).json(apiError('SQUARE_PRODUCTS_UNAVAILABLE', error.message));
+      res.status(502).json(apiError('PUBLIC_BOOTSTRAP_UNAVAILABLE', error.message));
     }
   });
 
@@ -163,15 +166,17 @@ export function createApiRouter({
   });
 
   router.post('/bookings/checkout', async (req, res) => {
+    const customerSessionId = req.body.customerSessionId || req.ip;
+    let hold = null;
     try {
-      const hold = await resolvedStore.hold({
+      hold = await resolvedStore.hold({
         siteId: req.body.siteId,
         siteIds: req.body.siteIds,
         startDate: req.body.startDate,
         endDate: req.body.endDate,
         guests: req.body.guests,
         vehicles: req.body.vehicles,
-        customerSessionId: req.body.customerSessionId || req.ip,
+        customerSessionId,
       });
 
       const bookingCode = `MW-${hold.id.slice(0, 6).toUpperCase()}`;
@@ -207,6 +212,7 @@ export function createApiRouter({
         },
       });
     } catch (error) {
+      await releaseCheckoutHold(resolvedStore, hold, customerSessionId);
       res.status(409).json(apiError('CHECKOUT_UNAVAILABLE', error.message));
     }
   });
@@ -290,7 +296,7 @@ export function createApiRouter({
   });
 
   router.post('/square/webhook', async (req, res) => {
-    const notificationUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const notificationUrl = requestPublicUrl(req);
     const signature = req.get('x-square-hmacsha256-signature');
     const squareConfig = await squareProviderConfig();
     if (!squareConfig.webhookSignatureKey && env.NODE_ENV === 'production') {
@@ -641,6 +647,7 @@ export function createApiRouter({
       requireAdminRole(req.adminUser, ['owner']);
       const booking = await resolvedStore.createAdminBooking({
         siteId: req.body.siteId,
+        siteIds: req.body.siteIds,
         startDate: req.body.startDate,
         endDate: req.body.endDate,
         guests: req.body.guests,
@@ -657,6 +664,7 @@ export function createApiRouter({
         targetId: booking.bookingCode,
         metadata: {
           siteId: booking.rvSiteId,
+          siteIds: booking.rvSiteIds ?? booking.siteIds ?? [booking.rvSiteId],
           startDate: booking.startDate,
           endDate: booking.endDate,
           status: booking.status,
@@ -669,19 +677,23 @@ export function createApiRouter({
   });
 
   router.post('/admin/bookings/checkout', async (req, res) => {
+    let hold = null;
+    let customerSessionId = null;
     try {
       resolvedStore.requireFeature?.('booking.manual_admin', { role: req.adminUser.role });
       resolvedStore.requireFeature?.('payments.enabled', { role: req.adminUser.role });
       resolvedStore.requireFeature?.('payments.provider.square', { role: req.adminUser.role });
       requireAdminRole(req.adminUser, ['owner']);
 
-      const hold = await resolvedStore.hold({
+      customerSessionId = `admin-${req.adminUser.id}`;
+      hold = await resolvedStore.hold({
         siteId: req.body.siteId,
+        siteIds: req.body.siteIds,
         startDate: req.body.startDate,
         endDate: req.body.endDate,
         guests: req.body.guests,
         vehicles: req.body.vehicles,
-        customerSessionId: `admin-${req.adminUser.id}`,
+        customerSessionId,
       });
       const bookingCode = `MW-${hold.id.slice(0, 6).toUpperCase()}`;
       const squareConfig = await squareProviderConfig();
@@ -707,6 +719,7 @@ export function createApiRouter({
         targetId: booking.bookingCode,
         metadata: {
           siteId: booking.rvSiteId,
+          siteIds: booking.rvSiteIds ?? booking.siteIds ?? [booking.rvSiteId],
           startDate: booking.startDate,
           endDate: booking.endDate,
           checkoutUrl: checkout.checkoutUrl,
@@ -721,6 +734,7 @@ export function createApiRouter({
         },
       });
     } catch (error) {
+      await releaseCheckoutHold(resolvedStore, hold, customerSessionId);
       sendApiError(res, error, 'ADMIN_BOOKING_CHECKOUT_FAILED', 409);
     }
   });
@@ -1011,6 +1025,23 @@ function checkoutSurface(config = {}) {
   return 'web-payments';
 }
 
+function requestPublicUrl(req) {
+  const forwardedProto = String(req.get?.('x-forwarded-proto') || '').split(',')[0].trim();
+  const forwardedHost = String(req.get?.('x-forwarded-host') || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol;
+  const host = forwardedHost || req.get('host');
+  return `${protocol}://${host}${req.originalUrl}`;
+}
+
+async function releaseCheckoutHold(store, hold, customerSessionId) {
+  if (!hold?.id || !customerSessionId || !store?.releaseHold) return;
+  try {
+    await store.releaseHold({ holdId: hold.id, customerSessionId });
+  } catch (releaseError) {
+    console.warn('[Booking] Could not release failed checkout hold:', releaseError.message);
+  }
+}
+
 function paymentAttemptIdempotencyKey(bookingCode, sourceId) {
   const booking = String(bookingCode || 'booking')
     .toLowerCase()
@@ -1023,7 +1054,7 @@ function paymentAttemptIdempotencyKey(bookingCode, sourceId) {
     .update(String(source))
     .digest('hex')
     .slice(0, 18);
-  return `payment-${booking}-${digest}`.slice(0, 192);
+  return `payment-${booking}-${digest}`.slice(0, 45);
 }
 
 function isPaymentComplete(status) {

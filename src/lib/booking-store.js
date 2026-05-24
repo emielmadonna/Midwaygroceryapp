@@ -165,8 +165,9 @@ export function createMemoryBookingStore({
       const checkedAt = resolveNow(input.now, now);
       expireMemoryRecords(state, checkedAt);
 
-      const site = state.sites.find(candidate => candidate.id === input.siteId);
-      if (!site || site.status !== 'active') throw new Error('That RV site is not available.');
+      const selectedSiteIds = bookingSiteIds(input);
+      const selectedSites = selectedSiteIds.map(siteId => state.sites.find(candidate => candidate.id === siteId));
+      if (selectedSites.some(site => !site || site.status !== 'active')) throw new Error('That RV site is not available.');
 
       const available = getAvailableSites({
         sites: state.sites,
@@ -176,12 +177,14 @@ export function createMemoryBookingStore({
         endDate: input.endDate,
         now: checkedAt,
       });
-      if (!available.some(candidate => candidate.id === site.id)) {
+      const availableSiteIds = new Set(available.map(candidate => candidate.id));
+      if (!selectedSiteIds.every(siteId => availableSiteIds.has(siteId))) {
         throw new Error('That RV site is no longer available for the selected dates.');
       }
 
-      const quote = quoteBooking({
-        site,
+      const quote = quoteMultiSiteBooking({
+        sites: state.sites,
+        siteIds: selectedSiteIds,
         startDate: input.startDate,
         endDate: input.endDate,
         guests: input.guests,
@@ -193,7 +196,10 @@ export function createMemoryBookingStore({
       const booking = {
         id: crypto.randomUUID(),
         bookingCode: input.bookingCode ?? createBookingCode(),
-        rvSiteId: site.id,
+        rvSiteId: quote.siteId,
+        rvSiteIds: quote.siteIds ?? selectedSiteIds,
+        siteIds: quote.siteIds ?? selectedSiteIds,
+        siteLines: quote.sites ?? [],
         holdId: null,
         customer,
         customerName: status === 'blocked' ? (customerName(customer) || 'Blocked') : customerName(customer),
@@ -212,6 +218,8 @@ export function createMemoryBookingStore({
         status,
         squareOrderId: null,
         squarePaymentId: null,
+        squareCatalogObjectId: quote.squareCatalogObjectId ?? null,
+        sku: quote.sku ?? null,
         checkoutUrl: null,
         expiresAt: null,
         quote,
@@ -672,6 +680,7 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
     async createAdminBooking(input = {}) {
       const checkedAt = resolveNow(input.now, now);
       await expireSupabaseRecords(supabase, checkedAt);
+      const selectedSiteIds = bookingSiteIds(input);
 
       const [sites, bookings, holds] = await Promise.all([
         loadSupabaseSites(supabase),
@@ -679,8 +688,8 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
         loadSupabaseActiveHolds(supabase, { ...input, now: checkedAt }),
       ]);
 
-      const site = sites.find(candidate => candidate.id === input.siteId);
-      if (!site || site.status !== 'active') throw new Error('That RV site is not available.');
+      const selectedSites = selectedSiteIds.map(siteId => sites.find(candidate => candidate.id === siteId));
+      if (selectedSites.some(site => !site || site.status !== 'active')) throw new Error('That RV site is not available.');
 
       const available = getAvailableSites({
         sites,
@@ -690,18 +699,20 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
         endDate: input.endDate,
         now: checkedAt,
       });
-      if (!available.some(candidate => candidate.id === site.id)) {
+      const availableSiteIds = new Set(available.map(candidate => candidate.id));
+      if (!selectedSiteIds.every(siteId => availableSiteIds.has(siteId))) {
         throw new Error('That RV site is no longer available for the selected dates.');
       }
 
-      const quote = quoteBooking({
-        site,
+      const quote = quoteMultiSiteBooking({
+        sites,
+        siteIds: selectedSiteIds,
         startDate: input.startDate,
         endDate: input.endDate,
         guests: input.guests,
         vehicles: input.vehicles,
       });
-      const row = toSupabaseAdminBookingInsert({ input, site, quote, now: checkedAt });
+      const row = toSupabaseAdminBookingInsert({ input, quote, now: checkedAt });
       const { data, error } = await supabase
         .from('rv_bookings')
         .insert(row)
@@ -1337,7 +1348,7 @@ function toSupabaseBookingInsert({ input, hold, quote, now }) {
   };
 }
 
-function toSupabaseAdminBookingInsert({ input, site, quote, now }) {
+function toSupabaseAdminBookingInsert({ input, quote, now }) {
   const customer = input.customer ?? {};
   const status = input.status === 'blocked' ? 'blocked' : 'confirmed';
   const isBlocked = status === 'blocked';
@@ -1345,7 +1356,9 @@ function toSupabaseAdminBookingInsert({ input, site, quote, now }) {
   return {
     id: crypto.randomUUID(),
     booking_code: input.bookingCode ?? createBookingCode(),
-    rv_site_id: site.id,
+    rv_site_id: quote.siteId,
+    rv_site_ids: quote.siteIds ?? [quote.siteId],
+    site_lines: quote.sites ?? [],
     customer_name: isBlocked ? (customerName(customer) || 'Blocked') : customerName(customer),
     customer_phone: customer.phone ?? '',
     customer_email: customer.email ?? null,
@@ -1366,6 +1379,14 @@ function toSupabaseAdminBookingInsert({ input, site, quote, now }) {
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
+}
+
+function bookingSiteIds(input = {}) {
+  const value = input.siteIds ?? input.siteId;
+  const ids = (Array.isArray(value) ? value : [value])
+    .map(siteId => String(siteId ?? '').trim())
+    .filter(Boolean);
+  return [...new Set(ids)];
 }
 
 function toSupabaseSiteUpdate(update, now) {

@@ -112,6 +112,53 @@ test('persisted Square inventory rows normalize for public products', () => {
   ]);
 });
 
+test('booking catalog items are excluded from public store products', () => {
+  const products = normalizeSquareProducts([
+    {
+      squareItemId: 'ITEM_RV_FULL',
+      squareVariationId: 'VAR_RV_FULL',
+      sku: 'MIDWAY-RV-FULL-HOOKUP-NIGHT',
+      name: 'RV Full Hookup Night',
+      priceCents: 4500,
+      active: true,
+    },
+    {
+      squareItemId: 'ITEM_RV_PARTIAL',
+      squareVariationId: 'VAR_RV_PARTIAL',
+      sku: 'MIDWAY-RV-PARTIAL-HOOKUP-NIGHT',
+      name: 'RV Partial Hookup Night',
+      priceCents: 4000,
+      active: true,
+    },
+    {
+      squareItemId: 'ITEM_TENT',
+      squareVariationId: 'VAR_TENT',
+      sku: 'MIDWAY-TENT-CAMPING-NIGHT',
+      name: 'Tent Camping Night',
+      priceCents: 2000,
+      active: true,
+    },
+    {
+      squareItemId: 'ITEM_VEHICLE',
+      squareVariationId: 'VAR_VEHICLE',
+      sku: 'MIDWAY-EXTRA-VEHICLE',
+      name: 'Extra Vehicle Fee',
+      priceCents: 1000,
+      active: true,
+    },
+    {
+      squareItemId: 'ITEM_FIREWOOD',
+      squareVariationId: 'VAR_FIREWOOD',
+      sku: 'FIREWOOD-BUNDLE',
+      name: 'Firewood Bundle',
+      priceCents: 800,
+      active: true,
+    },
+  ]);
+
+  assert.deepEqual(products.map(product => product.sku), ['FIREWOOD-BUNDLE']);
+});
+
 test('disabled public sections stay hidden while enabled empty sections collapse', () => {
   const bootstrap = buildPublicBootstrap({
     settings: {

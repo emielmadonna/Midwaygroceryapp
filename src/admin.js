@@ -185,6 +185,9 @@ els.calendarTodayBtn?.addEventListener('click', () => {
   renderPropertyMap();
 });
 
+bindDateRangeForm(els.manualForm, { startName: 'startDate', endName: 'endDate' });
+bindDateRangeForm(els.blockForm, { startName: 'startDate', endName: 'endDate' });
+
 els.propertyMap?.addEventListener('click', event => {
   const marker = event.target.closest('[data-map-site]');
   if (!marker) return;
@@ -223,6 +226,7 @@ els.manualForm?.addEventListener('submit', async event => {
     await mutate('/api/admin/bookings', payload, 'Manual booking created.');
   }
   els.manualForm.reset();
+  syncDateRangeForm(els.manualForm, { startName: 'startDate', endName: 'endDate' });
 });
 
 els.blockForm?.addEventListener('submit', async event => {
@@ -234,6 +238,7 @@ els.blockForm?.addEventListener('submit', async event => {
     reason: form.get('reason') || 'Maintenance block',
   }, 'Site dates blocked.');
   els.blockForm.reset();
+  syncDateRangeForm(els.blockForm, { startName: 'startDate', endName: 'endDate' });
 });
 
 boot().catch(error => {
@@ -1274,6 +1279,47 @@ function shiftSelectedDate(days) {
 
 function todayIso() {
   return localDateString(new Date());
+}
+
+function bindDateRangeForm(form, options) {
+  if (!form) return;
+  const startInput = form.elements.namedItem(options.startName);
+  const endInput = form.elements.namedItem(options.endName);
+  if (!startInput || !endInput) return;
+
+  const sync = () => syncDateRangeForm(form, options);
+  startInput.min = todayIso();
+  endInput.min = startInput.value ? addLocalDays(startInput.value, 1) : todayIso();
+  startInput.addEventListener('input', sync);
+  startInput.addEventListener('change', sync);
+  endInput.addEventListener('input', sync);
+  endInput.addEventListener('change', sync);
+}
+
+function syncDateRangeForm(form, options) {
+  if (!form) return;
+  const startInput = form.elements.namedItem(options.startName);
+  const endInput = form.elements.namedItem(options.endName);
+  if (!startInput || !endInput) return;
+
+  startInput.min = todayIso();
+  if (!startInput.value) {
+    endInput.min = todayIso();
+    return;
+  }
+
+  const minimumEnd = addLocalDays(startInput.value, 1);
+  endInput.min = minimumEnd;
+  if (!endInput.value || endInput.value <= startInput.value) {
+    endInput.value = minimumEnd;
+  }
+}
+
+function addLocalDays(value, days) {
+  const [year, month, day] = String(value || '').split('-').map(Number);
+  if (!year || !month || !day) return todayIso();
+  const date = new Date(year, month - 1, day + days);
+  return localDateString(date);
 }
 
 function localDateString(date) {

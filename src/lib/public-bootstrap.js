@@ -40,7 +40,15 @@ export function normalizeSquareProducts(products = []) {
       };
     })
     .filter(product => product.id && product.name && product.priceCents > 0 && product.active && !product.hidden)
+    .filter(product => !isBookingCatalogProduct(product))
     .map(({ active, hidden, ...product }) => product);
+}
+
+function isBookingCatalogProduct(product = {}) {
+  const sku = String(product.sku || '').trim().toUpperCase();
+  return sku === 'MIDWAY-EXTRA-VEHICLE'
+    || sku.startsWith('MIDWAY-RV-')
+    || sku.startsWith('MIDWAY-TENT-');
 }
 
 export function buildPublicBootstrap({

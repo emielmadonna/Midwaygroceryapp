@@ -38,10 +38,49 @@ export function buildSquareVerificationDetails({ checkout = {}, session = {}, am
 }
 
 export function createPaymentIdempotencyKey(bookingCode, methodLabel, randomSource = defaultRandomSource) {
+  const maxLength = 45;
   const booking = sanitizeIdempotencyPart(bookingCode) || 'booking';
   const method = sanitizeIdempotencyPart(methodLabel) || 'payment';
   const suffix = sanitizeIdempotencyPart(randomSource()) || String(Date.now());
-  return `payment-${booking}-${method}-${suffix}`.slice(0, 192);
+  const base = `payment-${booking}-${method}`;
+  const suffixLength = maxLength - base.length - 1;
+  if (suffixLength >= 8) return `${base}-${suffix.slice(0, suffixLength)}`;
+
+  const compactBase = `pay-${booking.slice(0, 12)}-${method.slice(0, 8)}`;
+  const compactSuffixLength = Math.max(8, maxLength - compactBase.length - 1);
+  return `${compactBase}-${suffix.slice(0, compactSuffixLength)}`.slice(0, maxLength);
+}
+
+export function addLocalDateDays(dateValue, days) {
+  const date = parseDateInput(dateValue);
+  date.setUTCDate(date.getUTCDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+export function dateRangeNights(startDate, endDate) {
+  const start = parseDateInput(startDate);
+  const end = parseDateInput(endDate);
+  return Math.round((end - start) / 86400000);
+}
+
+export function normalizeDepartureDate({
+  previousStartDate,
+  nextStartDate,
+  departureDate,
+  minimumNights = 1,
+} = {}) {
+  if (!isDateInput(nextStartDate)) return departureDate || '';
+  const minNights = Math.max(1, Math.trunc(Number(minimumNights) || 1));
+  const currentNights = isDateInput(previousStartDate) && isDateInput(departureDate)
+    ? dateRangeNights(previousStartDate, departureDate)
+    : minNights;
+  const preservedNights = Math.max(minNights, currentNights);
+
+  if (isDateInput(departureDate) && dateRangeNights(nextStartDate, departureDate) >= minNights) {
+    return departureDate;
+  }
+
+  return addLocalDateDays(nextStartDate, preservedNights);
 }
 
 function firstName(name = '') {
@@ -55,6 +94,15 @@ function lastName(name = '') {
 
 function sanitizeIdempotencyPart(value = '') {
   return String(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function isDateInput(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function parseDateInput(value) {
+  if (!isDateInput(value)) throw new Error('Dates must use YYYY-MM-DD format.');
+  return new Date(`${value}T00:00:00.000Z`);
 }
 
 function defaultRandomSource() {

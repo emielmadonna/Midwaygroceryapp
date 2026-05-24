@@ -45,319 +45,342 @@
         </header>
 
         <main class="admin-main">
-            <section class="admin-panel admin-panel--wide admin-command">
-                <div class="admin-command__intro">
-                    <p class="admin-eyebrow">Command Center</p>
-                    <h2>Run the store from here</h2>
-                    <span id="adminApiStatus" class="admin-user"></span>
+            <details class="admin-panel admin-panel--wide admin-accordion owner-only manual-booking-panel owner-actions-panel" id="ownerPanel" open>
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Owner</p>
+                        <h2>Bookings and Blocks</h2>
+                    </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body owner-actions-grid">
+                    <article class="admin-subpanel">
+                        <p class="admin-eyebrow">Owner</p>
+                        <h3>Add Booking</h3>
+                        <form id="manualBookingForm" class="admin-form">
+                            <label>Booking action
+                                <select name="bookingAction">
+                                    <option value="create">Create admin booking</option>
+                                    <option value="payment-link">Create Square payment link</option>
+                                </select>
+                            </label>
+                            <label>Site
+                                <select name="siteId" data-site-select required></select>
+                            </label>
+                            <div class="admin-form__row">
+                                <label>Arrival
+                                    <input type="date" name="startDate" required />
+                                </label>
+                                <label>Departure
+                                    <input type="date" name="endDate" required />
+                                </label>
+                            </div>
+                            <div class="admin-form__row">
+                                <label>Guests
+                                    <input type="number" name="guests" value="1" min="1" />
+                                </label>
+                                <label>Vehicles
+                                    <input type="number" name="vehicles" value="1" min="1" />
+                                </label>
+                            </div>
+                            <label>Name
+                                <input type="text" name="customerName" required />
+                            </label>
+                            <label>Phone
+                                <input type="tel" name="customerPhone" required />
+                            </label>
+                            <label>Email
+                                <input type="email" name="customerEmail" />
+                            </label>
+                            <button type="submit" class="btn btn--primary">Create Booking</button>
+                            <p class="admin-form__hint">Payment link holds the site and opens Square checkout. The booking confirms after payment succeeds.</p>
+                        </form>
+                    </article>
+                    <article class="admin-subpanel">
+                        <p class="admin-eyebrow">Owner</p>
+                        <h3>Block Site</h3>
+                        <form id="blockSiteForm" class="admin-form">
+                            <label>Site
+                                <select name="siteId" data-site-select required></select>
+                            </label>
+                            <div class="admin-form__row">
+                                <label>Start
+                                    <input type="date" name="startDate" required />
+                                </label>
+                                <label>End
+                                    <input type="date" name="endDate" required />
+                                </label>
+                            </div>
+                            <label>Reason
+                                <input type="text" name="reason" placeholder="Maintenance, owner hold, etc." />
+                            </label>
+                            <button type="submit" class="btn btn--primary">Block Dates</button>
+                        </form>
+                    </article>
                 </div>
-                <nav class="admin-nav" aria-label="Admin sections">
-                    <a href="#providerPanel">Connections</a>
-                    <a href="#instagramPanel">Instagram</a>
-                    <a href="#settingsPanel">Site Settings</a>
-                    <a href="#calendarPanel">Calendar</a>
-                    <a href="#propertyMapPanel">Map</a>
-                </nav>
-            </section>
+            </details>
 
-            <section class="admin-panel admin-panel--wide">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion" id="todayPanel" open>
+                <summary>
                     <div>
                         <p class="admin-eyebrow">Today</p>
                         <h2>Dashboard</h2>
                     </div>
+                    <span class="admin-user" id="adminApiStatus"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="admin-stats" id="dashboardStats"></div>
+                    <div class="admin-columns">
+                        <div>
+                            <h3>Alerts</h3>
+                            <ul class="admin-list" id="alertsList"></ul>
+                        </div>
+                        <div>
+                            <h3>Arrivals</h3>
+                            <ul class="admin-list" id="arrivalsList"></ul>
+                        </div>
+                        <div>
+                            <h3>Departures</h3>
+                            <ul class="admin-list" id="departuresList"></ul>
+                        </div>
+                    </div>
                 </div>
-                <div class="admin-stats" id="dashboardStats"></div>
-                <div class="admin-columns">
-                    <div>
-                        <h3>Alerts</h3>
-                        <ul class="admin-list" id="alertsList"></ul>
-                    </div>
-                    <div>
-                        <h3>Arrivals</h3>
-                        <ul class="admin-list" id="arrivalsList"></ul>
-                    </div>
-                    <div>
-                        <h3>Departures</h3>
-                        <ul class="admin-list" id="departuresList"></ul>
-                    </div>
-                </div>
-            </section>
+            </details>
 
-            <section class="admin-panel admin-panel--wide employee-mode-panel" id="employeeTaskPanel">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion employee-mode-panel" id="employeeTaskPanel" open>
+                <summary>
                     <div>
                         <p class="admin-eyebrow">Staff</p>
                         <h2>Task Mode</h2>
                     </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="employee-task-grid" id="employeeTaskGrid"></div>
                 </div>
-                <div class="employee-task-grid" id="employeeTaskGrid"></div>
-            </section>
+            </details>
 
-            <section class="admin-panel admin-panel--wide feature-tenant-config feature-dynamic-sections" id="instagramPanel">
-                <div class="admin-panel__header">
-                    <div>
-                        <p class="admin-eyebrow">Public Site</p>
-                        <h2>Instagram</h2>
-                    </div>
-                    <span id="instagramStatus" class="admin-user"></span>
-                </div>
-                <form id="instagramSettingsForm" class="admin-form instagram-form">
-                    <div class="settings-grid">
-                        <label>Instagram handle
-                            <input type="text" name="instagramHandle" placeholder="midwayplain" autocomplete="off" />
-                        </label>
-                        <label>Instagram profile URL
-                            <input type="url" name="instagramUrl" placeholder="https://www.instagram.com/midwayplain/" />
-                        </label>
-                    </div>
-                    <div class="settings-grid">
-                        <label>Instagram user ID
-                            <input type="text" name="instagramUserId" placeholder="17841400000000000" autocomplete="off" />
-                        </label>
-                        <label>Token expires
-                            <input type="datetime-local" name="instagramTokenExpiresAt" />
-                        </label>
-                    </div>
-                    <label>Instagram access token
-                        <input type="password" name="instagramAccessToken" placeholder="Paste a new long-lived token only when connecting/replacing" autocomplete="off" />
-                    </label>
-                    <div class="settings-grid">
-                        <label>Feed limit
-                            <input type="number" name="instagramFeedLimit" min="1" max="25" placeholder="6" />
-                        </label>
-                        <label>Graph API version
-                            <input type="text" name="instagramApiVersion" placeholder="v24.0" autocomplete="off" />
-                        </label>
-                    </div>
-                    <div class="instagram-form__controls">
-                        <label class="section-control__toggle">
-                            <input type="checkbox" name="instagramEnabled" />
-                            Show Instagram on public site
-                        </label>
-                        <button type="button" class="admin-button owner-only" data-provider-action="instagram-refresh">Refresh token now</button>
-                        <button type="submit" class="btn btn--primary owner-only">Save Instagram</button>
-                    </div>
-                </form>
-            </section>
-
-            <section class="admin-panel admin-panel--wide feature-provider-adapters" id="providerPanel">
-                <div class="admin-panel__header">
-                    <div>
-                        <p class="admin-eyebrow">Provider Adapters</p>
-                        <h2>Connections</h2>
-                    </div>
-                </div>
-                <div class="provider-status-grid" id="providerStatusGrid"></div>
-            </section>
-
-            <section class="admin-panel admin-panel--wide feature-tenant-config" id="settingsPanel">
-                <div class="admin-panel__header">
-                    <div>
-                        <p class="admin-eyebrow">Business Profile</p>
-                        <h2>Site Settings</h2>
-                    </div>
-                    <span id="settingsRoleNote" class="admin-user"></span>
-                </div>
-                <form id="businessSettingsForm" class="admin-form settings-form">
-                    <div class="settings-grid">
-                        <label>Business name
-                            <input type="text" name="businessName" autocomplete="organization" />
-                        </label>
-                        <label>Public brand name
-                            <input type="text" name="publicBrandName" />
-                        </label>
-                        <label>Phone
-                            <input type="tel" name="phone" autocomplete="tel" />
-                        </label>
-                        <label>Email
-                            <input type="email" name="email" autocomplete="email" />
-                        </label>
-                        <label>Address
-                            <input type="text" name="address" autocomplete="street-address" />
-                        </label>
-                        <label>Timezone
-                            <input type="text" name="timezone" />
-                        </label>
-                    </div>
-                    <div class="settings-grid feature-dynamic-sections">
-                        <label>Public site URL
-                            <input type="url" name="publicSiteUrl" />
-                        </label>
-                        <label>Theme
-                            <input type="text" name="theme" />
-                        </label>
-                    </div>
-                    <div class="section-controls feature-dynamic-sections">
-                        <div class="section-controls__header">
-                            <div>
-                                <p class="admin-eyebrow">Public Sections</p>
-                                <h3>Content Controls</h3>
-                            </div>
-                            <span id="sectionStatusSummary" class="admin-user"></span>
-                        </div>
-                        <div id="sectionControlsGrid" class="section-controls__grid"></div>
-                    </div>
-                    <div class="settings-form__actions owner-only">
-                        <button type="submit" class="btn btn--primary">Save Settings</button>
-                    </div>
-                </form>
-            </section>
-
-            <section class="admin-panel owner-only manual-booking-panel">
-                <div class="admin-panel__header">
-                    <div>
-                        <p class="admin-eyebrow">Owner</p>
-                        <h2>Add Booking</h2>
-                    </div>
-                </div>
-                <form id="manualBookingForm" class="admin-form">
-                    <label>Booking action
-                        <select name="bookingAction">
-                            <option value="create">Create admin booking</option>
-                            <option value="payment-link">Create Square payment link</option>
-                        </select>
-                    </label>
-                    <label>Site
-                        <select name="siteId" data-site-select required></select>
-                    </label>
-                    <div class="admin-form__row">
-                        <label>Arrival
-                            <input type="date" name="startDate" required />
-                        </label>
-                        <label>Departure
-                            <input type="date" name="endDate" required />
-                        </label>
-                    </div>
-                    <div class="admin-form__row">
-                        <label>Guests
-                            <input type="number" name="guests" value="1" min="1" />
-                        </label>
-                        <label>Vehicles
-                            <input type="number" name="vehicles" value="1" min="1" />
-                        </label>
-                    </div>
-                    <label>Name
-                        <input type="text" name="customerName" required />
-                    </label>
-                    <label>Phone
-                        <input type="tel" name="customerPhone" required />
-                    </label>
-                    <label>Email
-                        <input type="email" name="customerEmail" />
-                    </label>
-                    <button type="submit" class="btn btn--primary">Create Booking</button>
-                    <p class="admin-form__hint">Payment link holds the site and opens Square checkout. The booking confirms after payment succeeds.</p>
-                </form>
-            </section>
-
-            <section class="admin-panel owner-only manual-booking-panel">
-                <div class="admin-panel__header">
-                    <div>
-                        <p class="admin-eyebrow">Owner</p>
-                        <h2>Block Site</h2>
-                    </div>
-                </div>
-                <form id="blockSiteForm" class="admin-form">
-                    <label>Site
-                        <select name="siteId" data-site-select required></select>
-                    </label>
-                    <div class="admin-form__row">
-                        <label>Start
-                            <input type="date" name="startDate" required />
-                        </label>
-                        <label>End
-                            <input type="date" name="endDate" required />
-                        </label>
-                    </div>
-                    <label>Reason
-                        <input type="text" name="reason" placeholder="Maintenance, owner hold, etc." />
-                    </label>
-                    <button type="submit" class="btn btn--primary">Block Dates</button>
-                </form>
-            </section>
-
-            <section class="admin-panel admin-panel--wide feature-calendar" id="calendarPanel">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion feature-calendar" id="calendarPanel">
+                <summary>
                     <div>
                         <p class="admin-eyebrow">Calendar</p>
                         <h2>Bookings by Date</h2>
                     </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
                     <div class="admin-control-row">
                         <button id="calendarPrevBtn" class="admin-button admin-button--icon" type="button" aria-label="Previous day">‹</button>
                         <input id="calendarDate" class="admin-date-input" type="date" />
                         <button id="calendarTodayBtn" class="admin-button" type="button">Today</button>
                         <button id="calendarNextBtn" class="admin-button admin-button--icon" type="button" aria-label="Next day">›</button>
                     </div>
-                </div>
-                <div class="calendar-layout">
-                    <div class="calendar-month" id="calendarGrid"></div>
-                    <div>
-                        <h3 id="calendarDateHeading">Selected Date</h3>
-                        <ul class="admin-list admin-list--divided" id="calendarDateList"></ul>
+                    <div class="calendar-layout">
+                        <div class="calendar-month" id="calendarGrid"></div>
+                        <div>
+                            <h3 id="calendarDateHeading">Selected Date</h3>
+                            <ul class="admin-list admin-list--divided" id="calendarDateList"></ul>
+                        </div>
                     </div>
                 </div>
-            </section>
+            </details>
 
-            <section class="admin-panel admin-panel--wide feature-property-map" id="propertyMapPanel">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion feature-property-map" id="propertyMapPanel">
+                <summary>
                     <div>
                         <p class="admin-eyebrow">Property</p>
                         <h2>Map Status</h2>
                     </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
                     <div class="map-legend" aria-label="Map status legend">
                         <span><i data-status="active"></i>Open</span>
                         <span><i data-status="occupied"></i>Booked</span>
                         <span><i data-status="blocked"></i>Blocked</span>
                         <span><i data-status="maintenance"></i>Maintenance</span>
                     </div>
+                    <div class="property-map-layout">
+                        <div class="property-map" id="propertyMap" aria-label="RV site property map"></div>
+                        <aside class="site-inspector" id="siteInspector"></aside>
+                    </div>
                 </div>
-                <div class="property-map-layout">
-                    <div class="property-map" id="propertyMap" aria-label="RV site property map"></div>
-                    <aside class="site-inspector" id="siteInspector"></aside>
-                </div>
-            </section>
+            </details>
 
-            <section class="admin-panel admin-panel--wide">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion" id="bookingsPanel">
+                <summary>
                     <div>
                         <p class="admin-eyebrow">RV</p>
                         <h2>Bookings</h2>
                     </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <ul class="admin-list admin-list--divided" id="bookingsList"></ul>
                 </div>
-                <ul class="admin-list admin-list--divided" id="bookingsList"></ul>
-            </section>
+            </details>
 
-            <section class="admin-panel">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion" id="siteEditorPanel">
+                <summary>
                     <div>
                         <p class="admin-eyebrow">RV</p>
                         <h2>Site Editor</h2>
                     </div>
-                    <button id="catalogSyncBtn" class="admin-button owner-only" type="button">Sync Square</button>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="admin-panel__actions">
+                        <button id="catalogSyncBtn" class="admin-button owner-only" type="button">Sync Square</button>
+                    </div>
+                    <ul class="admin-list admin-list--divided" id="siteStatusList"></ul>
                 </div>
-                <ul class="admin-list admin-list--divided" id="siteStatusList"></ul>
-            </section>
+            </details>
 
-            <section class="admin-panel">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion feature-tenant-config" id="settingsPanel">
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Business Profile</p>
+                        <h2>Site Settings</h2>
+                    </div>
+                    <span id="settingsRoleNote" class="admin-user"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <form id="businessSettingsForm" class="admin-form settings-form">
+                        <div class="settings-grid">
+                            <label>Business name
+                                <input type="text" name="businessName" autocomplete="organization" />
+                            </label>
+                            <label>Public brand name
+                                <input type="text" name="publicBrandName" />
+                            </label>
+                            <label>Phone
+                                <input type="tel" name="phone" autocomplete="tel" />
+                            </label>
+                            <label>Email
+                                <input type="email" name="email" autocomplete="email" />
+                            </label>
+                            <label>Address
+                                <input type="text" name="address" autocomplete="street-address" />
+                            </label>
+                            <label>Timezone
+                                <input type="text" name="timezone" />
+                            </label>
+                        </div>
+                        <div class="settings-grid feature-dynamic-sections">
+                            <label>Public site URL
+                                <input type="url" name="publicSiteUrl" />
+                            </label>
+                            <label>Theme
+                                <input type="text" name="theme" />
+                            </label>
+                        </div>
+                        <div class="section-controls feature-dynamic-sections">
+                            <div class="section-controls__header">
+                                <div>
+                                    <p class="admin-eyebrow">Public Sections</p>
+                                    <h3>Content Controls</h3>
+                                </div>
+                                <span id="sectionStatusSummary" class="admin-user"></span>
+                            </div>
+                            <div id="sectionControlsGrid" class="section-controls__grid"></div>
+                        </div>
+                        <div class="settings-form__actions owner-only">
+                            <button type="submit" class="btn btn--primary">Save Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </details>
+
+            <details class="admin-panel admin-panel--wide admin-accordion feature-tenant-config feature-dynamic-sections" id="instagramPanel">
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Public Site</p>
+                        <h2>Instagram</h2>
+                    </div>
+                    <span id="instagramStatus" class="admin-user"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <form id="instagramSettingsForm" class="admin-form instagram-form">
+                        <div class="settings-grid">
+                            <label>Instagram handle
+                                <input type="text" name="instagramHandle" placeholder="midwayplain" autocomplete="off" />
+                            </label>
+                            <label>Instagram profile URL
+                                <input type="url" name="instagramUrl" placeholder="https://www.instagram.com/midwayplain/" />
+                            </label>
+                        </div>
+                        <div class="settings-grid">
+                            <label>Instagram user ID
+                                <input type="text" name="instagramUserId" placeholder="17841400000000000" autocomplete="off" />
+                            </label>
+                            <label>Token expires
+                                <input type="datetime-local" name="instagramTokenExpiresAt" />
+                            </label>
+                        </div>
+                        <label>Instagram access token
+                            <input type="password" name="instagramAccessToken" placeholder="Paste a new long-lived token only when connecting/replacing" autocomplete="off" />
+                        </label>
+                        <div class="settings-grid">
+                            <label>Feed limit
+                                <input type="number" name="instagramFeedLimit" min="1" max="25" placeholder="6" />
+                            </label>
+                            <label>Graph API version
+                                <input type="text" name="instagramApiVersion" placeholder="v24.0" autocomplete="off" />
+                            </label>
+                        </div>
+                        <div class="instagram-form__controls">
+                            <label class="section-control__toggle">
+                                <input type="checkbox" name="instagramEnabled" />
+                                Show Instagram on public site
+                            </label>
+                            <button type="button" class="admin-button owner-only" data-provider-action="instagram-refresh">Refresh token now</button>
+                            <button type="submit" class="btn btn--primary owner-only">Save Instagram</button>
+                        </div>
+                    </form>
+                </div>
+            </details>
+
+            <details class="admin-panel admin-panel--wide admin-accordion feature-provider-adapters" id="providerPanel">
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Provider Adapters</p>
+                        <h2>Connections</h2>
+                    </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="provider-status-grid" id="providerStatusGrid"></div>
+                </div>
+            </details>
+
+            <details class="admin-panel admin-panel--wide admin-accordion" id="notificationsPanel">
+                <summary>
                     <div>
                         <p class="admin-eyebrow">Messages</p>
                         <h2>Notifications</h2>
                     </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <ul class="admin-list" id="notificationsList"></ul>
                 </div>
-                <ul class="admin-list" id="notificationsList"></ul>
-            </section>
+            </details>
 
-            <section class="admin-panel admin-panel--wide owner-only">
-                <div class="admin-panel__header">
+            <details class="admin-panel admin-panel--wide admin-accordion owner-only" id="auditPanel">
+                <summary>
                     <div>
                         <p class="admin-eyebrow">Owner</p>
                         <h2>Audit Log</h2>
                     </div>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <ul class="admin-list" id="auditList"></ul>
                 </div>
-                <ul class="admin-list" id="auditList"></ul>
-            </section>
+            </details>
         </main>
     </div>
 

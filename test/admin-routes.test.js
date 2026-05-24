@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import express from 'express';
 
 import { createApiRouter } from '../src/api/routes.js';
@@ -24,6 +25,31 @@ test('admin routes require a server-side token', async () => {
 
     assert.equal(response.status, 401);
     assert.equal(body.error.code, 'ADMIN_AUTH_REQUIRED');
+  } finally {
+    await server.close();
+  }
+});
+
+test('public bootstrap still loads RV booking when Square product sync is unavailable', async () => {
+  const env = {
+    ...baseEnv,
+    FEATURE_FLAGS_JSON: JSON.stringify({ 'inventory.cache': true }),
+  };
+  const store = createMidwayHarness({ env, tenantConfig: createTestTenantConfig() });
+  store.getProviderConfig = async providerKey => {
+    if (providerKey === 'square') throw new Error('temporary provider config failure');
+    return null;
+  };
+  const server = await createTestServer({ env, store });
+
+  try {
+    const response = await api(server, '/api/public/bootstrap?startDate=2026-06-01&endDate=2026-06-03');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.rvSites.length > 0, true);
+    assert.equal(response.body.data.featureFlags.rvBooking, true);
+    assert.equal(response.body.data.products.length, 0);
+    assert.equal(response.body.data.featureFlags.products, false);
   } finally {
     await server.close();
   }
@@ -66,6 +92,38 @@ test('owner can create and cancel a manual booking with audit records', async ()
       'booking.create_manual',
       'admin.login',
     ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test('owner can create a multi-site manual booking that blocks every selected site', async () => {
+  const server = await createTestServer();
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const created = await api(server, '/api/admin/bookings', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        siteIds: ['rv-03', 'rv-11'],
+        startDate: '2026-06-04',
+        endDate: '2026-06-06',
+        guests: 3,
+        vehicles: 2,
+        customer: { name: 'Phone Group', phone: '555-0109' },
+      },
+    });
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.data.status, 'confirmed');
+    assert.deepEqual(created.body.data.siteIds, ['rv-03', 'rv-11']);
+    assert.equal(created.body.data.totalCents, 18000);
+
+    const available = await api(server, '/api/public/bootstrap?startDate=2026-06-04&endDate=2026-06-06');
+    assert.equal(available.status, 200);
+    assert.equal(available.body.data.rvAvailability.includes('rv-03'), false);
+    assert.equal(available.body.data.rvAvailability.includes('rv-11'), false);
   } finally {
     await server.close();
   }
@@ -115,6 +173,102 @@ test('owner can create an admin Square payment link for a site booking', async (
     const pending = bookings.body.data.find(booking => booking.bookingCode === checkout.body.data.bookingCode);
     assert.equal(pending.status, 'hold');
     assert.equal(pending.checkoutUrl, 'https://square.test/admin-checkout');
+  } finally {
+    await server.close();
+  }
+});
+
+test('owner can create an admin Square payment link for multiple sites', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  let requestBody = null;
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      assert.match(url, /\/v2\/online-checkout\/payment-links$/);
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink-admin-multi', url: 'https://square.test/admin-checkout-multi' },
+          related_resources: { orders: [{ id: 'order-admin-multi' }] },
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const checkout = await api(server, '/api/admin/bookings/checkout', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        siteIds: ['rv-03', 'rv-11'],
+        startDate: '2026-06-20',
+        endDate: '2026-06-22',
+        guests: 3,
+        vehicles: 2,
+        customer: { name: 'Counter Group', phone: '555-0122', email: 'group@example.com' },
+      },
+    });
+
+    assert.equal(checkout.status, 201);
+    assert.equal(checkout.body.data.checkout.checkoutUrl, 'https://square.test/admin-checkout-multi');
+    assert.deepEqual(checkout.body.data.hold.quote.siteIds, ['rv-03', 'rv-11']);
+    assert.equal(checkout.body.data.hold.quote.totalCents, 18000);
+    assert.equal(requestBody.order.line_items.length, 3);
+    assert.equal(requestBody.order.metadata.rv_site_ids, 'rv-03,rv-11');
+
+    const bookings = await api(server, '/api/admin/bookings', { token: owner.token });
+    const pending = bookings.body.data.find(booking => booking.bookingCode === checkout.body.data.bookingCode);
+    assert.deepEqual(pending.siteIds, ['rv-03', 'rv-11']);
+    assert.equal(pending.checkoutUrl, 'https://square.test/admin-checkout-multi');
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin Square payment link fails without a real URL and releases the held site', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url) => {
+      assert.match(url, /\/v2\/online-checkout\/payment-links$/);
+      return {
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink-without-url' },
+          related_resources: { orders: [{ id: 'order-without-url' }] },
+        }),
+      };
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const checkout = await api(server, '/api/admin/bookings/checkout', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        siteId: 'rv-04',
+        startDate: '2026-06-10',
+        endDate: '2026-06-12',
+        guests: 2,
+        vehicles: 1,
+        customer: { name: 'No Link Guest', phone: '555-0121', email: 'no-link@example.com' },
+      },
+    });
+
+    assert.equal(checkout.status, 409);
+    assert.match(checkout.body.error.message, /payment link URL/);
+
+    const bookings = await api(server, '/api/admin/bookings', { token: owner.token });
+    assert.equal(bookings.body.data.some(booking => booking.customerName === 'No Link Guest'), false);
+
+    const available = await api(server, '/api/public/bootstrap?startDate=2026-06-10&endDate=2026-06-12');
+    assert.equal(available.status, 200);
+    assert.equal(available.body.data.rvAvailability.includes('rv-04'), true);
   } finally {
     await server.close();
   }
@@ -370,7 +524,76 @@ test('public Square payment retries use a fresh fallback idempotency key for eac
     assert.equal(first.status, 402);
     assert.equal(second.status, 402);
     assert.equal(paymentBodies.length, 2);
+    assert.equal(paymentBodies[0].idempotency_key.length <= 45, true);
+    assert.equal(paymentBodies[1].idempotency_key.length <= 45, true);
     assert.notEqual(paymentBodies[0].idempotency_key, paymentBodies[1].idempotency_key);
+  } finally {
+    await server.close();
+  }
+});
+
+test('public Square payment accepts old browser idempotency keys over 45 characters', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const squareRequests = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      const requestBody = JSON.parse(options.body);
+      squareRequests.push({ url: String(url), body: requestBody });
+      if (/\/v2\/orders$/.test(url)) {
+        return {
+          ok: true,
+          json: async () => ({
+            order: {
+              id: 'order-long-idempotency-test',
+              reference_id: requestBody.order.reference_id,
+            },
+          }),
+        };
+      }
+      assert.match(url, /\/v2\/payments$/);
+      return {
+        ok: true,
+        json: async () => ({
+          payment: {
+            id: 'payment-long-idempotency-test',
+            status: 'COMPLETED',
+            order_id: requestBody.order_id,
+            amount_money: requestBody.amount_money,
+          },
+        }),
+      };
+    },
+  });
+
+  try {
+    const checkout = await api(server, '/api/bookings/checkout', {
+      method: 'POST',
+      body: {
+        siteId: 'rv-08',
+        startDate: '2026-08-03',
+        endDate: '2026-08-04',
+        guests: 2,
+        vehicles: 1,
+        customer: { name: 'Long Key Guest', phone: '555-0198', email: 'long-key@example.com' },
+      },
+    });
+    assert.equal(checkout.status, 200);
+
+    const paid = await api(server, '/api/bookings/pay', {
+      method: 'POST',
+      body: {
+        bookingCode: checkout.body.data.bookingCode,
+        sourceId: 'cnon:card-nonce-ok',
+        idempotencyKey: 'payment-mw-abcd12-apple-pay-12345678-1234-1234-1234-123456789abc',
+      },
+    });
+
+    assert.equal(paid.status, 200);
+    assert.equal(paid.body.data.booking.status, 'confirmed');
+    assert.equal(paid.body.data.booking.squarePaymentId, 'payment-long-idempotency-test');
+    assert.equal(squareRequests.every(request => request.body.idempotency_key.length <= 45), true);
   } finally {
     await server.close();
   }
@@ -468,6 +691,77 @@ test('checkout reads Square and Instagram settings from tenant config', async ()
     assert.equal(checkout.body.data.checkout.mode, 'web-payments');
     assert.equal(checkout.body.data.checkout.applicationId, 'demo-app');
     assert.equal(checkout.body.data.checkout.locationId, 'demo-location');
+  } finally {
+    await server.close();
+  }
+});
+
+test('Square webhook verifies forwarded production URL and confirms hosted payment bookings', async () => {
+  const webhookSignatureKey = 'square-webhook-secret';
+  const tenantConfig = createTenantConfig({
+    providers: {
+      square: {
+        status: 'connected',
+        accessToken: 'square-token',
+        webhookSignatureKey,
+        applicationId: 'square-app',
+        locationId: 'square-location',
+        environment: 'production',
+        checkoutSurface: 'payment-link',
+      },
+    },
+  });
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig });
+  const hold = await store.hold({
+    siteId: 'rv-03',
+    startDate: '2026-09-01',
+    endDate: '2026-09-03',
+    customerSessionId: 'admin-owner',
+  });
+  const booking = await store.recordPendingBooking({
+    hold,
+    customer: { name: 'Webhook Guest', phone: '555-0111' },
+    bookingCode: 'MW-WEBHK1',
+    squareOrderId: 'order-webhook-1',
+    checkoutUrl: 'https://square.test/pay/MW-WEBHK1',
+  });
+  const server = await createTestServer({ store });
+
+  try {
+    assert.equal(booking.status, 'hold');
+    const rawBody = JSON.stringify({
+      type: 'order.updated',
+      event_id: 'evt-webhook-1',
+      data: {
+        object: {
+          order: {
+            id: 'order-webhook-1',
+            state: 'COMPLETED',
+            reference_id: 'MW-WEBHK1',
+          },
+        },
+      },
+    });
+    const notificationUrl = 'https://www.midwayplain.com/api/square/webhook';
+    const signature = crypto.createHmac('sha256', webhookSignatureKey)
+      .update(notificationUrl + rawBody)
+      .digest('base64');
+
+    const response = await api(server, '/api/square/webhook', {
+      method: 'POST',
+      headers: {
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'www.midwayplain.com',
+        'x-square-hmacsha256-signature': signature,
+      },
+      rawBody,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.bookingConfirmed, true);
+    const confirmed = await api(server, '/api/bookings/MW-WEBHK1');
+    assert.equal(confirmed.body.data.status, 'confirmed');
+    assert.equal(confirmed.body.data.squareOrderId, 'order-webhook-1');
   } finally {
     await server.close();
   }
@@ -1395,14 +1689,15 @@ function instagramProviderConnection() {
   };
 }
 
-async function api(server, path, { method = 'GET', token, body } = {}) {
+async function api(server, path, { method = 'GET', token, body, headers = {}, rawBody } = {}) {
   const response = await fetch(`${server.url}${path}`, {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(body || rawBody ? { 'Content-Type': 'application/json' } : {}),
+      ...headers,
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: rawBody ?? (body ? JSON.stringify(body) : undefined),
   });
   return {
     status: response.status,

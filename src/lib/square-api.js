@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 const DEFAULT_SQUARE_VERSION = '2026-01-22';
 const SQUARE_ENVIRONMENTS = new Set(['sandbox', 'production']);
+const SQUARE_IDEMPOTENCY_KEY_MAX_LENGTH = 45;
 
 export function hasSquareConfig(config = {}) {
   try {
@@ -146,6 +147,9 @@ export async function createRvCheckoutPaymentLink({
   } catch (error) {
     throw error;
   }
+  if (readSquareValue(env, 'nodeEnv') === 'production' && !readSquareValue(env, 'webhookSignatureKey')) {
+    throw new Error('Square webhook signature key is required before sending hosted payment links in production.');
+  }
 
   const siteNumbers = hold.quote.siteNumbers?.length ? hold.quote.siteNumbers : [hold.quote.siteNumber];
   const description = `RV Site${siteNumbers.length === 1 ? '' : 's'} ${siteNumbers.join(', ')}, ${hold.startDate} to ${hold.endDate}`;
@@ -170,10 +174,6 @@ export async function createRvCheckoutPaymentLink({
       ask_for_shipping_address: false,
       redirect_url: redirectUrl,
     },
-    pre_populated_data: {
-      buyer_email: customer?.email || undefined,
-      buyer_phone_number: customer?.phone || undefined,
-    },
   };
 
   let result;
@@ -186,6 +186,10 @@ export async function createRvCheckoutPaymentLink({
     });
   } catch (error) {
     throw error;
+  }
+
+  if (!result.payment_link?.url) {
+    throw new Error('Square did not return a payment link URL.');
   }
 
   return {
@@ -245,14 +249,15 @@ export async function createSquareWebPayment({
   }
 
   const squareConfig = validateSquareCheckoutConfig(env);
+  const paymentIdempotencyKey = squareIdempotencyKey(idempotencyKey || `payment-${booking.bookingCode}`, 'payment');
   const orderId = booking.squareOrderId || await createRvOrderForBooking({
     booking,
     env,
     fetchImpl,
-    idempotencyKey,
+    idempotencyKey: paymentIdempotencyKey,
   });
   const payload = {
-    idempotency_key: idempotencyKey || `payment-${booking.bookingCode}`,
+    idempotency_key: paymentIdempotencyKey,
     source_id: sourceId,
     amount_money: {
       amount: amountCents,
@@ -305,7 +310,7 @@ export async function createRvOrderForBooking({
     env,
     fetchImpl,
     body: {
-      idempotency_key: `${idempotencyKey || `payment-${booking.bookingCode}`}-order`,
+      idempotency_key: squareIdempotencyKey(`${idempotencyKey || `payment-${booking.bookingCode}`}-order`, 'order'),
       order: {
         location_id: squareConfig.locationId,
         reference_id: booking.bookingCode,
@@ -384,6 +389,20 @@ function readSquareValue(config, key) {
   const value = config?.[key];
   if (value === undefined || value === null || value === '') return undefined;
   return typeof value === 'string' ? value.trim() : value;
+}
+
+export function squareIdempotencyKey(value, prefix = 'square') {
+  const raw = String(value || '').trim();
+  const sanitizedPrefix = String(prefix || 'square')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 12) || 'square';
+  if (raw && raw.length <= SQUARE_IDEMPOTENCY_KEY_MAX_LENGTH) return raw;
+
+  const source = raw || `${sanitizedPrefix}-${crypto.randomUUID()}`;
+  const digest = crypto.createHash('sha256').update(source).digest('hex').slice(0, 24);
+  return `${sanitizedPrefix}-${digest}`.slice(0, SQUARE_IDEMPOTENCY_KEY_MAX_LENGTH);
 }
 
 function createRvLineItem(hold) {

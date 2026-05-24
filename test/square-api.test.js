@@ -9,6 +9,7 @@ import {
   createSquareWebPayment,
   hasSquareConfig,
   normalizeSquareCatalogItemsForInventory,
+  squareIdempotencyKey,
   squareRequest,
   validateSquareCheckoutConfig,
 } from '../src/lib/square-api.js';
@@ -198,6 +199,7 @@ test('checkout does not synthesize failed Square requests in production', async 
         locationId: 'bad-location',
         environment: 'production',
         nodeEnv: 'production',
+        webhookSignatureKey: 'webhook-signature-key',
       },
       fetchImpl: async () => ({
         ok: false,
@@ -206,6 +208,27 @@ test('checkout does not synthesize failed Square requests in production', async 
       }),
     }),
     /authorized/,
+  );
+});
+
+test('checkout rejects hosted payment links in production without webhook signing', async () => {
+  await assert.rejects(
+    () => createRvCheckoutPaymentLink({
+      hold,
+      bookingCode: 'MW-ABC123',
+      customer: { phone: '509-555-0101' },
+      redirectUrl: 'https://example.com/return',
+      env: {
+        accessToken: 'token',
+        locationId: 'location',
+        environment: 'production',
+        nodeEnv: 'production',
+      },
+      fetchImpl: async () => {
+        throw new Error('Square should not be called without webhook signing.');
+      },
+    }),
+    /webhook signature key/,
   );
 });
 
@@ -222,6 +245,7 @@ test('checkout sends RV nightly SKU as a Square catalog line item', async () => 
       locationId: 'location',
       environment: 'production',
       nodeEnv: 'production',
+      webhookSignatureKey: 'webhook-signature-key',
     },
     fetchImpl: async (url, options) => {
       requestUrl = url;
@@ -240,6 +264,7 @@ test('checkout sends RV nightly SKU as a Square catalog line item', async () => 
   assert.equal(requestBody.payment_note, 'MW-ABC123');
   assert.equal(requestBody.order.location_id, 'location');
   assert.equal(requestBody.order.reference_id, 'MW-ABC123');
+  assert.equal(requestBody.pre_populated_data, undefined);
   assert.deepEqual(requestBody.order.line_items[0], {
     name: 'RV Site 01',
     note: '2026-06-01 to 2026-06-03 · RV-50A-NIGHT',
@@ -253,6 +278,61 @@ test('checkout sends RV nightly SKU as a Square catalog line item', async () => 
     },
     catalog_object_id: 'SQUARE_VARIATION_50A',
   });
+});
+
+test('checkout does not send buyer contact prefill that can block payment links', async () => {
+  let requestBody;
+  await createRvCheckoutPaymentLink({
+    hold,
+    bookingCode: 'MW-ABC123',
+    customer: { phone: '555-0101', email: 'not-an-email' },
+    redirectUrl: 'https://example.com/return',
+    env: {
+      accessToken: 'token',
+      locationId: 'location',
+      environment: 'production',
+      nodeEnv: 'production',
+      webhookSignatureKey: 'webhook-signature-key',
+    },
+    fetchImpl: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink', url: 'https://square.test/checkout' },
+          related_resources: { orders: [{ id: 'order' }] },
+        }),
+      };
+    },
+  });
+
+  assert.equal(requestBody.pre_populated_data, undefined);
+});
+
+test('checkout rejects Square payment link responses without a URL', async () => {
+  await assert.rejects(
+    () => createRvCheckoutPaymentLink({
+      hold,
+      bookingCode: 'MW-ABC123',
+      customer: { phone: '509-555-0101' },
+      redirectUrl: 'https://example.com/return',
+      env: {
+        accessToken: 'token',
+        locationId: 'location',
+        environment: 'production',
+        nodeEnv: 'production',
+        webhookSignatureKey: 'webhook-signature-key',
+      },
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({
+          payment_link: { id: 'plink' },
+          related_resources: { orders: [{ id: 'order' }] },
+        }),
+      }),
+    }),
+    /payment link URL/,
+  );
 });
 
 test('checkout sends a custom amount line item when no Square catalog variation is mapped', async () => {
@@ -274,6 +354,7 @@ test('checkout sends a custom amount line item when no Square catalog variation 
       locationId: 'location',
       environment: 'production',
       nodeEnv: 'production',
+      webhookSignatureKey: 'webhook-signature-key',
     },
     fetchImpl: async (_url, options) => {
       requestBody = JSON.parse(options.body);
@@ -315,6 +396,7 @@ test('checkout adds extra vehicles as a Square fee line item', async () => {
       locationId: 'location',
       environment: 'production',
       nodeEnv: 'production',
+      webhookSignatureKey: 'webhook-signature-key',
     },
     fetchImpl: async (_url, options) => {
       requestBody = JSON.parse(options.body);
@@ -435,6 +517,59 @@ test('web payment calls Square Payments API with tokenized source id', async () 
   assert.equal(payment.paymentId, 'payment-123');
   assert.equal(payment.status, 'COMPLETED');
   assert.equal(payment.orderId, 'order-123');
+});
+
+test('web payment clamps Square idempotency keys to the payment API limit', async () => {
+  const requests = [];
+  const payment = await createSquareWebPayment({
+    booking: {
+      bookingCode: 'MW-ABC123',
+      rvSiteId: 'rv-01',
+      startDate: '2026-06-01',
+      endDate: '2026-06-03',
+      nights: 2,
+      vehicles: 1,
+      subtotalCents: 11600,
+      feeCents: 0,
+      totalCents: 11600,
+      currency: 'USD',
+    },
+    sourceId: 'cnon:card-nonce-ok',
+    idempotencyKey: 'payment-mw-abcd12-apple-pay-12345678-1234-1234-1234-123456789abc',
+    env: {
+      accessToken: 'token',
+      applicationId: 'app',
+      locationId: 'location',
+      environment: 'production',
+      nodeEnv: 'production',
+    },
+    fetchImpl: async (url, options) => {
+      const requestBody = JSON.parse(options.body);
+      requests.push({ url, body: requestBody });
+      if (url.endsWith('/v2/orders')) {
+        return {
+          ok: true,
+          json: async () => ({ order: { id: 'order-123' } }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          payment: {
+            id: 'payment-123',
+            status: 'COMPLETED',
+            amount_money: requestBody.amount_money,
+            order_id: requestBody.order_id,
+          },
+        }),
+      };
+    },
+  });
+
+  assert.equal(payment.status, 'COMPLETED');
+  assert.equal(requests[0].body.idempotency_key.length <= 45, true);
+  assert.equal(requests[1].body.idempotency_key.length <= 45, true);
+  assert.equal(requests[1].body.idempotency_key, squareIdempotencyKey('payment-mw-abcd12-apple-pay-12345678-1234-1234-1234-123456789abc', 'payment'));
 });
 
 test('web payment order builder uses multi-site catalog lines and extra vehicle mapping', async () => {

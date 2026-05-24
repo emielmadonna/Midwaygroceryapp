@@ -2,10 +2,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  addLocalDateDays,
   buildSquarePaymentRequest,
   buildSquareVerificationDetails,
   checkoutAmountCents,
   createPaymentIdempotencyKey,
+  dateRangeNights,
+  normalizeDepartureDate,
 } from './lib/public-checkout.js';
 import { bookableMapSites as STATIC_RV_SITES, denormalizeMapSite } from './lib/rv-map-data.js';
 
@@ -119,7 +122,11 @@ const mapEmbedHref = (address = '') => {
 const dateInput = (offsetDays) => {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
 };
 
 const normalizeHour = (hour = {}) => {
@@ -937,8 +944,11 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   const [error, setError] = useState('');
 
   const nights = useMemo(() => {
-    const a = new Date(arr), d = new Date(dep);
-    return Math.max(1, Math.round((d - a) / 86400000));
+    try {
+      return Math.max(1, dateRangeNights(arr, dep));
+    } catch {
+      return 1;
+    }
   }, [arr, dep]);
 
   const selSites = useMemo(() => {
@@ -965,6 +975,14 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   const siteCapacityLabel = selSite?.type === 'tent'
     ? 'tent area'
     : `up to ${selSite?.maxRvLengthFeet || '--'} ft`;
+  const minArrivalDate = dateInput(0);
+  const minDepartureDate = useMemo(() => {
+    try {
+      return addLocalDateDays(arr, 1);
+    } catch {
+      return dateInput(1);
+    }
+  }, [arr]);
 
   useEffect(() => {
     onDateRangeChange?.(arr, dep);
@@ -985,6 +1003,21 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
 
   const updateGuest = (field, value) => {
     setGuest(g => ({ ...g, [field]: value }));
+  };
+  const updateArrivalDate = (value) => {
+    setArr(value);
+    setDep(current => normalizeDepartureDate({
+      previousStartDate: arr,
+      nextStartDate: value,
+      departureDate: current,
+    }));
+  };
+  const updateDepartureDate = (value) => {
+    setDep(normalizeDepartureDate({
+      previousStartDate: arr,
+      nextStartDate: arr,
+      departureDate: value,
+    }));
   };
   const onLicenseChange = (event) => {
     const file = event.target.files?.[0] || null;
@@ -1093,11 +1126,11 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
               <div className="row2">
                 <div>
                   <label>Arrive</label>
-                  <input type="date" value={arr} onChange={e => setArr(e.target.value)} />
+                  <input type="date" min={minArrivalDate} value={arr} onInput={e => updateArrivalDate(e.target.value)} />
                 </div>
                 <div>
                   <label>Depart</label>
-                  <input type="date" value={dep} onChange={e => setDep(e.target.value)} />
+                  <input type="date" min={minDepartureDate} value={dep} onInput={e => updateDepartureDate(e.target.value)} />
                 </div>
               </div>
 

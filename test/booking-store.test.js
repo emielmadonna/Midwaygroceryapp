@@ -71,6 +71,28 @@ test('memory booking store blocks all sites in a multi-site hold', async () => {
   assert.deepEqual(available.map(site => site.id), []);
 });
 
+test('memory booking store creates multi-site admin bookings', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+
+  const booking = await store.createAdminBooking({
+    siteIds: ['site-1', 'site-2'],
+    startDate: '2026-05-19',
+    endDate: '2026-05-21',
+    guests: 4,
+    vehicles: 2,
+    customer: { name: 'Admin Group', phone: '555-0199' },
+  });
+  const available = await store.listAvailability({
+    startDate: '2026-05-20',
+    endDate: '2026-05-21',
+  });
+
+  assert.equal(booking.status, 'confirmed');
+  assert.deepEqual(booking.siteIds, ['site-1', 'site-2']);
+  assert.equal(booking.totalCents, 21400);
+  assert.deepEqual(available.map(site => site.id), []);
+});
+
 test('memory booking store records driver license upload metadata', async () => {
   const store = createMemoryBookingStore({ sites, now: () => now });
   const hold = await store.createHold({
