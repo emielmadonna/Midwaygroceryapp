@@ -401,6 +401,36 @@ export function createApiRouter({
     }
   });
 
+  router.get('/admin/hours', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const data = await resolvedStore.listStoreHours?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_HOURS_UNAVAILABLE');
+    }
+  });
+
+  router.patch('/admin/hours', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const rows = Array.isArray(req.body?.hours) ? req.body.hours : [];
+      const data = await resolvedStore.updateStoreHours?.(rows);
+      await resolvedStore.recordAuditLog?.({
+        action: 'store_hours.update',
+        actor: req.adminUser,
+        targetType: 'store_hours',
+        targetId: 'midway',
+        metadata: { dayCount: rows.length },
+      });
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_HOURS_UPDATE_FAILED');
+    }
+  });
+
   router.get('/admin/providers', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('core.tenant_config', { role: req.adminUser.role });
