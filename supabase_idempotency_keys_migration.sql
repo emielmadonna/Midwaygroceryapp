@@ -13,8 +13,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 );
 
 CREATE INDEX IF NOT EXISTS idempotency_keys_lookup_idx
-  ON idempotency_keys (tenant_id, actor_id, key)
-  WHERE expires_at > NOW();
+  ON idempotency_keys (tenant_id, actor_id, key, expires_at);
 
 CREATE INDEX IF NOT EXISTS idempotency_keys_expiry_idx
   ON idempotency_keys (expires_at);
