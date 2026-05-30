@@ -14,6 +14,7 @@ import { createProviderConnectionService } from '../lib/provider-connections.js'
 import { createSupabaseServerClient } from '../lib/supabase-server.js';
 import { createToolRegistry } from '../lib/tool-registry.js';
 import { registerCoreTools } from '../lib/registered-tools.js';
+import { registerXeroTools } from '../lib/xero-tools.js';
 import {
   createRvCheckoutPaymentLink,
   createRvWebPaymentSession,
@@ -31,6 +32,8 @@ import {
   slackProviderConfigFromEnv,
   verifySlackSignature,
 } from '../lib/slack-api.js';
+import { buildXeroAuthUrl, xeroProviderConfigFromEnv } from '../lib/xero-api.js';
+import { createXeroService } from '../lib/xero-service.js';
 
 export function createApiRouter({
   store = null,
@@ -57,6 +60,8 @@ export function createApiRouter({
   const adminAuth = createAdminAuthService({ env, apiTokenService });
   const toolRegistry = createToolRegistry();
   registerCoreTools(toolRegistry, { store: resolvedStore });
+  const xeroService = createXeroService({ store: resolvedStore, env, fetchImpl });
+  registerXeroTools(toolRegistry, { xeroService, env });
   const mcpServer = createMcpServer({ registry: toolRegistry, store: resolvedStore });
   const aiProvider = createOpenAiProvider({ env });
   const agent = createAgent({ provider: aiProvider, registry: toolRegistry, store: resolvedStore });
@@ -686,6 +691,93 @@ export function createApiRouter({
       });
     } catch (error) {
       sendApiError(res, error, error.code || 'AGENT_TURN_FAILED', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/providers/xero/oauth/start', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = xeroProviderConfigFromEnv(env);
+      if (!config.clientId || !config.clientSecret) {
+        throw badRequest('Xero app is not configured. Set XERO_CLIENT_ID and XERO_CLIENT_SECRET in env.');
+      }
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'xero');
+      const state = crypto.randomBytes(16).toString('hex');
+      const authorizationUrl = buildXeroAuthUrl({
+        clientId: config.clientId,
+        scopes: config.scopes,
+        redirectUri,
+        state,
+      });
+      res.json({ ok: true, data: { authorizationUrl, redirectUri, state } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_OAUTH_START_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/xero/oauth/callback', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = xeroProviderConfigFromEnv(env);
+      const code = req.body?.code;
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'xero');
+      if (!code) throw badRequest('Authorization code is required.');
+      const data = await xeroService.completeAuth({
+        code,
+        redirectUri,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.xero.connect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'xero',
+        metadata: { organizationCount: data.organizations.length },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_OAUTH_CALLBACK_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/providers/xero/status', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      const data = await xeroService.getStatus();
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_STATUS_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/providers/xero', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'xero',
+        status: 'not_connected',
+        accessToken: null,
+        refreshToken: null,
+        externalAccountId: null,
+        publicConfig: {},
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.xero.disconnect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'xero',
+      });
+      res.json({ ok: true, data: {} });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_DISCONNECT_FAILED', error.statusCode || 400);
     }
   });
 

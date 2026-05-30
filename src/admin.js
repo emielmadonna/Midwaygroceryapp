@@ -580,6 +580,47 @@ async function startInstagramConnection(event) {
   }
 }
 
+async function startXeroConnection(event) {
+  const redirectUri = providerRedirectUri('xero');
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Connecting...');
+  try {
+    const data = await api('/api/admin/providers/xero/oauth/start', {
+      method: 'POST',
+      body: { redirectUri },
+    });
+    if (data.authorizationUrl) {
+      sessionStorage.setItem(pendingProviderKey, JSON.stringify({
+        provider: 'xero',
+        state: data.state || '',
+        redirectUri,
+      }));
+      window.location.assign(data.authorizationUrl);
+      return;
+    }
+    showToast('Xero install could not start.', 'error');
+  } catch (error) {
+    showToast(`Xero connection failed: ${error.message}`, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
+async function disconnectXero(event) {
+  if (!window.confirm('Disconnect Xero? Booking → invoice sync will stop.')) return;
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Disconnecting...');
+  try {
+    await api('/api/admin/providers/xero', { method: 'DELETE' });
+    showToast('Xero disconnected.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
 async function startSlackConnection(event) {
   const redirectUri = providerRedirectUri('slack');
   const trigger = event?.currentTarget;
@@ -653,7 +694,7 @@ async function completePendingProviderCallback() {
   const params = new URLSearchParams(window.location.search);
   const pending = readPendingProviderConnection();
   const provider = params.get('provider') || pending?.provider || (params.has('code') || params.has('error') ? 'instagram' : '');
-  if (!['instagram', 'square', 'slack'].includes(provider)) return;
+  if (!['instagram', 'square', 'slack', 'xero'].includes(provider)) return;
   if (!params.has('code') && !params.has('error')) return;
 
   const redirectUri = pending?.redirectUri || providerRedirectUri(provider);
@@ -661,12 +702,16 @@ async function completePendingProviderCallback() {
     ? '/api/admin/providers/instagram/oauth/callback'
     : provider === 'slack'
       ? '/api/admin/providers/slack/oauth/callback'
-      : '/api/admin/providers/square/oauth/callback';
+      : provider === 'xero'
+        ? '/api/admin/providers/xero/oauth/callback'
+        : '/api/admin/providers/square/oauth/callback';
   const label = provider === 'instagram'
     ? 'Instagram'
     : provider === 'slack'
       ? 'Slack'
-      : 'Square';
+      : provider === 'xero'
+        ? 'Xero'
+        : 'Square';
 
   try {
     const data = await api(endpoint, {
@@ -1006,6 +1051,12 @@ function renderProviderStatuses() {
   });
   els.providerStatusGrid.querySelectorAll('[data-provider-action="slack-disconnect"]').forEach(button => {
     button.addEventListener('click', disconnectSlack);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="xero-oauth"]').forEach(button => {
+    button.addEventListener('click', startXeroConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="xero-disconnect"]').forEach(button => {
+    button.addEventListener('click', disconnectXero);
   });
   els.providerStatusGrid.querySelectorAll('[data-provider-action="instagram-refresh"]').forEach(button => {
     button.addEventListener('click', refreshInstagramToken);
@@ -1968,6 +2019,16 @@ function providerAction(provider = {}) {
       <div class="provider-status-card__actions">
         <button class="admin-button" type="button" data-provider-action="slack-oauth">${escapeHtml(label)}</button>
         ${connected ? '<button class="admin-button" type="button" data-provider-action="slack-disconnect">Disconnect Slack</button>' : ''}
+      </div>
+    `;
+  }
+  if (provider.providerKey === 'xero') {
+    const connected = provider.status === 'connected';
+    const label = connected ? 'Reconnect Xero' : 'Connect Xero';
+    return `
+      <div class="provider-status-card__actions">
+        <button class="admin-button" type="button" data-provider-action="xero-oauth">${escapeHtml(label)}</button>
+        ${connected ? '<button class="admin-button" type="button" data-provider-action="xero-disconnect">Disconnect Xero</button>' : ''}
       </div>
     `;
   }

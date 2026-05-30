@@ -31,7 +31,7 @@ const DEFAULT_FLAGS = {
   'inventory.low_stock_alerts': false,
   'fuel.prices': true,
   'fuel.tank_levels': true,
-  'accounting.summaries': false,
+  'accounting.summaries': true,
   'accounting.exceptions': false,
   'accounting.export_packet': false,
   'ai.command_box': true,
