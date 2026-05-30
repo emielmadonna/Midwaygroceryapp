@@ -62,6 +62,22 @@ const els = {
   bookingsList: document.getElementById('bookingsList'),
   notificationsList: document.getElementById('notificationsList'),
   auditList: document.getElementById('auditList'),
+  agentPanel: document.getElementById('agentPanel'),
+  agentStatus: document.getElementById('agentStatus'),
+  agentNewBtn: document.getElementById('agentNewBtn'),
+  agentConversations: document.getElementById('agentConversations'),
+  agentThread: document.getElementById('agentThread'),
+  agentForm: document.getElementById('agentForm'),
+  agentInput: document.getElementById('agentInput'),
+  agentSendBtn: document.getElementById('agentSendBtn'),
+  agentMeta: document.getElementById('agentMeta'),
+  agentConfirmation: document.getElementById('agentConfirmation'),
+  fuelPanel: document.getElementById('fuelPanel'),
+  fuelStatus: document.getElementById('fuelStatus'),
+  fuelPricesForm: document.getElementById('fuelPricesForm'),
+  fuelPricesRows: document.getElementById('fuelPricesRows'),
+  fuelInventoryForm: document.getElementById('fuelInventoryForm'),
+  fuelInventoryRows: document.getElementById('fuelInventoryRows'),
   tokensPanel: document.getElementById('tokensPanel'),
   tokensList: document.getElementById('tokensList'),
   tokensStatus: document.getElementById('tokensStatus'),
@@ -154,6 +170,71 @@ els.hoursForm?.addEventListener('submit', async event => {
   if (state.user?.role !== 'owner') return;
   const rows = collectHoursFormValues();
   await updateHours(rows);
+});
+
+els.agentNewBtn?.addEventListener('click', async () => {
+  try {
+    const conversation = await api('/api/admin/agent/conversations', { method: 'POST', body: {} });
+    state.agentConversations = [conversation, ...(state.agentConversations || [])];
+    state.agentActiveConversationId = conversation.id;
+    state.agentMessages = [];
+    state.agentPending = null;
+    renderAgent();
+    els.agentInput?.focus();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+els.agentConversations?.addEventListener('click', async event => {
+  const li = event.target.closest('li[data-conversation-id]');
+  if (!li) return;
+  state.agentActiveConversationId = li.dataset.conversationId;
+  state.agentPending = null;
+  await loadAgentMessages(state.agentActiveConversationId);
+  renderAgent();
+});
+
+els.agentForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const text = els.agentInput.value.trim();
+  if (!text) return;
+  if (!state.agentActiveConversationId) {
+    try {
+      const conversation = await api('/api/admin/agent/conversations', { method: 'POST', body: { title: text.slice(0, 48) } });
+      state.agentConversations = [conversation, ...(state.agentConversations || [])];
+      state.agentActiveConversationId = conversation.id;
+      state.agentMessages = [];
+    } catch (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+  }
+  els.agentInput.value = '';
+  await runAgentTurn({ userMessage: text });
+});
+
+els.agentConfirmation?.addEventListener('click', async event => {
+  const button = event.target.closest('button[data-confirmation]');
+  if (!button) return;
+  const approve = button.dataset.confirmation === 'approve';
+  const pending = state.agentPending;
+  if (!pending) return;
+  await runAgentTurn({ confirmations: { [pending.toolCallId]: approve } });
+});
+
+els.fuelPricesForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const updates = collectFuelPrices();
+  if (!updates.length) return;
+  await updateFuelPrices(updates);
+});
+
+els.fuelInventoryForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const updates = collectFuelInventory();
+  if (!updates.length) return;
+  await updateFuelInventory(updates);
 });
 
 els.createTokenForm?.addEventListener('submit', async event => {
@@ -302,7 +383,7 @@ async function boot() {
 }
 
 async function loadAdminData() {
-  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, hours, tokens] = await Promise.all([
+  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, hours, tokens, fuelPrices, fuelInventory, agentConversations] = await Promise.all([
     api('/api/admin/dashboard/today'),
     api('/api/admin/rv-sites'),
     api('/api/admin/bookings'),
@@ -313,6 +394,9 @@ async function loadAdminData() {
     state.user?.role === 'owner' && featureEnabled('core.provider_adapters') ? api('/api/admin/square/catalog') : Promise.resolve([]),
     featureEnabled('core.tenant_config') ? api('/api/admin/hours').catch(() => []) : Promise.resolve([]),
     state.user?.role === 'owner' ? api('/api/admin/tokens').catch(() => []) : Promise.resolve([]),
+    featureEnabled('fuel.prices') ? api('/api/admin/fuel-prices').catch(() => []) : Promise.resolve([]),
+    featureEnabled('fuel.tank_levels') ? api('/api/admin/fuel-inventory').catch(() => []) : Promise.resolve([]),
+    featureEnabled('ai.command_box') ? api('/api/admin/agent/conversations').catch(() => []) : Promise.resolve([]),
   ]);
 
   state.dashboard = dashboard;
@@ -325,6 +409,17 @@ async function loadAdminData() {
   state.catalogProducts = catalogProducts;
   state.hours = Array.isArray(hours) ? hours : [];
   state.tokens = Array.isArray(tokens) ? tokens : [];
+  state.fuelPrices = Array.isArray(fuelPrices) ? fuelPrices : [];
+  state.fuelInventory = Array.isArray(fuelInventory) ? fuelInventory : [];
+  state.agentConversations = Array.isArray(agentConversations) ? agentConversations : [];
+  if (!state.agentActiveConversationId && state.agentConversations.length) {
+    state.agentActiveConversationId = state.agentConversations[0].id;
+    try {
+      state.agentMessages = await loadAgentMessages(state.agentActiveConversationId, { skipRender: true });
+    } catch {
+      state.agentMessages = [];
+    }
+  }
 
   render();
 }
@@ -506,6 +601,88 @@ async function startInstagramConnection(event) {
   }
 }
 
+async function startXeroConnection(event) {
+  const redirectUri = providerRedirectUri('xero');
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Connecting...');
+  try {
+    const data = await api('/api/admin/providers/xero/oauth/start', {
+      method: 'POST',
+      body: { redirectUri },
+    });
+    if (data.authorizationUrl) {
+      sessionStorage.setItem(pendingProviderKey, JSON.stringify({
+        provider: 'xero',
+        state: data.state || '',
+        redirectUri,
+      }));
+      window.location.assign(data.authorizationUrl);
+      return;
+    }
+    showToast('Xero install could not start.', 'error');
+  } catch (error) {
+    showToast(`Xero connection failed: ${error.message}`, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
+async function disconnectXero(event) {
+  if (!window.confirm('Disconnect Xero? Booking → invoice sync will stop.')) return;
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Disconnecting...');
+  try {
+    await api('/api/admin/providers/xero', { method: 'DELETE' });
+    showToast('Xero disconnected.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
+async function startSlackConnection(event) {
+  const redirectUri = providerRedirectUri('slack');
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Connecting...');
+  try {
+    const data = await api('/api/admin/providers/slack/oauth/start', {
+      method: 'POST',
+      body: { redirectUri },
+    });
+    if (data.installUrl) {
+      sessionStorage.setItem(pendingProviderKey, JSON.stringify({
+        provider: 'slack',
+        state: data.state || '',
+        redirectUri,
+      }));
+      window.location.assign(data.installUrl);
+      return;
+    }
+    showToast('Slack install could not start.', 'error');
+  } catch (error) {
+    showToast(`Slack connection failed: ${error.message}`, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
+async function disconnectSlack(event) {
+  if (!window.confirm('Disconnect Slack? The bot will stop responding to messages.')) return;
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Disconnecting...');
+  try {
+    await api('/api/admin/providers/slack', { method: 'DELETE' });
+    showToast('Slack disconnected.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
 async function startSquareConnection(event) {
   const redirectUri = providerRedirectUri('square');
   const trigger = event?.currentTarget;
@@ -538,14 +715,24 @@ async function completePendingProviderCallback() {
   const params = new URLSearchParams(window.location.search);
   const pending = readPendingProviderConnection();
   const provider = params.get('provider') || pending?.provider || (params.has('code') || params.has('error') ? 'instagram' : '');
-  if (!['instagram', 'square'].includes(provider)) return;
+  if (!['instagram', 'square', 'slack', 'xero'].includes(provider)) return;
   if (!params.has('code') && !params.has('error')) return;
 
   const redirectUri = pending?.redirectUri || providerRedirectUri(provider);
   const endpoint = provider === 'instagram'
     ? '/api/admin/providers/instagram/oauth/callback'
-    : '/api/admin/providers/square/oauth/callback';
-  const label = provider === 'instagram' ? 'Instagram' : 'Square';
+    : provider === 'slack'
+      ? '/api/admin/providers/slack/oauth/callback'
+      : provider === 'xero'
+        ? '/api/admin/providers/xero/oauth/callback'
+        : '/api/admin/providers/square/oauth/callback';
+  const label = provider === 'instagram'
+    ? 'Instagram'
+    : provider === 'slack'
+      ? 'Slack'
+      : provider === 'xero'
+        ? 'Xero'
+        : 'Square';
 
   try {
     const data = await api(endpoint, {
@@ -618,6 +805,8 @@ function render() {
   renderNotifications();
   renderAudit();
   renderTokens();
+  renderFuel();
+  renderAgent();
   document.body.dataset.role = state.user?.role || 'employee';
   document.body.dataset.manualBooking = state.featureFlags.manualAdminBooking ? 'on' : 'off';
   document.body.dataset.siteStatus = state.featureFlags['booking.site_status_management'] ? 'on' : 'off';
@@ -957,6 +1146,18 @@ function renderProviderStatuses() {
 
   els.providerStatusGrid.querySelectorAll('[data-provider-action="square-oauth"]').forEach(button => {
     button.addEventListener('click', startSquareConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="slack-oauth"]').forEach(button => {
+    button.addEventListener('click', startSlackConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="slack-disconnect"]').forEach(button => {
+    button.addEventListener('click', disconnectSlack);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="xero-oauth"]').forEach(button => {
+    button.addEventListener('click', startXeroConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="xero-disconnect"]').forEach(button => {
+    button.addEventListener('click', disconnectXero);
   });
   els.providerStatusGrid.querySelectorAll('[data-provider-action="instagram-refresh"]').forEach(button => {
     button.addEventListener('click', refreshInstagramToken);
@@ -1309,6 +1510,256 @@ function renderAudit() {
   `, 'No audit records yet.');
 }
 
+const FUEL_TYPES = [
+  { key: 'unleaded', label: 'Non-ethanol' },
+  { key: 'diesel', label: 'Diesel' },
+];
+
+function renderAgent() {
+  if (!els.agentPanel) return;
+  if (!featureEnabled('ai.command_box')) {
+    els.agentPanel.hidden = true;
+    return;
+  }
+  els.agentPanel.hidden = false;
+  const conversations = state.agentConversations || [];
+  const activeId = state.agentActiveConversationId || null;
+
+  if (els.agentConversations) {
+    if (!conversations.length) {
+      els.agentConversations.innerHTML = '<li class="empty">No conversations yet.</li>';
+    } else {
+      els.agentConversations.innerHTML = conversations.map(c => `
+        <li data-conversation-id="${escapeHtml(c.id)}" ${activeId === c.id ? 'aria-current="true"' : ''}>
+          <strong>${escapeHtml(c.title || 'Untitled')}</strong>
+          <span>${escapeHtml(formatTokenTimestamp(c.updatedAt) || '')}</span>
+        </li>
+      `).join('');
+    }
+  }
+
+  if (els.agentThread) {
+    const messages = (state.agentMessages || []).filter(m => m.role !== 'system');
+    if (!messages.length) {
+      els.agentThread.innerHTML = '<div class="empty">Ask anything about the store. e.g. "what are tank levels?", "set unleaded to $4.19", or "book Site 7 for John on June 15-17".</div>';
+    } else {
+      els.agentThread.innerHTML = messages.map(renderAgentMessage).join('');
+    }
+    els.agentThread.scrollTop = els.agentThread.scrollHeight;
+  }
+
+  if (els.agentConfirmation) {
+    const pending = state.agentPending;
+    if (pending) {
+      els.agentConfirmation.hidden = false;
+      els.agentConfirmation.innerHTML = `
+        <div><strong>Confirm action:</strong> ${escapeHtml(pending.toolName)} with ${escapeHtml(JSON.stringify(pending.arguments || {}))}</div>
+        <div class="agent-confirmation__actions">
+          <button type="button" class="admin-button" data-confirmation="deny">Cancel</button>
+          <button type="button" class="btn btn--primary" data-confirmation="approve">Approve</button>
+        </div>
+      `;
+    } else {
+      els.agentConfirmation.hidden = true;
+      els.agentConfirmation.innerHTML = '';
+    }
+  }
+
+  if (els.agentStatus) {
+    els.agentStatus.textContent = state.agentBusy ? 'thinking…' : '';
+  }
+  if (els.agentSendBtn) {
+    els.agentSendBtn.disabled = state.agentBusy === true || !state.user;
+  }
+  if (els.agentInput) {
+    els.agentInput.disabled = state.agentBusy === true;
+  }
+}
+
+function renderAgentMessage(message) {
+  const role = message.role;
+  const content = String(message.content ?? '');
+  if (role === 'tool') {
+    return `
+      <div class="agent-msg" data-role="tool">
+        <div class="agent-msg__role">tool · ${escapeHtml(message.toolName || message.toolCallId || '')}</div>
+        <div>${escapeHtml(content || '{}')}</div>
+      </div>
+    `;
+  }
+  const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : null;
+  const callsHtml = toolCalls && toolCalls.length
+    ? toolCalls.map(call => `<span class="agent-msg__tool-call">${escapeHtml(call.name || '')}(${escapeHtml(JSON.stringify(call.arguments || {}))})</span>`).join('')
+    : '';
+  return `
+    <div class="agent-msg" data-role="${escapeHtml(role)}">
+      <div class="agent-msg__role">${escapeHtml(role)}</div>
+      ${content ? `<div>${escapeHtml(content)}</div>` : ''}
+      ${callsHtml ? `<div>${callsHtml}</div>` : ''}
+    </div>
+  `;
+}
+
+async function loadAgentMessages(conversationId, { skipRender = false } = {}) {
+  if (!conversationId) {
+    state.agentMessages = [];
+    if (!skipRender) renderAgent();
+    return [];
+  }
+  try {
+    const messages = await api(`/api/admin/agent/conversations/${encodeURIComponent(conversationId)}/messages`);
+    state.agentMessages = Array.isArray(messages) ? messages : [];
+    if (!skipRender) renderAgent();
+    return state.agentMessages;
+  } catch (error) {
+    state.agentMessages = [];
+    if (!skipRender) renderAgent();
+    throw error;
+  }
+}
+
+async function runAgentTurn({ userMessage = '', confirmations = {} } = {}) {
+  if (!state.agentActiveConversationId) return;
+  state.agentBusy = true;
+  renderAgent();
+  try {
+    const data = await api('/api/admin/agent/turn', {
+      method: 'POST',
+      body: {
+        conversationId: state.agentActiveConversationId,
+        userMessage,
+        confirmations,
+      },
+    });
+    state.agentPending = data.pendingConfirmation || null;
+    await loadAgentMessages(state.agentActiveConversationId, { skipRender: true });
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    state.agentBusy = false;
+    renderAgent();
+  }
+}
+
+function renderFuel() {
+  if (!els.fuelPricesRows) return;
+  const canEditPrices = featureEnabled('fuel.prices');
+  const canEditTanks = featureEnabled('fuel.tank_levels');
+  const pricesByType = new Map((state.fuelPrices || []).map(row => [row.type, row]));
+  const tanksByType = new Map((state.fuelInventory || []).map(row => [row.type, row]));
+
+  els.fuelPricesRows.innerHTML = FUEL_TYPES.map(({ key, label }) => {
+    const row = pricesByType.get(key);
+    const value = row ? Number(row.price).toFixed(2) : '';
+    return `
+      <div class="fuel-row" data-type="${key}">
+        <div class="fuel-row__head">
+          <span class="fuel-row__label">${label}</span>
+          <span class="fuel-row__meta">${row?.updatedAt ? `updated ${formatTokenTimestamp(row.updatedAt)}` : 'not set'}</span>
+        </div>
+        <div class="fuel-row__fields">
+          <label>Price / gal
+            <input type="number" name="price" min="0" step="0.01" value="${value}" placeholder="0.00" />
+          </label>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  els.fuelInventoryRows.innerHTML = FUEL_TYPES.map(({ key, label }) => {
+    const row = tanksByType.get(key);
+    const current = row?.currentGallons ?? '';
+    const capacity = row?.capacityGallons ?? '';
+    const threshold = row?.alertThreshold ?? '';
+    const fill = Number.isFinite(row?.percentFull) ? row.percentFull : 0;
+    const low = row?.belowThreshold === true;
+    return `
+      <div class="fuel-row" data-type="${key}" data-low="${low ? 'true' : 'false'}">
+        <div class="fuel-row__head">
+          <span class="fuel-row__label">${label}</span>
+          <span class="fuel-row__meta">${row ? `${fill}% full` : 'no reading'}</span>
+        </div>
+        <div class="fuel-row__bar"><div class="fuel-row__bar-fill" style="--fuel-fill:${fill}%"></div></div>
+        <div class="fuel-row__fields">
+          <label>Current gal
+            <input type="number" name="currentGallons" min="0" step="1" value="${current}" placeholder="0" />
+          </label>
+          <label>Capacity gal
+            <input type="number" name="capacityGallons" min="1" step="1" value="${capacity}" placeholder="5000" />
+          </label>
+          <label>Low alert
+            <input type="number" name="alertThreshold" min="0" step="1" value="${threshold}" placeholder="1000" />
+          </label>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  els.fuelPricesForm.querySelectorAll('input, button').forEach(control => {
+    control.disabled = !canEditPrices;
+  });
+  els.fuelInventoryForm.querySelectorAll('input, button').forEach(control => {
+    control.disabled = !canEditTanks;
+  });
+
+  if (els.fuelStatus) {
+    const lowTanks = (state.fuelInventory || []).filter(row => row.belowThreshold);
+    if (lowTanks.length) {
+      els.fuelStatus.textContent = `Low: ${lowTanks.map(row => row.type).join(', ')}`;
+    } else if ((state.fuelInventory || []).length) {
+      els.fuelStatus.textContent = 'Tanks OK';
+    } else {
+      els.fuelStatus.textContent = '';
+    }
+  }
+}
+
+function collectFuelPrices() {
+  if (!els.fuelPricesRows) return [];
+  return FUEL_TYPES.map(({ key }) => {
+    const row = els.fuelPricesRows.querySelector(`.fuel-row[data-type="${key}"]`);
+    const raw = row?.querySelector('input[name="price"]')?.value;
+    if (raw === '' || raw == null) return null;
+    return { type: key, price: Number(raw) };
+  }).filter(Boolean);
+}
+
+function collectFuelInventory() {
+  if (!els.fuelInventoryRows) return [];
+  return FUEL_TYPES.map(({ key }) => {
+    const row = els.fuelInventoryRows.querySelector(`.fuel-row[data-type="${key}"]`);
+    if (!row) return null;
+    const update = { type: key };
+    const current = row.querySelector('input[name="currentGallons"]')?.value;
+    const capacity = row.querySelector('input[name="capacityGallons"]')?.value;
+    const threshold = row.querySelector('input[name="alertThreshold"]')?.value;
+    if (current !== '' && current != null) update.currentGallons = Number(current);
+    if (capacity !== '' && capacity != null) update.capacityGallons = Number(capacity);
+    if (threshold !== '' && threshold != null) update.alertThreshold = Number(threshold);
+    return Object.keys(update).length > 1 ? update : null;
+  }).filter(Boolean);
+}
+
+async function updateFuelPrices(prices) {
+  try {
+    state.fuelPrices = await api('/api/admin/fuel-prices', { method: 'PATCH', body: { prices } });
+    showToast('Fuel prices updated.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function updateFuelInventory(tanks) {
+  try {
+    state.fuelInventory = await api('/api/admin/fuel-inventory', { method: 'PATCH', body: { tanks } });
+    showToast('Tank levels updated.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
 function renderTokens() {
   if (!els.tokensList) return;
   if (state.user?.role !== 'owner') {
@@ -1659,6 +2110,26 @@ function providerAction(provider = {}) {
       <div class="provider-status-card__actions">
         <button class="admin-button" type="button" data-provider-action="instagram-oauth">${escapeHtml(label)}</button>
         ${connected ? '<button class="admin-button" type="button" data-provider-action="instagram-refresh">Refresh Instagram token</button>' : ''}
+      </div>
+    `;
+  }
+  if (provider.providerKey === 'slack') {
+    const connected = provider.status === 'connected';
+    const label = connected ? 'Reconnect Slack' : 'Connect Slack';
+    return `
+      <div class="provider-status-card__actions">
+        <button class="admin-button" type="button" data-provider-action="slack-oauth">${escapeHtml(label)}</button>
+        ${connected ? '<button class="admin-button" type="button" data-provider-action="slack-disconnect">Disconnect Slack</button>' : ''}
+      </div>
+    `;
+  }
+  if (provider.providerKey === 'xero') {
+    const connected = provider.status === 'connected';
+    const label = connected ? 'Reconnect Xero' : 'Connect Xero';
+    return `
+      <div class="provider-status-card__actions">
+        <button class="admin-button" type="button" data-provider-action="xero-oauth">${escapeHtml(label)}</button>
+        ${connected ? '<button class="admin-button" type="button" data-provider-action="xero-disconnect">Disconnect Xero</button>' : ''}
       </div>
     `;
   }

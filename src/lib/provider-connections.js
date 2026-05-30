@@ -32,6 +32,12 @@ export const PROVIDER_DEFINITIONS = [
     displayName: 'Instagram',
     requiredFor: ['public_feed'],
   },
+  {
+    providerKey: 'xero',
+    providerKind: 'accounting',
+    displayName: 'Xero',
+    requiredFor: ['per_booking_invoices', 'p_and_l_reporting'],
+  },
 ];
 
 const DEFAULT_SQUARE_OAUTH_SCOPES = [

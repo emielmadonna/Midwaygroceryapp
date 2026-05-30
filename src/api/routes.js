@@ -2,11 +2,19 @@ import crypto from 'node:crypto';
 import express from 'express';
 
 import { createAdminAuthService, requireAdminRole } from '../lib/admin-auth.js';
+import { createAgent } from '../lib/agent.js';
+import { createAgentConversationStore } from '../lib/agent-conversations.js';
+import { createOpenAiProvider } from '../lib/ai-providers/openai-provider.js';
 import { createApiTokenService } from '../lib/api-tokens.js';
+import { createIdempotencyMiddleware, createIdempotencyService } from '../lib/idempotency.js';
+import { createMcpServer } from '../lib/mcp-server.js';
 import { createMidwayHarness } from '../lib/midway-harness.js';
 import { createNotificationService } from '../lib/notifications.js';
 import { createProviderConnectionService } from '../lib/provider-connections.js';
 import { createSupabaseServerClient } from '../lib/supabase-server.js';
+import { createToolRegistry } from '../lib/tool-registry.js';
+import { registerCoreTools } from '../lib/registered-tools.js';
+import { registerXeroTools } from '../lib/xero-tools.js';
 import {
   createRvCheckoutPaymentLink,
   createRvWebPaymentSession,
@@ -17,6 +25,15 @@ import {
   verifySquareWebhookSignature,
 } from '../lib/square-api.js';
 import { normalizeSquareWebhookEvent } from '../lib/square-webhooks.js';
+import {
+  buildSlackInstallUrl,
+  exchangeSlackOAuthCode,
+  postSlackMessage,
+  slackProviderConfigFromEnv,
+  verifySlackSignature,
+} from '../lib/slack-api.js';
+import { buildXeroAuthUrl, xeroProviderConfigFromEnv } from '../lib/xero-api.js';
+import { createXeroService } from '../lib/xero-service.js';
 
 export function createApiRouter({
   store = null,
@@ -39,7 +56,16 @@ export function createApiRouter({
   const notifications = createNotificationService({ store: resolvedStore, env, fetchImpl });
   const supabase = createSupabaseServerClient({ env });
   const apiTokenService = createApiTokenService({ supabase, env });
+  const idempotencyService = createIdempotencyService({ supabase });
   const adminAuth = createAdminAuthService({ env, apiTokenService });
+  const toolRegistry = createToolRegistry();
+  registerCoreTools(toolRegistry, { store: resolvedStore });
+  const xeroService = createXeroService({ store: resolvedStore, env, fetchImpl });
+  registerXeroTools(toolRegistry, { xeroService, env });
+  const mcpServer = createMcpServer({ registry: toolRegistry, store: resolvedStore });
+  const aiProvider = createOpenAiProvider({ env });
+  const agent = createAgent({ provider: aiProvider, registry: toolRegistry, store: resolvedStore });
+  const agentStore = createAgentConversationStore({ supabase });
   const squareProviderConfig = async () => ({
     nodeEnv: env.NODE_ENV,
     ...(
@@ -96,6 +122,35 @@ export function createApiRouter({
     }
   });
 
+  router.post('/mcp', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('mcp.server');
+      const actor = await authenticateMcpRequest(req, { apiTokenService });
+      if (!actor) {
+        return res.status(401).json(apiError('MCP_AUTH_REQUIRED', 'A valid mw_ API token is required.'));
+      }
+      const response = await mcpServer.handleBatch(req.body, { actor });
+      if (response === null) {
+        return res.status(204).end();
+      }
+      res.json(response);
+    } catch (error) {
+      sendApiError(res, error, error.code || 'MCP_REQUEST_FAILED', error.statusCode || 500);
+    }
+  });
+
+  router.get('/mcp', (req, res) => {
+    res.json({
+      ok: true,
+      data: {
+        protocolVersion: mcpServer.protocolVersion,
+        serverInfo: { name: 'midway-mcp', version: '0.1.0' },
+        transport: 'streamable-http',
+        endpoint: '/api/mcp',
+      },
+    });
+  });
+
   router.use('/admin', async (req, res, next) => {
     try {
       const user = await adminAuth.authenticateRequest(req);
@@ -108,6 +163,11 @@ export function createApiRouter({
       sendApiError(res, error, 'ADMIN_AUTH_FAILED', 401);
     }
   });
+
+  router.use('/admin', createIdempotencyMiddleware({
+    service: idempotencyService,
+    tenantId: resolvedStore.tenantId,
+  }));
 
   router.get('/public/bootstrap', async (req, res) => {
     try {
@@ -439,6 +499,71 @@ export function createApiRouter({
     }
   });
 
+  router.get('/admin/fuel-prices', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.prices', { role: req.adminUser.role });
+      const data = await resolvedStore.listFuelPrices?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_PRICES_UNAVAILABLE', error.statusCode || 400);
+    }
+  });
+
+  router.patch('/admin/fuel-prices', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.prices', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const updates = Array.isArray(req.body?.prices) ? req.body.prices : [];
+      const results = [];
+      for (const update of updates) {
+        results.push(await resolvedStore.updateFuelPrice?.(update));
+      }
+      await resolvedStore.recordAuditLog?.({
+        action: 'fuel.prices.update',
+        actor: req.adminUser,
+        targetType: 'fuel_prices',
+        targetId: 'midway',
+        metadata: { count: results.length },
+      });
+      const data = await resolvedStore.listFuelPrices?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_PRICES_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/fuel-inventory', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.tank_levels', { role: req.adminUser.role });
+      const data = await resolvedStore.listFuelInventory?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_INVENTORY_UNAVAILABLE', error.statusCode || 400);
+    }
+  });
+
+  router.patch('/admin/fuel-inventory', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.tank_levels', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const updates = Array.isArray(req.body?.tanks) ? req.body.tanks : [];
+      for (const update of updates) {
+        await resolvedStore.updateFuelInventory?.(update);
+      }
+      await resolvedStore.recordAuditLog?.({
+        action: 'fuel.inventory.update',
+        actor: req.adminUser,
+        targetType: 'fuel_inventory',
+        targetId: 'midway',
+        metadata: { count: updates.length },
+      });
+      const data = await resolvedStore.listFuelInventory?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_INVENTORY_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
   router.get('/admin/tokens', async (req, res) => {
     try {
       requireAdminRole(req.adminUser, ['owner']);
@@ -493,6 +618,395 @@ export function createApiRouter({
       sendApiError(res, error, error.code || 'ADMIN_TOKEN_REVOKE_FAILED', error.statusCode || 400);
     }
   });
+
+  router.get('/admin/agent/conversations', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const data = await agentStore.list({ tenantId: resolvedStore.tenantId, channel: 'admin' });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_LIST_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/agent/conversations', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const conversation = await agentStore.create({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        channel: 'admin',
+        title: typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title.trim() : 'New conversation',
+        createdByEmail: req.adminUser.email || null,
+        createdByActorType: req.adminUser.actorType || 'session',
+      });
+      res.status(201).json({ ok: true, data: conversation });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_CREATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/agent/conversations/:id/messages', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const data = await agentStore.listMessages({ conversationId: req.params.id });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_MESSAGES_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/agent/turn', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const { conversationId, userMessage = '', confirmations = {} } = req.body || {};
+      if (!conversationId) throw badRequest('conversationId is required.');
+      const persisted = await agentStore.listMessages({ conversationId });
+      const conversationMessages = persisted.map(toAgentMessage);
+      const newMessages = [];
+
+      if (userMessage && userMessage.trim()) {
+        conversationMessages.push({ role: 'user', content: userMessage.trim() });
+        newMessages.push({ role: 'user', content: userMessage.trim() });
+      }
+
+      const result = await agent.runTurn({
+        messages: conversationMessages,
+        actor: req.adminUser,
+        confirmations,
+      });
+
+      if (result.message) {
+        newMessages.push({
+          role: 'assistant',
+          content: result.message.content || '',
+          toolCalls: result.message.toolCalls || null,
+        });
+      }
+
+      const traceToolMessages = result.trace
+        .filter(entry => entry.type === 'tool_result' || entry.type === 'tool_denied' || entry.type === 'tool_error')
+        .map(entry => ({
+          role: 'tool',
+          toolCallId: entry.toolCallId,
+          toolName: entry.toolName,
+          content: JSON.stringify({ ok: entry.ok ?? false, error: entry.error ?? null }),
+        }));
+      newMessages.push(...traceToolMessages);
+
+      await agentStore.appendMessages({ conversationId, messages: newMessages });
+      await resolvedStore.recordAuditLog?.({
+        action: 'agent.turn',
+        actor: req.adminUser,
+        targetType: 'agent_conversation',
+        targetId: conversationId,
+        metadata: {
+          provider: aiProvider.name,
+          toolCalls: result.trace.filter(t => t.type === 'tool_result').map(t => t.toolName),
+        },
+      });
+
+      res.json({
+        ok: true,
+        data: {
+          finishReason: result.finishReason,
+          pendingConfirmation: result.pendingConfirmation,
+          message: result.message,
+          trace: result.trace,
+        },
+      });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_TURN_FAILED', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/providers/xero/oauth/start', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = xeroProviderConfigFromEnv(env);
+      if (!config.clientId || !config.clientSecret) {
+        throw badRequest('Xero app is not configured. Set XERO_CLIENT_ID and XERO_CLIENT_SECRET in env.');
+      }
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'xero');
+      const state = crypto.randomBytes(16).toString('hex');
+      const authorizationUrl = buildXeroAuthUrl({
+        clientId: config.clientId,
+        scopes: config.scopes,
+        redirectUri,
+        state,
+      });
+      res.json({ ok: true, data: { authorizationUrl, redirectUri, state } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_OAUTH_START_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/xero/oauth/callback', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = xeroProviderConfigFromEnv(env);
+      const code = req.body?.code;
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'xero');
+      if (!code) throw badRequest('Authorization code is required.');
+      const data = await xeroService.completeAuth({
+        code,
+        redirectUri,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.xero.connect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'xero',
+        metadata: { organizationCount: data.organizations.length },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_OAUTH_CALLBACK_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/providers/xero/status', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      const data = await xeroService.getStatus();
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_STATUS_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/providers/xero', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'xero',
+        status: 'not_connected',
+        accessToken: null,
+        refreshToken: null,
+        externalAccountId: null,
+        publicConfig: {},
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.xero.disconnect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'xero',
+      });
+      res.json({ ok: true, data: {} });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'XERO_DISCONNECT_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/slack/oauth/start', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = slackProviderConfigFromEnv(env);
+      if (!config.clientId || !config.clientSecret || !config.signingSecret) {
+        throw badRequest('Slack app is not configured. Set SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, and SLACK_SIGNING_SECRET in env.');
+      }
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'slack');
+      const state = crypto.randomBytes(16).toString('hex');
+      const installUrl = buildSlackInstallUrl({
+        clientId: config.clientId,
+        scopes: config.botScopes,
+        redirectUri,
+        state,
+      });
+      res.json({ ok: true, data: { installUrl, redirectUri, state } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_OAUTH_START_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/slack/oauth/callback', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = slackProviderConfigFromEnv(env);
+      const code = req.body?.code;
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'slack');
+      if (!code) throw badRequest('Authorization code is required.');
+      const exchange = await exchangeSlackOAuthCode({
+        code,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        redirectUri,
+        fetchImpl,
+      });
+      const connection = await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'slack',
+        status: 'connected',
+        accessToken: exchange.accessToken,
+        externalAccountId: exchange.teamId,
+        publicConfig: {
+          teamId: exchange.teamId,
+          teamName: exchange.teamName,
+          botUserId: exchange.botUserId,
+          appId: exchange.appId,
+          scope: exchange.scope,
+          authedUserId: exchange.authedUserId,
+        },
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.slack.connect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'slack',
+        metadata: { teamName: exchange.teamName, teamId: exchange.teamId },
+      });
+      res.json({ ok: true, data: { connection } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_OAUTH_CALLBACK_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/providers/slack', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'slack',
+        status: 'not_connected',
+        accessToken: null,
+        externalAccountId: null,
+        publicConfig: {},
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.slack.disconnect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'slack',
+      });
+      res.json({ ok: true, data: {} });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_DISCONNECT_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/webhooks/slack/events', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
+    try {
+      const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {}));
+      const config = slackProviderConfigFromEnv(env);
+      const signature = req.get('x-slack-signature');
+      const timestamp = req.get('x-slack-request-timestamp');
+      if (!verifySlackSignature({ signingSecret: config.signingSecret, body: rawBody, signature, timestamp })) {
+        return res.status(401).json(apiError('SLACK_SIGNATURE_INVALID', 'Invalid Slack signature.'));
+      }
+      const payload = JSON.parse(rawBody);
+      if (payload.type === 'url_verification') {
+        return res.json({ challenge: payload.challenge });
+      }
+      res.status(200).end();
+      handleSlackEvent(payload).catch(error => {
+        console.warn('[Slack] event handler failed:', error.message);
+      });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_EVENT_FAILED', error.statusCode || 400);
+    }
+  });
+
+  async function handleSlackEvent(payload) {
+    if (payload.type !== 'event_callback') return;
+    const event = payload.event ?? {};
+    if (event.bot_id || event.subtype === 'bot_message') return;
+    const isDirectMessage = event.type === 'message' && event.channel_type === 'im';
+    const isMention = event.type === 'app_mention';
+    if (!isDirectMessage && !isMention) return;
+
+    const text = String(event.text || '').replace(/<@[A-Z0-9]+>/g, '').trim();
+    if (!text) return;
+
+    const connection = await resolvedStore.getProviderConnection?.({
+      tenantId: resolvedStore.tenantId,
+      locationId: resolvedStore.locationId,
+      providerKey: 'slack',
+    });
+    if (!connection?.accessToken) {
+      console.warn('[Slack] event received but no bot token stored.');
+      return;
+    }
+
+    const threadKey = `${event.team || payload.team_id || ''}:${event.channel}:${event.thread_ts || event.ts}`;
+    let conversation = await agentStore.findExternal({ channel: 'slack', externalThreadId: threadKey, tenantId: resolvedStore.tenantId });
+    if (!conversation) {
+      conversation = await agentStore.create({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        channel: 'slack',
+        externalThreadId: threadKey,
+        title: text.slice(0, 60),
+        createdByEmail: null,
+        createdByActorType: 'slack',
+      });
+    }
+
+    const persisted = await agentStore.listMessages({ conversationId: conversation.id });
+    const conversationMessages = persisted.map(toAgentMessage);
+    conversationMessages.push({ role: 'user', content: text });
+
+    const slackActor = {
+      id: `slack:${event.user || 'unknown'}`,
+      actorType: 'slack',
+      role: 'owner',
+      scope: 'owner',
+      name: `Slack user ${event.user || ''}`.trim(),
+    };
+
+    const result = await agent.runTurn({
+      messages: conversationMessages,
+      actor: slackActor,
+    });
+
+    const reply = result.pendingConfirmation
+      ? `I want to run \`${result.pendingConfirmation.toolName}\` with ${JSON.stringify(result.pendingConfirmation.arguments)}. Reply "yes" to approve or "no" to cancel.`
+      : (result.message?.content || '(no reply)');
+
+    await postSlackMessage({
+      token: connection.accessToken,
+      channel: event.channel,
+      text: reply,
+      threadTs: event.thread_ts || event.ts,
+      fetchImpl,
+    });
+
+    const toolMessages = result.trace
+      .filter(entry => entry.type === 'tool_result')
+      .map(entry => ({
+        role: 'tool',
+        toolCallId: entry.toolCallId,
+        toolName: entry.toolName,
+        content: JSON.stringify({ ok: entry.ok ?? false }),
+      }));
+    await agentStore.appendMessages({
+      conversationId: conversation.id,
+      messages: [
+        { role: 'user', content: text, metadata: { slackUserId: event.user, slackTs: event.ts } },
+        ...(result.message ? [{ role: 'assistant', content: result.message.content || '', toolCalls: result.message.toolCalls || null }] : []),
+        ...toolMessages,
+      ],
+    });
+  }
 
   router.get('/admin/providers', async (req, res) => {
     try {
@@ -1199,6 +1713,43 @@ function apiError(code, message) {
     ok: false,
     error: { code, message },
   };
+}
+
+function providerRedirectUriFromRequest(req, providerKey) {
+  const baseUrl = requestPublicUrl(req).replace(/\/$/, '');
+  return `${baseUrl}/admin.html?provider=${encodeURIComponent(providerKey)}`;
+}
+
+function badRequest(message, code = 'BAD_REQUEST') {
+  const error = new Error(message);
+  error.statusCode = 400;
+  error.code = code;
+  return error;
+}
+
+function toAgentMessage(persisted) {
+  const message = {
+    role: persisted.role,
+    content: persisted.content ?? '',
+  };
+  if (persisted.toolCalls) message.toolCalls = persisted.toolCalls;
+  if (persisted.toolCallId) message.toolCallId = persisted.toolCallId;
+  if (persisted.toolName) message.toolName = persisted.toolName;
+  return message;
+}
+
+async function authenticateMcpRequest(req, { apiTokenService } = {}) {
+  if (!apiTokenService) return null;
+  const authHeader = req.get?.('authorization') || '';
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!bearerMatch) return null;
+  const token = bearerMatch[1].trim();
+  if (!token.startsWith('mw_live_') && !token.startsWith('mw_test_')) return null;
+  try {
+    return await apiTokenService.authenticate(token);
+  } catch {
+    return null;
+  }
 }
 
 function sendApiError(res, error, fallbackCode, fallbackStatus = 400) {

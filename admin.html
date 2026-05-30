@@ -312,6 +312,65 @@
                 </div>
             </details>
 
+            <details class="admin-panel admin-panel--wide admin-accordion feature-ai-command-box" id="agentPanel" open>
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Assistant</p>
+                        <h2>Ask Midway</h2>
+                    </div>
+                    <span id="agentStatus" class="admin-user"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="agent-shell">
+                        <div class="agent-sidebar">
+                            <button type="button" class="admin-button" id="agentNewBtn">New conversation</button>
+                            <ul class="admin-list agent-conversation-list" id="agentConversations"></ul>
+                        </div>
+                        <div class="agent-pane">
+                            <div class="agent-thread" id="agentThread" aria-live="polite"></div>
+                            <div class="agent-confirmation" id="agentConfirmation" hidden></div>
+                            <form id="agentForm" class="agent-composer">
+                                <textarea id="agentInput" rows="3" placeholder="e.g. set diesel to $4.29, or book Site 7 for John on Jun 15-17"></textarea>
+                                <div class="agent-composer__actions">
+                                    <span id="agentMeta" class="agent-meta"></span>
+                                    <button type="submit" class="btn btn--primary" id="agentSendBtn">Send</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="admin-panel admin-panel--wide admin-accordion" id="fuelPanel">
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Fuel</p>
+                        <h2>Fuel Management</h2>
+                    </div>
+                    <span id="fuelStatus" class="admin-user"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="fuel-grid">
+                        <form id="fuelPricesForm" class="admin-form fuel-subpanel">
+                            <h3>Pump prices</h3>
+                            <div id="fuelPricesRows" class="fuel-rows"></div>
+                            <div class="settings-form__actions">
+                                <button type="submit" class="btn btn--primary">Save prices</button>
+                            </div>
+                        </form>
+                        <form id="fuelInventoryForm" class="admin-form fuel-subpanel">
+                            <h3>Tank levels</h3>
+                            <div id="fuelInventoryRows" class="fuel-rows"></div>
+                            <div class="settings-form__actions">
+                                <button type="submit" class="btn btn--primary">Save tanks</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </details>
+
             <details class="admin-panel admin-panel--wide admin-accordion feature-tenant-config feature-dynamic-sections" id="instagramPanel">
                 <summary>
                     <div>
