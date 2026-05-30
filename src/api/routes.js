@@ -6,6 +6,7 @@ import { createAgent } from '../lib/agent.js';
 import { createAgentConversationStore } from '../lib/agent-conversations.js';
 import { createOpenAiProvider } from '../lib/ai-providers/openai-provider.js';
 import { createApiTokenService } from '../lib/api-tokens.js';
+import { createIdempotencyMiddleware, createIdempotencyService } from '../lib/idempotency.js';
 import { createMcpServer } from '../lib/mcp-server.js';
 import { createMidwayHarness } from '../lib/midway-harness.js';
 import { createNotificationService } from '../lib/notifications.js';
@@ -52,6 +53,7 @@ export function createApiRouter({
   const notifications = createNotificationService({ store: resolvedStore, env, fetchImpl });
   const supabase = createSupabaseServerClient({ env });
   const apiTokenService = createApiTokenService({ supabase, env });
+  const idempotencyService = createIdempotencyService({ supabase });
   const adminAuth = createAdminAuthService({ env, apiTokenService });
   const toolRegistry = createToolRegistry();
   registerCoreTools(toolRegistry, { store: resolvedStore });
@@ -156,6 +158,11 @@ export function createApiRouter({
       sendApiError(res, error, 'ADMIN_AUTH_FAILED', 401);
     }
   });
+
+  router.use('/admin', createIdempotencyMiddleware({
+    service: idempotencyService,
+    tenantId: resolvedStore.tenantId,
+  }));
 
   router.get('/public/bootstrap', async (req, res) => {
     try {

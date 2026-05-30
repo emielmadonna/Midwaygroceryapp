@@ -24,7 +24,7 @@ export function createToolRegistry() {
       .map(toPublic);
   }
 
-  async function execute(name, { input = {}, actor, store, audit = true } = {}) {
+  async function execute(name, { input = {}, actor, store, audit = true, dryRun = false } = {}) {
     const tool = tools.get(name);
     if (!tool) throw notFoundError(name);
 
@@ -33,10 +33,22 @@ export function createToolRegistry() {
     requireFlag(tool, store, actor);
 
     const validatedInput = validateInput(tool.inputSchema, input);
-    const handlerContext = { input: validatedInput, actor, store };
+
+    if (dryRun && tool.sideEffect !== 'read') {
+      return {
+        dryRun: true,
+        wouldExecute: {
+          tool: tool.name,
+          sideEffect: tool.sideEffect,
+          input: validatedInput,
+        },
+      };
+    }
+
+    const handlerContext = { input: validatedInput, actor, store, dryRun };
     const result = await tool.handler(handlerContext);
 
-    if (audit && tool.sideEffect !== 'read') {
+    if (audit && !dryRun && tool.sideEffect !== 'read') {
       try {
         await store?.recordAuditLog?.({
           action: `tool.${tool.name}`,

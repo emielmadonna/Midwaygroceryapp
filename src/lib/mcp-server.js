@@ -89,14 +89,16 @@ export function createMcpServer({ registry, store } = {}) {
     if (!params || typeof params !== 'object') {
       throw invalidParams('params must be an object with { name, arguments }.');
     }
-    const { name, arguments: args = {} } = params;
+    const { name, arguments: args = {}, _meta = {} } = params;
     if (!name || typeof name !== 'string') {
       throw invalidParams('params.name is required.');
     }
+    const dryRun = _meta?.dryRun === true || _meta?.dry_run === true;
     const result = await registry.execute(name, {
       input: args ?? {},
       actor,
       store,
+      dryRun,
     });
     return {
       content: [
@@ -104,6 +106,7 @@ export function createMcpServer({ registry, store } = {}) {
       ],
       structuredContent: result,
       isError: false,
+      _meta: dryRun ? { dryRun: true } : undefined,
     };
   }
 
