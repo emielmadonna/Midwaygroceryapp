@@ -466,6 +466,67 @@ button:disabled {
   width: auto;
 }
 
+.hours-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.hours-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr 130px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+}
+
+.hours-row[data-closed="true"] .hours-row__time {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.hours-row__day {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.hours-row__time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hours-row__time small {
+  font-size: 11px;
+  color: var(--admin-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hours-row__closed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .hours-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "day closed"
+      "open close";
+  }
+
+  .hours-row__day { grid-area: day; }
+  .hours-row__closed { grid-area: closed; }
+  .hours-row__time--open { grid-area: open; }
+  .hours-row__time--close { grid-area: close; }
+}
+
 .instagram-form__controls {
   display: flex;
   align-items: center;

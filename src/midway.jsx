@@ -48,13 +48,13 @@ const FALLBACK_SETTINGS = {
   sections: [FALLBACK_INSTAGRAM_SECTION],
 };
 const FALLBACK_HOURS = [
-  { day: 'monday', open: '6:00 AM', close: '9:00 PM' },
-  { day: 'tuesday', open: '6:00 AM', close: '9:00 PM' },
-  { day: 'wednesday', open: '6:00 AM', close: '9:00 PM' },
-  { day: 'thursday', open: '6:00 AM', close: '9:00 PM' },
-  { day: 'friday', open: '6:00 AM', close: '9:00 PM' },
-  { day: 'saturday', open: '7:00 AM', close: '9:00 PM' },
-  { day: 'sunday', open: '8:00 AM', close: '8:00 PM' },
+  { day: 'monday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'tuesday', closed: true },
+  { day: 'wednesday', closed: true },
+  { day: 'thursday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'friday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'saturday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'sunday', open: '7:00 AM', close: '7:00 PM' },
 ];
 const FALLBACK_RV_SITES = STATIC_RV_SITES.map(site => {
   const denormalized = denormalizeMapSite(site);
@@ -131,9 +131,13 @@ const dateInput = (offsetDays) => {
 
 const normalizeHour = (hour = {}) => {
   const day = String(hour.day || hour.dayOfWeek || '').toLowerCase();
+  if (!day) return null;
   const open = hour.open || hour.openTime || hour.open_time || '';
   const close = hour.close || hour.closeTime || hour.close_time || '';
-  return day && open && close ? { day, open, close } : null;
+  const closed = hour.closed === true || (!open && !close);
+  if (closed) return { day, closed: true };
+  if (!open || !close) return null;
+  return { day, open, close };
 };
 
 const normalizedHours = (hours = []) => hours
@@ -146,7 +150,11 @@ const todayHour = (hours = []) => {
   return normalizedHours(hours).find(hour => hour.day === today) || null;
 };
 
-const hourLabel = (hour) => hour ? `${hour.open} - ${hour.close}` : '';
+const hourLabel = (hour) => {
+  if (!hour) return '';
+  if (hour.closed) return 'Closed';
+  return `${hour.open} - ${hour.close}`;
+};
 const dateLabel = () => new Date().toLocaleDateString(undefined, {
   weekday: 'short',
   month: 'short',
@@ -309,7 +317,7 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
       <img className="hero-bg" src="/images/exterior-detailed.jpg" alt="Midway Gas & Grocery storefront in Plain, Washington" />
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
-        {today && <div className="hero-route"><i /> Open today {hourLabel(today)}</div>}
+        {today && <div className="hero-route"><i /> {today.closed ? 'Closed today' : `Open today ${hourLabel(today)}`}</div>}
         <h1 className="sr-only">Midway Gas &amp; Grocery</h1>
         <p className="hero-lede">Fuel, coffee, groceries, and campsites on Chiwawa Loop Road.</p>
         <div className="hero-actions">
@@ -333,7 +341,7 @@ const Ticker = ({ onJumpStay, sites, bootstrap }) => {
   if (!today && !hasFuel && !hasRvBooking && !phone) return null;
   return (
     <section id="today" className="ticker today-strip">
-      {today && <div><div className="l"><i /> OPEN TODAY</div><div className="v">{hourLabel(today)}</div><div className="s">{dateLabel()}</div></div>}
+      {today && <div><div className="l"><i /> {today.closed ? 'CLOSED TODAY' : 'OPEN TODAY'}</div><div className="v">{hourLabel(today)}</div><div className="s">{dateLabel()}</div></div>}
       {hasFuel && fuel.map(price => (
         <div key={price.type}><div className="l"><i className="amber" /> {price.label}</div><div className="v">{price.price.toFixed(2)}<small>/GAL</small></div><div className="s">Live store update</div></div>
       ))}
@@ -1408,6 +1416,7 @@ function normalizeBootstrap(data = {}) {
     : Array.isArray(data.sections)
       ? data.sections
       : FALLBACK_SETTINGS.sections;
+  const hasHours = Array.isArray(data.hours) && data.hours.length > 0;
   return {
     ...data,
     settings: {
@@ -1416,6 +1425,7 @@ function normalizeBootstrap(data = {}) {
       instagramFeed: Array.isArray(settings.instagramFeed) ? settings.instagramFeed : [],
       sections,
     },
+    hours: hasHours ? data.hours : FALLBACK_HOURS,
     featureFlags: {
       ...emptyBootstrap.featureFlags,
       ...(data.featureFlags || {}),
