@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import express from 'express';
 
 import { createAdminAuthService, requireAdminRole } from '../lib/admin-auth.js';
+import { createAgent } from '../lib/agent.js';
+import { createAgentConversationStore } from '../lib/agent-conversations.js';
+import { createOpenAiProvider } from '../lib/ai-providers/openai-provider.js';
 import { createApiTokenService } from '../lib/api-tokens.js';
 import { createMcpServer } from '../lib/mcp-server.js';
 import { createMidwayHarness } from '../lib/midway-harness.js';
@@ -46,6 +49,9 @@ export function createApiRouter({
   const toolRegistry = createToolRegistry();
   registerCoreTools(toolRegistry, { store: resolvedStore });
   const mcpServer = createMcpServer({ registry: toolRegistry, store: resolvedStore });
+  const aiProvider = createOpenAiProvider({ env });
+  const agent = createAgent({ provider: aiProvider, registry: toolRegistry, store: resolvedStore });
+  const agentStore = createAgentConversationStore({ supabase });
   const squareProviderConfig = async () => ({
     nodeEnv: env.NODE_ENV,
     ...(
@@ -561,6 +567,111 @@ export function createApiRouter({
       res.json({ ok: true, data: result });
     } catch (error) {
       sendApiError(res, error, error.code || 'ADMIN_TOKEN_REVOKE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/agent/conversations', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const data = await agentStore.list({ tenantId: resolvedStore.tenantId, channel: 'admin' });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_LIST_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/agent/conversations', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const conversation = await agentStore.create({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        channel: 'admin',
+        title: typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title.trim() : 'New conversation',
+        createdByEmail: req.adminUser.email || null,
+        createdByActorType: req.adminUser.actorType || 'session',
+      });
+      res.status(201).json({ ok: true, data: conversation });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_CREATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/agent/conversations/:id/messages', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const data = await agentStore.listMessages({ conversationId: req.params.id });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_MESSAGES_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/agent/turn', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const { conversationId, userMessage = '', confirmations = {} } = req.body || {};
+      if (!conversationId) throw badRequest('conversationId is required.');
+      const persisted = await agentStore.listMessages({ conversationId });
+      const conversationMessages = persisted.map(toAgentMessage);
+      const newMessages = [];
+
+      if (userMessage && userMessage.trim()) {
+        conversationMessages.push({ role: 'user', content: userMessage.trim() });
+        newMessages.push({ role: 'user', content: userMessage.trim() });
+      }
+
+      const result = await agent.runTurn({
+        messages: conversationMessages,
+        actor: req.adminUser,
+        confirmations,
+      });
+
+      if (result.message) {
+        newMessages.push({
+          role: 'assistant',
+          content: result.message.content || '',
+          toolCalls: result.message.toolCalls || null,
+        });
+      }
+
+      const traceToolMessages = result.trace
+        .filter(entry => entry.type === 'tool_result' || entry.type === 'tool_denied' || entry.type === 'tool_error')
+        .map(entry => ({
+          role: 'tool',
+          toolCallId: entry.toolCallId,
+          toolName: entry.toolName,
+          content: JSON.stringify({ ok: entry.ok ?? false, error: entry.error ?? null }),
+        }));
+      newMessages.push(...traceToolMessages);
+
+      await agentStore.appendMessages({ conversationId, messages: newMessages });
+      await resolvedStore.recordAuditLog?.({
+        action: 'agent.turn',
+        actor: req.adminUser,
+        targetType: 'agent_conversation',
+        targetId: conversationId,
+        metadata: {
+          provider: aiProvider.name,
+          toolCalls: result.trace.filter(t => t.type === 'tool_result').map(t => t.toolName),
+        },
+      });
+
+      res.json({
+        ok: true,
+        data: {
+          finishReason: result.finishReason,
+          pendingConfirmation: result.pendingConfirmation,
+          message: result.message,
+          trace: result.trace,
+        },
+      });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'AGENT_TURN_FAILED', error.statusCode || 500);
     }
   });
 
@@ -1269,6 +1380,24 @@ function apiError(code, message) {
     ok: false,
     error: { code, message },
   };
+}
+
+function badRequest(message, code = 'BAD_REQUEST') {
+  const error = new Error(message);
+  error.statusCode = 400;
+  error.code = code;
+  return error;
+}
+
+function toAgentMessage(persisted) {
+  const message = {
+    role: persisted.role,
+    content: persisted.content ?? '',
+  };
+  if (persisted.toolCalls) message.toolCalls = persisted.toolCalls;
+  if (persisted.toolCallId) message.toolCallId = persisted.toolCallId;
+  if (persisted.toolName) message.toolName = persisted.toolName;
+  return message;
 }
 
 async function authenticateMcpRequest(req, { apiTokenService } = {}) {

@@ -34,7 +34,7 @@ const DEFAULT_FLAGS = {
   'accounting.summaries': false,
   'accounting.exceptions': false,
   'accounting.export_packet': false,
-  'ai.command_box': false,
+  'ai.command_box': true,
   'ai.auto_actions': false,
   'mcp.server': false,
   'mcp.read_tools': false,

@@ -59,6 +59,16 @@ const els = {
   bookingsList: document.getElementById('bookingsList'),
   notificationsList: document.getElementById('notificationsList'),
   auditList: document.getElementById('auditList'),
+  agentPanel: document.getElementById('agentPanel'),
+  agentStatus: document.getElementById('agentStatus'),
+  agentNewBtn: document.getElementById('agentNewBtn'),
+  agentConversations: document.getElementById('agentConversations'),
+  agentThread: document.getElementById('agentThread'),
+  agentForm: document.getElementById('agentForm'),
+  agentInput: document.getElementById('agentInput'),
+  agentSendBtn: document.getElementById('agentSendBtn'),
+  agentMeta: document.getElementById('agentMeta'),
+  agentConfirmation: document.getElementById('agentConfirmation'),
   fuelPanel: document.getElementById('fuelPanel'),
   fuelStatus: document.getElementById('fuelStatus'),
   fuelPricesForm: document.getElementById('fuelPricesForm'),
@@ -150,6 +160,57 @@ els.settingsForm?.addEventListener('submit', async event => {
       sections: collectSectionSettings(form),
     },
   });
+});
+
+els.agentNewBtn?.addEventListener('click', async () => {
+  try {
+    const conversation = await api('/api/admin/agent/conversations', { method: 'POST', body: {} });
+    state.agentConversations = [conversation, ...(state.agentConversations || [])];
+    state.agentActiveConversationId = conversation.id;
+    state.agentMessages = [];
+    state.agentPending = null;
+    renderAgent();
+    els.agentInput?.focus();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+});
+
+els.agentConversations?.addEventListener('click', async event => {
+  const li = event.target.closest('li[data-conversation-id]');
+  if (!li) return;
+  state.agentActiveConversationId = li.dataset.conversationId;
+  state.agentPending = null;
+  await loadAgentMessages(state.agentActiveConversationId);
+  renderAgent();
+});
+
+els.agentForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const text = els.agentInput.value.trim();
+  if (!text) return;
+  if (!state.agentActiveConversationId) {
+    try {
+      const conversation = await api('/api/admin/agent/conversations', { method: 'POST', body: { title: text.slice(0, 48) } });
+      state.agentConversations = [conversation, ...(state.agentConversations || [])];
+      state.agentActiveConversationId = conversation.id;
+      state.agentMessages = [];
+    } catch (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+  }
+  els.agentInput.value = '';
+  await runAgentTurn({ userMessage: text });
+});
+
+els.agentConfirmation?.addEventListener('click', async event => {
+  const button = event.target.closest('button[data-confirmation]');
+  if (!button) return;
+  const approve = button.dataset.confirmation === 'approve';
+  const pending = state.agentPending;
+  if (!pending) return;
+  await runAgentTurn({ confirmations: { [pending.toolCallId]: approve } });
 });
 
 els.fuelPricesForm?.addEventListener('submit', async event => {
@@ -312,7 +373,7 @@ async function boot() {
 }
 
 async function loadAdminData() {
-  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, tokens, fuelPrices, fuelInventory] = await Promise.all([
+  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, tokens, fuelPrices, fuelInventory, agentConversations] = await Promise.all([
     api('/api/admin/dashboard/today'),
     api('/api/admin/rv-sites'),
     api('/api/admin/bookings'),
@@ -324,6 +385,7 @@ async function loadAdminData() {
     state.user?.role === 'owner' ? api('/api/admin/tokens').catch(() => []) : Promise.resolve([]),
     featureEnabled('fuel.prices') ? api('/api/admin/fuel-prices').catch(() => []) : Promise.resolve([]),
     featureEnabled('fuel.tank_levels') ? api('/api/admin/fuel-inventory').catch(() => []) : Promise.resolve([]),
+    featureEnabled('ai.command_box') ? api('/api/admin/agent/conversations').catch(() => []) : Promise.resolve([]),
   ]);
 
   state.dashboard = dashboard;
@@ -337,6 +399,15 @@ async function loadAdminData() {
   state.tokens = Array.isArray(tokens) ? tokens : [];
   state.fuelPrices = Array.isArray(fuelPrices) ? fuelPrices : [];
   state.fuelInventory = Array.isArray(fuelInventory) ? fuelInventory : [];
+  state.agentConversations = Array.isArray(agentConversations) ? agentConversations : [];
+  if (!state.agentActiveConversationId && state.agentConversations.length) {
+    state.agentActiveConversationId = state.agentConversations[0].id;
+    try {
+      state.agentMessages = await loadAgentMessages(state.agentActiveConversationId, { skipRender: true });
+    } catch {
+      state.agentMessages = [];
+    }
+  }
 
   render();
 }
@@ -621,6 +692,7 @@ function render() {
   renderAudit();
   renderTokens();
   renderFuel();
+  renderAgent();
   document.body.dataset.role = state.user?.role || 'employee';
   document.body.dataset.manualBooking = state.featureFlags.manualAdminBooking ? 'on' : 'off';
   document.body.dataset.siteStatus = state.featureFlags['booking.site_status_management'] ? 'on' : 'off';
@@ -1237,6 +1309,132 @@ const FUEL_TYPES = [
   { key: 'unleaded', label: 'Non-ethanol' },
   { key: 'diesel', label: 'Diesel' },
 ];
+
+function renderAgent() {
+  if (!els.agentPanel) return;
+  if (!featureEnabled('ai.command_box')) {
+    els.agentPanel.hidden = true;
+    return;
+  }
+  els.agentPanel.hidden = false;
+  const conversations = state.agentConversations || [];
+  const activeId = state.agentActiveConversationId || null;
+
+  if (els.agentConversations) {
+    if (!conversations.length) {
+      els.agentConversations.innerHTML = '<li class="empty">No conversations yet.</li>';
+    } else {
+      els.agentConversations.innerHTML = conversations.map(c => `
+        <li data-conversation-id="${escapeHtml(c.id)}" ${activeId === c.id ? 'aria-current="true"' : ''}>
+          <strong>${escapeHtml(c.title || 'Untitled')}</strong>
+          <span>${escapeHtml(formatTokenTimestamp(c.updatedAt) || '')}</span>
+        </li>
+      `).join('');
+    }
+  }
+
+  if (els.agentThread) {
+    const messages = (state.agentMessages || []).filter(m => m.role !== 'system');
+    if (!messages.length) {
+      els.agentThread.innerHTML = '<div class="empty">Ask anything about the store. e.g. "what are tank levels?", "set unleaded to $4.19", or "book Site 7 for John on June 15-17".</div>';
+    } else {
+      els.agentThread.innerHTML = messages.map(renderAgentMessage).join('');
+    }
+    els.agentThread.scrollTop = els.agentThread.scrollHeight;
+  }
+
+  if (els.agentConfirmation) {
+    const pending = state.agentPending;
+    if (pending) {
+      els.agentConfirmation.hidden = false;
+      els.agentConfirmation.innerHTML = `
+        <div><strong>Confirm action:</strong> ${escapeHtml(pending.toolName)} with ${escapeHtml(JSON.stringify(pending.arguments || {}))}</div>
+        <div class="agent-confirmation__actions">
+          <button type="button" class="admin-button" data-confirmation="deny">Cancel</button>
+          <button type="button" class="btn btn--primary" data-confirmation="approve">Approve</button>
+        </div>
+      `;
+    } else {
+      els.agentConfirmation.hidden = true;
+      els.agentConfirmation.innerHTML = '';
+    }
+  }
+
+  if (els.agentStatus) {
+    els.agentStatus.textContent = state.agentBusy ? 'thinking…' : '';
+  }
+  if (els.agentSendBtn) {
+    els.agentSendBtn.disabled = state.agentBusy === true || !state.user;
+  }
+  if (els.agentInput) {
+    els.agentInput.disabled = state.agentBusy === true;
+  }
+}
+
+function renderAgentMessage(message) {
+  const role = message.role;
+  const content = String(message.content ?? '');
+  if (role === 'tool') {
+    return `
+      <div class="agent-msg" data-role="tool">
+        <div class="agent-msg__role">tool · ${escapeHtml(message.toolName || message.toolCallId || '')}</div>
+        <div>${escapeHtml(content || '{}')}</div>
+      </div>
+    `;
+  }
+  const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : null;
+  const callsHtml = toolCalls && toolCalls.length
+    ? toolCalls.map(call => `<span class="agent-msg__tool-call">${escapeHtml(call.name || '')}(${escapeHtml(JSON.stringify(call.arguments || {}))})</span>`).join('')
+    : '';
+  return `
+    <div class="agent-msg" data-role="${escapeHtml(role)}">
+      <div class="agent-msg__role">${escapeHtml(role)}</div>
+      ${content ? `<div>${escapeHtml(content)}</div>` : ''}
+      ${callsHtml ? `<div>${callsHtml}</div>` : ''}
+    </div>
+  `;
+}
+
+async function loadAgentMessages(conversationId, { skipRender = false } = {}) {
+  if (!conversationId) {
+    state.agentMessages = [];
+    if (!skipRender) renderAgent();
+    return [];
+  }
+  try {
+    const messages = await api(`/api/admin/agent/conversations/${encodeURIComponent(conversationId)}/messages`);
+    state.agentMessages = Array.isArray(messages) ? messages : [];
+    if (!skipRender) renderAgent();
+    return state.agentMessages;
+  } catch (error) {
+    state.agentMessages = [];
+    if (!skipRender) renderAgent();
+    throw error;
+  }
+}
+
+async function runAgentTurn({ userMessage = '', confirmations = {} } = {}) {
+  if (!state.agentActiveConversationId) return;
+  state.agentBusy = true;
+  renderAgent();
+  try {
+    const data = await api('/api/admin/agent/turn', {
+      method: 'POST',
+      body: {
+        conversationId: state.agentActiveConversationId,
+        userMessage,
+        confirmations,
+      },
+    });
+    state.agentPending = data.pendingConfirmation || null;
+    await loadAgentMessages(state.agentActiveConversationId, { skipRender: true });
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    state.agentBusy = false;
+    renderAgent();
+  }
+}
 
 function renderFuel() {
   if (!els.fuelPricesRows) return;
