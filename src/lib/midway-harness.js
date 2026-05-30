@@ -12,8 +12,10 @@ import {
   assertProductionPersistence,
   createSupabaseServerClient,
   loadProviderConnections,
+  loadStoreHours,
   loadTenantRuntimeConfig,
   updateTenantRuntimeConfig,
+  upsertStoreHours,
 } from './supabase-server.js';
 import {
   DEFAULT_LOCATION_ID,
@@ -123,6 +125,17 @@ export function createMidwayHarness({
     hours,
   };
   const flagEvaluator = createFeatureFlagEvaluator({ env, overrides: featureFlagOverrides });
+
+  async function safeLoadStoreHours() {
+    if (!resolvedSupabase) return [];
+    try {
+      const rows = await loadStoreHours(resolvedSupabase);
+      return rows.map(row => normalizeHourRow(row)).filter(Boolean);
+    } catch (error) {
+      console.warn('[Hours] Failed to load store_hours:', error.message);
+      return [];
+    }
+  }
 
   return {
     state,
@@ -254,13 +267,15 @@ export function createMidwayHarness({
             publicOnly: true,
           })).map(site => site.id)
         : [];
+      const persistedHours = await safeLoadStoreHours();
+      const hoursForBootstrap = persistedHours.length ? persistedHours : state.hours;
 
       return buildPublicBootstrap({
         settings: {
           ...settings,
           instagramFeed,
         },
-        hours: state.hours,
+        hours: hoursForBootstrap,
         fuelPrices: flags.fuel ? state.fuelPrices : [],
         squareProducts: flags.products ? (persistedProducts.length ? persistedProducts : state.squareProducts) : [],
         rvSites: flags.rvBooking ? sites : [],
@@ -297,6 +312,19 @@ export function createMidwayHarness({
     },
     async getBooking(bookingCode) {
       return resolvedBookingStore.getBooking(bookingCode);
+    },
+    async listStoreHours() {
+      const persisted = await safeLoadStoreHours();
+      const source = persisted.length ? persisted : state.hours;
+      return mergeHoursWithDefaults(source);
+    },
+    async updateStoreHours(rows = []) {
+      const normalized = normalizeHoursInput(rows);
+      if (resolvedSupabase) {
+        await upsertStoreHours(resolvedSupabase, normalized);
+      }
+      state.hours = normalized;
+      return mergeHoursWithDefaults(normalized);
     },
     async recordDriverLicenseUpload(input) {
       return resolvedBookingStore.recordDriverLicenseUpload?.(input);
@@ -481,4 +509,40 @@ function findPlatformProviderConfig(records, { providerKey, environment } = {}) 
     (record.providerKey || record.provider_key) === providerKey
     && (!environment || (record.environment || record.publicConfig?.environment || record.public_config?.environment) === environment)
   )) ?? null;
+}
+
+const HOURS_DAY_ORDER = Object.freeze([
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+]);
+
+function normalizeHourRow(row = {}) {
+  const day = String(row.day || '').toLowerCase();
+  if (!HOURS_DAY_ORDER.includes(day)) return null;
+  const open = String(row.open ?? row.open_time ?? '').trim();
+  const close = String(row.close ?? row.close_time ?? '').trim();
+  const closed = row.closed === true || (!open && !close);
+  return closed ? { day, closed: true } : { day, open, close };
+}
+
+function normalizeHoursInput(rows = []) {
+  if (!Array.isArray(rows)) return [];
+  const seen = new Map();
+  for (const row of rows) {
+    const normalized = normalizeHourRow(row);
+    if (normalized) seen.set(normalized.day, normalized);
+  }
+  return HOURS_DAY_ORDER
+    .filter(day => seen.has(day))
+    .map(day => seen.get(day));
+}
+
+function mergeHoursWithDefaults(rows = []) {
+  const byDay = new Map(rows.map(row => [row.day, row]));
+  return HOURS_DAY_ORDER.map(day => byDay.get(day) || { day, closed: true });
 }

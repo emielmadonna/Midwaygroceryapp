@@ -41,6 +41,9 @@ const els = {
   settingsRoleNote: document.getElementById('settingsRoleNote'),
   instagramForm: document.getElementById('instagramSettingsForm'),
   instagramStatus: document.getElementById('instagramStatus'),
+  hoursForm: document.getElementById('storeHoursForm'),
+  hoursRows: document.getElementById('hoursRows'),
+  hoursStatus: document.getElementById('hoursStatus'),
   sectionControlsGrid: document.getElementById('sectionControlsGrid'),
   sectionStatusSummary: document.getElementById('sectionStatusSummary'),
   providerPanel: document.getElementById('providerPanel'),
@@ -144,6 +147,13 @@ els.settingsForm?.addEventListener('submit', async event => {
       sections: collectSectionSettings(form),
     },
   });
+});
+
+els.hoursForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.user?.role !== 'owner') return;
+  const rows = collectHoursFormValues();
+  await updateHours(rows);
 });
 
 els.createTokenForm?.addEventListener('submit', async event => {
@@ -292,7 +302,7 @@ async function boot() {
 }
 
 async function loadAdminData() {
-  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, tokens] = await Promise.all([
+  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, hours, tokens] = await Promise.all([
     api('/api/admin/dashboard/today'),
     api('/api/admin/rv-sites'),
     api('/api/admin/bookings'),
@@ -301,6 +311,7 @@ async function loadAdminData() {
     featureEnabled('core.tenant_config') ? api('/api/admin/settings') : Promise.resolve(null),
     featureEnabled('core.provider_adapters') ? api('/api/admin/providers') : Promise.resolve([]),
     state.user?.role === 'owner' && featureEnabled('core.provider_adapters') ? api('/api/admin/square/catalog') : Promise.resolve([]),
+    featureEnabled('core.tenant_config') ? api('/api/admin/hours').catch(() => []) : Promise.resolve([]),
     state.user?.role === 'owner' ? api('/api/admin/tokens').catch(() => []) : Promise.resolve([]),
   ]);
 
@@ -312,6 +323,7 @@ async function loadAdminData() {
   state.settings = settings;
   state.providerStatuses = providerStatuses;
   state.catalogProducts = catalogProducts;
+  state.hours = Array.isArray(hours) ? hours : [];
   state.tokens = Array.isArray(tokens) ? tokens : [];
 
   render();
@@ -384,6 +396,15 @@ async function updateSettings(body) {
     body,
   });
   showToast('Site settings updated.', 'success');
+  await loadAdminData();
+}
+
+async function updateHours(rows) {
+  state.hours = await api('/api/admin/hours', {
+    method: 'PATCH',
+    body: { hours: rows },
+  });
+  showToast('Store hours updated.', 'success');
   await loadAdminData();
 }
 
@@ -587,6 +608,7 @@ function render() {
   renderEmployeeMode();
   renderInstagramSettings();
   renderSettings();
+  renderHours();
   renderProviderStatuses();
   renderSiteSelects();
   renderBookingLists();
@@ -749,6 +771,85 @@ function renderSettings() {
     els.settingsRoleNote.textContent = canEdit ? 'Owner edit access' : 'Read only';
   }
   els.settingsForm.dataset.readonly = canEdit ? 'false' : 'true';
+}
+
+const HOURS_DAYS = [
+  { key: 'monday', label: 'Monday' },
+  { key: 'tuesday', label: 'Tuesday' },
+  { key: 'wednesday', label: 'Wednesday' },
+  { key: 'thursday', label: 'Thursday' },
+  { key: 'friday', label: 'Friday' },
+  { key: 'saturday', label: 'Saturday' },
+  { key: 'sunday', label: 'Sunday' },
+];
+
+const HOURS_DEFAULT = { open: '7:00 AM', close: '7:00 PM' };
+
+function renderHours() {
+  if (!els.hoursRows || !els.hoursForm) return;
+  const canEdit = state.user?.role === 'owner';
+  const byDay = new Map((state.hours ?? []).map(row => [row.day, row]));
+
+  els.hoursRows.innerHTML = HOURS_DAYS.map(({ key, label }) => {
+    const row = byDay.get(key) || { day: key, closed: true };
+    const closed = row.closed === true;
+    const open = closed ? '' : (row.open || HOURS_DEFAULT.open);
+    const close = closed ? '' : (row.close || HOURS_DEFAULT.close);
+    const escape = (value) => String(value).replace(/"/g, '&quot;');
+    return `
+      <div class="hours-row" data-day="${key}" data-closed="${closed ? 'true' : 'false'}">
+        <span class="hours-row__day">${label}</span>
+        <label class="hours-row__time hours-row__time--open">
+          <small>Open</small>
+          <input type="text" name="open" value="${escape(open)}" placeholder="7:00 AM" autocomplete="off" />
+        </label>
+        <label class="hours-row__time hours-row__time--close">
+          <small>Close</small>
+          <input type="text" name="close" value="${escape(close)}" placeholder="7:00 PM" autocomplete="off" />
+        </label>
+        <label class="hours-row__closed">
+          <input type="checkbox" name="closed" ${closed ? 'checked' : ''} />
+          Closed
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  els.hoursRows.querySelectorAll('.hours-row').forEach(rowEl => {
+    const closedInput = rowEl.querySelector('input[name="closed"]');
+    if (!closedInput) return;
+    closedInput.addEventListener('change', () => {
+      rowEl.dataset.closed = closedInput.checked ? 'true' : 'false';
+    });
+  });
+
+  els.hoursForm.querySelectorAll('input, button').forEach(control => {
+    control.disabled = !canEdit;
+  });
+  if (els.hoursStatus) {
+    const closedDays = HOURS_DAYS.filter(({ key }) => {
+      const row = byDay.get(key);
+      return !row || row.closed === true;
+    }).map(({ label }) => label);
+    els.hoursStatus.textContent = closedDays.length
+      ? `Closed: ${closedDays.join(', ')}`
+      : 'Open every day';
+  }
+}
+
+function collectHoursFormValues() {
+  if (!els.hoursRows) return [];
+  return HOURS_DAYS.map(({ key }) => {
+    const rowEl = els.hoursRows.querySelector(`.hours-row[data-day="${key}"]`);
+    if (!rowEl) return { day: key, closed: true };
+    const closed = rowEl.querySelector('input[name="closed"]')?.checked === true;
+    if (closed) return { day: key, closed: true };
+    return {
+      day: key,
+      open: rowEl.querySelector('input[name="open"]')?.value.trim() || '',
+      close: rowEl.querySelector('input[name="close"]')?.value.trim() || '',
+    };
+  });
 }
 
 function renderInstagramSettings() {

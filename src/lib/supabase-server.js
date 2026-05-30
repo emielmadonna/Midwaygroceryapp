@@ -178,6 +178,31 @@ export async function updateTenantRuntimeConfig(supabase, config, input = {}) {
   if (frontendError) throw frontendError;
 }
 
+export async function loadStoreHours(supabase) {
+  assertSupabaseClient(supabase);
+  const { data, error } = await supabase
+    .from('store_hours')
+    .select('*');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertStoreHours(supabase, rows = []) {
+  assertSupabaseClient(supabase);
+  if (!rows.length) return;
+  const now = new Date().toISOString();
+  const payload = rows.map(row => ({
+    day: row.day,
+    open_time: row.closed ? '' : (row.open || ''),
+    close_time: row.closed ? '' : (row.close || ''),
+    updated_at: now,
+  }));
+  const { error } = await supabase
+    .from('store_hours')
+    .upsert(payload, { onConflict: 'day' });
+  if (error) throw error;
+}
+
 function readEnv(env, name) {
   const value = env[name];
   return typeof value === 'string' ? value.trim() : value;
