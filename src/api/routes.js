@@ -3,10 +3,13 @@ import express from 'express';
 
 import { createAdminAuthService, requireAdminRole } from '../lib/admin-auth.js';
 import { createApiTokenService } from '../lib/api-tokens.js';
+import { createMcpServer } from '../lib/mcp-server.js';
 import { createMidwayHarness } from '../lib/midway-harness.js';
 import { createNotificationService } from '../lib/notifications.js';
 import { createProviderConnectionService } from '../lib/provider-connections.js';
 import { createSupabaseServerClient } from '../lib/supabase-server.js';
+import { createToolRegistry } from '../lib/tool-registry.js';
+import { registerCoreTools } from '../lib/registered-tools.js';
 import {
   createRvCheckoutPaymentLink,
   createRvWebPaymentSession,
@@ -40,6 +43,9 @@ export function createApiRouter({
   const supabase = createSupabaseServerClient({ env });
   const apiTokenService = createApiTokenService({ supabase, env });
   const adminAuth = createAdminAuthService({ env, apiTokenService });
+  const toolRegistry = createToolRegistry();
+  registerCoreTools(toolRegistry, { store: resolvedStore });
+  const mcpServer = createMcpServer({ registry: toolRegistry, store: resolvedStore });
   const squareProviderConfig = async () => ({
     nodeEnv: env.NODE_ENV,
     ...(
@@ -94,6 +100,35 @@ export function createApiRouter({
     } catch (error) {
       sendApiError(res, error, error.code || 'ADMIN_LOGIN_FAILED', error.statusCode || 401);
     }
+  });
+
+  router.post('/mcp', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('mcp.server');
+      const actor = await authenticateMcpRequest(req, { apiTokenService });
+      if (!actor) {
+        return res.status(401).json(apiError('MCP_AUTH_REQUIRED', 'A valid mw_ API token is required.'));
+      }
+      const response = await mcpServer.handleBatch(req.body, { actor });
+      if (response === null) {
+        return res.status(204).end();
+      }
+      res.json(response);
+    } catch (error) {
+      sendApiError(res, error, error.code || 'MCP_REQUEST_FAILED', error.statusCode || 500);
+    }
+  });
+
+  router.get('/mcp', (req, res) => {
+    res.json({
+      ok: true,
+      data: {
+        protocolVersion: mcpServer.protocolVersion,
+        serverInfo: { name: 'midway-mcp', version: '0.1.0' },
+        transport: 'streamable-http',
+        endpoint: '/api/mcp',
+      },
+    });
   });
 
   router.use('/admin', async (req, res, next) => {
@@ -1169,6 +1204,20 @@ function apiError(code, message) {
     ok: false,
     error: { code, message },
   };
+}
+
+async function authenticateMcpRequest(req, { apiTokenService } = {}) {
+  if (!apiTokenService) return null;
+  const authHeader = req.get?.('authorization') || '';
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!bearerMatch) return null;
+  const token = bearerMatch[1].trim();
+  if (!token.startsWith('mw_live_') && !token.startsWith('mw_test_')) return null;
+  try {
+    return await apiTokenService.authenticate(token);
+  } catch {
+    return null;
+  }
 }
 
 function sendApiError(res, error, fallbackCode, fallbackStatus = 400) {
