@@ -178,6 +178,47 @@ export async function updateTenantRuntimeConfig(supabase, config, input = {}) {
   if (frontendError) throw frontendError;
 }
 
+export async function loadFuelPrices(supabase) {
+  assertSupabaseClient(supabase);
+  const { data, error } = await supabase
+    .from('fuel_prices')
+    .select('*');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertFuelPrice(supabase, { type, price }) {
+  assertSupabaseClient(supabase);
+  if (!type) throw new Error('Fuel type is required.');
+  if (!Number.isFinite(Number(price))) throw new Error('Fuel price must be numeric.');
+  const { error } = await supabase
+    .from('fuel_prices')
+    .upsert({ type, price: Number(price), updated_at: new Date().toISOString() }, { onConflict: 'type' });
+  if (error) throw error;
+}
+
+export async function loadFuelInventory(supabase) {
+  assertSupabaseClient(supabase);
+  const { data, error } = await supabase
+    .from('fuel_inventory')
+    .select('*');
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function upsertFuelInventory(supabase, { type, currentGallons, capacityGallons, alertThreshold }) {
+  assertSupabaseClient(supabase);
+  if (!type) throw new Error('Fuel type is required.');
+  const payload = { type, updated_at: new Date().toISOString() };
+  if (currentGallons !== undefined) payload.current_gallons = Math.max(0, Math.round(Number(currentGallons)));
+  if (capacityGallons !== undefined) payload.capacity_gallons = Math.max(0, Math.round(Number(capacityGallons)));
+  if (alertThreshold !== undefined) payload.alert_threshold = Math.max(0, Math.round(Number(alertThreshold)));
+  const { error } = await supabase
+    .from('fuel_inventory')
+    .upsert(payload, { onConflict: 'type' });
+  if (error) throw error;
+}
+
 function readEnv(env, name) {
   const value = env[name];
   return typeof value === 'string' ? value.trim() : value;

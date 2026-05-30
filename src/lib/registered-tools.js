@@ -290,6 +290,66 @@ export function registerCoreTools(registry, { store } = {}) {
   });
 
   registry.register({
+    name: 'list_fuel_prices',
+    description: 'Read current pump prices for non-ethanol and diesel.',
+    requiredScope: 'read',
+    requiredFlag: 'fuel.prices',
+    sideEffect: 'read',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    handler: async () => store.listFuelPrices(),
+  });
+
+  registry.register({
+    name: 'update_fuel_price',
+    description: 'Set the pump price for a single fuel type (unleaded or diesel).',
+    requiredScope: 'write',
+    requiredFlag: 'fuel.prices',
+    sideEffect: 'mutation',
+    auditTarget: { type: 'fuel_prices', id: 'midway' },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'price'],
+      properties: {
+        type: { type: 'string', enum: ['unleaded', 'diesel'] },
+        price: { type: 'number', minimum: 0, maximum: 50 },
+      },
+    },
+    handler: async ({ input }) => store.updateFuelPrice(input),
+  });
+
+  registry.register({
+    name: 'list_fuel_inventory',
+    description: 'Read tank levels per fuel type (current gallons, capacity, alert threshold, percent full).',
+    requiredScope: 'read',
+    requiredFlag: 'fuel.tank_levels',
+    sideEffect: 'read',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    handler: async () => store.listFuelInventory(),
+  });
+
+  registry.register({
+    name: 'update_fuel_inventory',
+    description: 'Update tank levels for a fuel type. Any field is optional but type is required.',
+    requiredScope: 'write',
+    requiredFlag: 'fuel.tank_levels',
+    sideEffect: 'mutation',
+    auditTarget: { type: 'fuel_inventory', id: 'midway' },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type'],
+      properties: {
+        type: { type: 'string', enum: ['unleaded', 'diesel'] },
+        currentGallons: { type: 'integer', minimum: 0, maximum: 100000 },
+        capacityGallons: { type: 'integer', minimum: 1, maximum: 100000 },
+        alertThreshold: { type: 'integer', minimum: 0, maximum: 100000 },
+      },
+    },
+    handler: async ({ input }) => store.updateFuelInventory(input),
+  });
+
+  registry.register({
     name: 'admin_dashboard_today',
     description: 'Snapshot of today\'s arrivals, departures, occupancy, and totals.',
     requiredScope: 'read',

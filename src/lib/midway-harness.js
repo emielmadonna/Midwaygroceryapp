@@ -11,9 +11,13 @@ import { quoteBooking, quoteMultiSiteBooking } from './rv-booking.js';
 import {
   assertProductionPersistence,
   createSupabaseServerClient,
+  loadFuelInventory,
+  loadFuelPrices,
   loadProviderConnections,
   loadTenantRuntimeConfig,
   updateTenantRuntimeConfig,
+  upsertFuelInventory,
+  upsertFuelPrice,
 } from './supabase-server.js';
 import {
   DEFAULT_LOCATION_ID,
@@ -254,6 +258,10 @@ export function createMidwayHarness({
             publicOnly: true,
           })).map(site => site.id)
         : [];
+      const persistedFuelPrices = flags.fuel ? await safeLoadFuelPrices() : [];
+      const fuelForBootstrap = persistedFuelPrices.length
+        ? persistedFuelPrices.map(normalizeFuelPriceRow).filter(Boolean)
+        : (state.fuelPrices || []);
 
       return buildPublicBootstrap({
         settings: {
@@ -261,7 +269,7 @@ export function createMidwayHarness({
           instagramFeed,
         },
         hours: state.hours,
-        fuelPrices: flags.fuel ? state.fuelPrices : [],
+        fuelPrices: flags.fuel ? fuelForBootstrap : [],
         squareProducts: flags.products ? (persistedProducts.length ? persistedProducts : state.squareProducts) : [],
         rvSites: flags.rvBooking ? sites : [],
         rvAvailability: availability,
@@ -325,6 +333,45 @@ export function createMidwayHarness({
     async findStoreInventoryByVariationId(input) {
       return resolvedBookingStore.findStoreInventoryByVariationId?.(input) ?? null;
     },
+    async listFuelPrices() {
+      const rows = await safeLoadFuelPrices();
+      if (rows.length) return rows.map(normalizeFuelPriceRow).filter(Boolean);
+      return (state.fuelPrices || []).map(normalizeFuelPriceRow).filter(Boolean);
+    },
+    async updateFuelPrice({ type, price } = {}) {
+      if (!type) throw badRequest('Fuel type is required.');
+      if (!['unleaded', 'diesel'].includes(type)) throw badRequest('Fuel type must be "unleaded" or "diesel".');
+      const numeric = Number(price);
+      if (!Number.isFinite(numeric) || numeric < 0) throw badRequest('Fuel price must be a non-negative number.');
+      if (resolvedSupabase) {
+        await upsertFuelPrice(resolvedSupabase, { type, price: numeric });
+      }
+      state.fuelPrices = (state.fuelPrices || []).filter(row => row.type !== type)
+        .concat([{ type, price: numeric, updatedAt: new Date().toISOString() }]);
+      return { type, price: numeric };
+    },
+    async listFuelInventory() {
+      const rows = await safeLoadFuelInventory();
+      return rows.map(normalizeFuelInventoryRow).filter(Boolean);
+    },
+    async updateFuelInventory({ type, currentGallons, capacityGallons, alertThreshold } = {}) {
+      if (!type) throw badRequest('Fuel type is required.');
+      if (!['unleaded', 'diesel'].includes(type)) throw badRequest('Fuel type must be "unleaded" or "diesel".');
+      if (currentGallons !== undefined && (!Number.isFinite(Number(currentGallons)) || Number(currentGallons) < 0)) {
+        throw badRequest('currentGallons must be a non-negative number.');
+      }
+      if (capacityGallons !== undefined && (!Number.isFinite(Number(capacityGallons)) || Number(capacityGallons) <= 0)) {
+        throw badRequest('capacityGallons must be a positive number.');
+      }
+      if (alertThreshold !== undefined && (!Number.isFinite(Number(alertThreshold)) || Number(alertThreshold) < 0)) {
+        throw badRequest('alertThreshold must be a non-negative number.');
+      }
+      if (resolvedSupabase) {
+        await upsertFuelInventory(resolvedSupabase, { type, currentGallons, capacityGallons, alertThreshold });
+      }
+      const rows = await safeLoadFuelInventory();
+      return rows.map(normalizeFuelInventoryRow).find(row => row?.type === type) || null;
+    },
     async adminDashboard({ from, to } = {}) {
       const [sites, bookings, notifications] = await Promise.all([
         resolvedBookingStore.listSites(),
@@ -369,6 +416,57 @@ export function createMidwayHarness({
     });
     return tenantConfigCache;
   }
+
+  async function safeLoadFuelPrices() {
+    if (!resolvedSupabase) return [];
+    try {
+      return await loadFuelPrices(resolvedSupabase);
+    } catch (error) {
+      console.warn('[Fuel] load fuel_prices failed:', error.message);
+      return [];
+    }
+  }
+
+  async function safeLoadFuelInventory() {
+    if (!resolvedSupabase) return [];
+    try {
+      return await loadFuelInventory(resolvedSupabase);
+    } catch (error) {
+      console.warn('[Fuel] load fuel_inventory failed:', error.message);
+      return [];
+    }
+  }
+}
+
+function normalizeFuelPriceRow(row) {
+  if (!row || !row.type) return null;
+  const price = Number(row.price);
+  if (!Number.isFinite(price)) return null;
+  return { type: row.type, price, updatedAt: row.updated_at ?? row.updatedAt ?? null };
+}
+
+function normalizeFuelInventoryRow(row) {
+  if (!row || !row.type) return null;
+  const currentGallons = Number(row.current_gallons ?? row.currentGallons ?? 0);
+  const capacityGallons = Number(row.capacity_gallons ?? row.capacityGallons ?? 0);
+  const alertThreshold = Number(row.alert_threshold ?? row.alertThreshold ?? 0);
+  const percentFull = capacityGallons > 0 ? Math.round((currentGallons / capacityGallons) * 100) : 0;
+  return {
+    type: row.type,
+    currentGallons,
+    capacityGallons,
+    alertThreshold,
+    percentFull,
+    belowThreshold: alertThreshold > 0 && currentGallons <= alertThreshold,
+    updatedAt: row.updated_at ?? row.updatedAt ?? null,
+  };
+}
+
+function badRequest(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  error.code = 'FUEL_INVALID';
+  return error;
 }
 
 function buildAdminDashboard({ sites, bookings, notifications }) {

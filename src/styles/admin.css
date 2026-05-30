@@ -466,6 +466,105 @@ button:disabled {
   width: auto;
 }
 
+.fuel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.fuel-subpanel {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: white;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.fuel-subpanel h3 {
+  margin: 0;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 22px;
+  line-height: 1.1;
+  text-transform: none;
+}
+
+.fuel-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.fuel-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #fcfaf5;
+}
+
+.fuel-row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.fuel-row__label {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.fuel-row__meta {
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+.fuel-row__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.fuel-row__fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--admin-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fuel-row__fields input {
+  min-height: 38px;
+}
+
+.fuel-row__bar {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(184, 138, 60, 0.18);
+  overflow: hidden;
+}
+
+.fuel-row__bar-fill {
+  position: absolute;
+  inset: 0;
+  width: var(--fuel-fill, 0%);
+  background: var(--admin-green);
+  transition: width 0.2s ease-out;
+}
+
+.fuel-row[data-low="true"] .fuel-row__bar-fill {
+  background: var(--admin-red);
+}
+
+@media (max-width: 720px) {
+  .fuel-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .instagram-form__controls {
   display: flex;
   align-items: center;

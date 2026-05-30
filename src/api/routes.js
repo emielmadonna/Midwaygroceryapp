@@ -444,6 +444,71 @@ export function createApiRouter({
     }
   });
 
+  router.get('/admin/fuel-prices', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.prices', { role: req.adminUser.role });
+      const data = await resolvedStore.listFuelPrices?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_PRICES_UNAVAILABLE', error.statusCode || 400);
+    }
+  });
+
+  router.patch('/admin/fuel-prices', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.prices', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const updates = Array.isArray(req.body?.prices) ? req.body.prices : [];
+      const results = [];
+      for (const update of updates) {
+        results.push(await resolvedStore.updateFuelPrice?.(update));
+      }
+      await resolvedStore.recordAuditLog?.({
+        action: 'fuel.prices.update',
+        actor: req.adminUser,
+        targetType: 'fuel_prices',
+        targetId: 'midway',
+        metadata: { count: results.length },
+      });
+      const data = await resolvedStore.listFuelPrices?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_PRICES_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/fuel-inventory', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.tank_levels', { role: req.adminUser.role });
+      const data = await resolvedStore.listFuelInventory?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_INVENTORY_UNAVAILABLE', error.statusCode || 400);
+    }
+  });
+
+  router.patch('/admin/fuel-inventory', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('fuel.tank_levels', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const updates = Array.isArray(req.body?.tanks) ? req.body.tanks : [];
+      for (const update of updates) {
+        await resolvedStore.updateFuelInventory?.(update);
+      }
+      await resolvedStore.recordAuditLog?.({
+        action: 'fuel.inventory.update',
+        actor: req.adminUser,
+        targetType: 'fuel_inventory',
+        targetId: 'midway',
+        metadata: { count: updates.length },
+      });
+      const data = await resolvedStore.listFuelInventory?.();
+      res.json({ ok: true, data: data ?? [] });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_FUEL_INVENTORY_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
   router.get('/admin/tokens', async (req, res) => {
     try {
       requireAdminRole(req.adminUser, ['owner']);

@@ -59,6 +59,12 @@ const els = {
   bookingsList: document.getElementById('bookingsList'),
   notificationsList: document.getElementById('notificationsList'),
   auditList: document.getElementById('auditList'),
+  fuelPanel: document.getElementById('fuelPanel'),
+  fuelStatus: document.getElementById('fuelStatus'),
+  fuelPricesForm: document.getElementById('fuelPricesForm'),
+  fuelPricesRows: document.getElementById('fuelPricesRows'),
+  fuelInventoryForm: document.getElementById('fuelInventoryForm'),
+  fuelInventoryRows: document.getElementById('fuelInventoryRows'),
   tokensPanel: document.getElementById('tokensPanel'),
   tokensList: document.getElementById('tokensList'),
   tokensStatus: document.getElementById('tokensStatus'),
@@ -144,6 +150,20 @@ els.settingsForm?.addEventListener('submit', async event => {
       sections: collectSectionSettings(form),
     },
   });
+});
+
+els.fuelPricesForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const updates = collectFuelPrices();
+  if (!updates.length) return;
+  await updateFuelPrices(updates);
+});
+
+els.fuelInventoryForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const updates = collectFuelInventory();
+  if (!updates.length) return;
+  await updateFuelInventory(updates);
 });
 
 els.createTokenForm?.addEventListener('submit', async event => {
@@ -292,7 +312,7 @@ async function boot() {
 }
 
 async function loadAdminData() {
-  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, tokens] = await Promise.all([
+  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, tokens, fuelPrices, fuelInventory] = await Promise.all([
     api('/api/admin/dashboard/today'),
     api('/api/admin/rv-sites'),
     api('/api/admin/bookings'),
@@ -302,6 +322,8 @@ async function loadAdminData() {
     featureEnabled('core.provider_adapters') ? api('/api/admin/providers') : Promise.resolve([]),
     state.user?.role === 'owner' && featureEnabled('core.provider_adapters') ? api('/api/admin/square/catalog') : Promise.resolve([]),
     state.user?.role === 'owner' ? api('/api/admin/tokens').catch(() => []) : Promise.resolve([]),
+    featureEnabled('fuel.prices') ? api('/api/admin/fuel-prices').catch(() => []) : Promise.resolve([]),
+    featureEnabled('fuel.tank_levels') ? api('/api/admin/fuel-inventory').catch(() => []) : Promise.resolve([]),
   ]);
 
   state.dashboard = dashboard;
@@ -313,6 +335,8 @@ async function loadAdminData() {
   state.providerStatuses = providerStatuses;
   state.catalogProducts = catalogProducts;
   state.tokens = Array.isArray(tokens) ? tokens : [];
+  state.fuelPrices = Array.isArray(fuelPrices) ? fuelPrices : [];
+  state.fuelInventory = Array.isArray(fuelInventory) ? fuelInventory : [];
 
   render();
 }
@@ -596,6 +620,7 @@ function render() {
   renderNotifications();
   renderAudit();
   renderTokens();
+  renderFuel();
   document.body.dataset.role = state.user?.role || 'employee';
   document.body.dataset.manualBooking = state.featureFlags.manualAdminBooking ? 'on' : 'off';
   document.body.dataset.siteStatus = state.featureFlags['booking.site_status_management'] ? 'on' : 'off';
@@ -1206,6 +1231,130 @@ function renderAudit() {
       <span>${escapeHtml(record.actorRole)} · ${escapeHtml(record.targetId || record.targetType || '')} · ${escapeHtml(record.createdAt)}</span>
     </li>
   `, 'No audit records yet.');
+}
+
+const FUEL_TYPES = [
+  { key: 'unleaded', label: 'Non-ethanol' },
+  { key: 'diesel', label: 'Diesel' },
+];
+
+function renderFuel() {
+  if (!els.fuelPricesRows) return;
+  const canEditPrices = featureEnabled('fuel.prices');
+  const canEditTanks = featureEnabled('fuel.tank_levels');
+  const pricesByType = new Map((state.fuelPrices || []).map(row => [row.type, row]));
+  const tanksByType = new Map((state.fuelInventory || []).map(row => [row.type, row]));
+
+  els.fuelPricesRows.innerHTML = FUEL_TYPES.map(({ key, label }) => {
+    const row = pricesByType.get(key);
+    const value = row ? Number(row.price).toFixed(2) : '';
+    return `
+      <div class="fuel-row" data-type="${key}">
+        <div class="fuel-row__head">
+          <span class="fuel-row__label">${label}</span>
+          <span class="fuel-row__meta">${row?.updatedAt ? `updated ${formatTokenTimestamp(row.updatedAt)}` : 'not set'}</span>
+        </div>
+        <div class="fuel-row__fields">
+          <label>Price / gal
+            <input type="number" name="price" min="0" step="0.01" value="${value}" placeholder="0.00" />
+          </label>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  els.fuelInventoryRows.innerHTML = FUEL_TYPES.map(({ key, label }) => {
+    const row = tanksByType.get(key);
+    const current = row?.currentGallons ?? '';
+    const capacity = row?.capacityGallons ?? '';
+    const threshold = row?.alertThreshold ?? '';
+    const fill = Number.isFinite(row?.percentFull) ? row.percentFull : 0;
+    const low = row?.belowThreshold === true;
+    return `
+      <div class="fuel-row" data-type="${key}" data-low="${low ? 'true' : 'false'}">
+        <div class="fuel-row__head">
+          <span class="fuel-row__label">${label}</span>
+          <span class="fuel-row__meta">${row ? `${fill}% full` : 'no reading'}</span>
+        </div>
+        <div class="fuel-row__bar"><div class="fuel-row__bar-fill" style="--fuel-fill:${fill}%"></div></div>
+        <div class="fuel-row__fields">
+          <label>Current gal
+            <input type="number" name="currentGallons" min="0" step="1" value="${current}" placeholder="0" />
+          </label>
+          <label>Capacity gal
+            <input type="number" name="capacityGallons" min="1" step="1" value="${capacity}" placeholder="5000" />
+          </label>
+          <label>Low alert
+            <input type="number" name="alertThreshold" min="0" step="1" value="${threshold}" placeholder="1000" />
+          </label>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  els.fuelPricesForm.querySelectorAll('input, button').forEach(control => {
+    control.disabled = !canEditPrices;
+  });
+  els.fuelInventoryForm.querySelectorAll('input, button').forEach(control => {
+    control.disabled = !canEditTanks;
+  });
+
+  if (els.fuelStatus) {
+    const lowTanks = (state.fuelInventory || []).filter(row => row.belowThreshold);
+    if (lowTanks.length) {
+      els.fuelStatus.textContent = `Low: ${lowTanks.map(row => row.type).join(', ')}`;
+    } else if ((state.fuelInventory || []).length) {
+      els.fuelStatus.textContent = 'Tanks OK';
+    } else {
+      els.fuelStatus.textContent = '';
+    }
+  }
+}
+
+function collectFuelPrices() {
+  if (!els.fuelPricesRows) return [];
+  return FUEL_TYPES.map(({ key }) => {
+    const row = els.fuelPricesRows.querySelector(`.fuel-row[data-type="${key}"]`);
+    const raw = row?.querySelector('input[name="price"]')?.value;
+    if (raw === '' || raw == null) return null;
+    return { type: key, price: Number(raw) };
+  }).filter(Boolean);
+}
+
+function collectFuelInventory() {
+  if (!els.fuelInventoryRows) return [];
+  return FUEL_TYPES.map(({ key }) => {
+    const row = els.fuelInventoryRows.querySelector(`.fuel-row[data-type="${key}"]`);
+    if (!row) return null;
+    const update = { type: key };
+    const current = row.querySelector('input[name="currentGallons"]')?.value;
+    const capacity = row.querySelector('input[name="capacityGallons"]')?.value;
+    const threshold = row.querySelector('input[name="alertThreshold"]')?.value;
+    if (current !== '' && current != null) update.currentGallons = Number(current);
+    if (capacity !== '' && capacity != null) update.capacityGallons = Number(capacity);
+    if (threshold !== '' && threshold != null) update.alertThreshold = Number(threshold);
+    return Object.keys(update).length > 1 ? update : null;
+  }).filter(Boolean);
+}
+
+async function updateFuelPrices(prices) {
+  try {
+    state.fuelPrices = await api('/api/admin/fuel-prices', { method: 'PATCH', body: { prices } });
+    showToast('Fuel prices updated.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function updateFuelInventory(tanks) {
+  try {
+    state.fuelInventory = await api('/api/admin/fuel-inventory', { method: 'PATCH', body: { tanks } });
+    showToast('Tank levels updated.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 function renderTokens() {

@@ -293,6 +293,35 @@
                 </div>
             </details>
 
+            <details class="admin-panel admin-panel--wide admin-accordion" id="fuelPanel">
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Fuel</p>
+                        <h2>Fuel Management</h2>
+                    </div>
+                    <span id="fuelStatus" class="admin-user"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <div class="fuel-grid">
+                        <form id="fuelPricesForm" class="admin-form fuel-subpanel">
+                            <h3>Pump prices</h3>
+                            <div id="fuelPricesRows" class="fuel-rows"></div>
+                            <div class="settings-form__actions">
+                                <button type="submit" class="btn btn--primary">Save prices</button>
+                            </div>
+                        </form>
+                        <form id="fuelInventoryForm" class="admin-form fuel-subpanel">
+                            <h3>Tank levels</h3>
+                            <div id="fuelInventoryRows" class="fuel-rows"></div>
+                            <div class="settings-form__actions">
+                                <button type="submit" class="btn btn--primary">Save tanks</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </details>
+
             <details class="admin-panel admin-panel--wide admin-accordion feature-tenant-config feature-dynamic-sections" id="instagramPanel">
                 <summary>
                     <div>
