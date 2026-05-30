@@ -2,9 +2,11 @@ import crypto from 'node:crypto';
 import express from 'express';
 
 import { createAdminAuthService, requireAdminRole } from '../lib/admin-auth.js';
+import { createApiTokenService } from '../lib/api-tokens.js';
 import { createMidwayHarness } from '../lib/midway-harness.js';
 import { createNotificationService } from '../lib/notifications.js';
 import { createProviderConnectionService } from '../lib/provider-connections.js';
+import { createSupabaseServerClient } from '../lib/supabase-server.js';
 import {
   createRvCheckoutPaymentLink,
   createRvWebPaymentSession,
@@ -35,7 +37,9 @@ export function createApiRouter({
     platformProviderConfigs: resolvedPlatformProviderConfigs,
   });
   const notifications = createNotificationService({ store: resolvedStore, env, fetchImpl });
-  const adminAuth = createAdminAuthService({ env });
+  const supabase = createSupabaseServerClient({ env });
+  const apiTokenService = createApiTokenService({ supabase, env });
+  const adminAuth = createAdminAuthService({ env, apiTokenService });
   const squareProviderConfig = async () => ({
     nodeEnv: env.NODE_ENV,
     ...(
@@ -92,13 +96,17 @@ export function createApiRouter({
     }
   });
 
-  router.use('/admin', (req, res, next) => {
-    const user = adminAuth.authenticateRequest(req);
-    if (!user) {
-      return res.status(401).json(apiError('ADMIN_AUTH_REQUIRED', 'Admin authentication is required.'));
+  router.use('/admin', async (req, res, next) => {
+    try {
+      const user = await adminAuth.authenticateRequest(req);
+      if (!user) {
+        return res.status(401).json(apiError('ADMIN_AUTH_REQUIRED', 'Admin authentication is required.'));
+      }
+      req.adminUser = user;
+      next();
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_AUTH_FAILED', 401);
     }
-    req.adminUser = user;
-    next();
   });
 
   router.get('/public/bootstrap', async (req, res) => {
@@ -428,6 +436,61 @@ export function createApiRouter({
       res.json({ ok: true, data: data ?? [] });
     } catch (error) {
       sendApiError(res, error, 'ADMIN_HOURS_UPDATE_FAILED');
+    }
+  });
+
+  router.get('/admin/tokens', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await apiTokenService.list({ tenantId: resolvedStore.tenantId });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_TOKENS_UNAVAILABLE');
+    }
+  });
+
+  router.post('/admin/tokens', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const { token, record } = await apiTokenService.mint({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        name: req.body?.name,
+        scope: req.body?.scope || 'write',
+        expiresAt: req.body?.expiresAt || null,
+        createdByEmail: req.adminUser?.email || null,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'admin.tokens.create',
+        actor: req.adminUser,
+        targetType: 'admin_api_token',
+        targetId: record.id,
+        metadata: { name: record.name, scope: record.scope, prefix: record.tokenPrefix },
+      });
+      res.status(201).json({ ok: true, data: { token, record } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_TOKEN_CREATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/tokens/:id', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const result = await apiTokenService.revoke({
+        id: req.params.id,
+        tenantId: resolvedStore.tenantId,
+        revokedByEmail: req.adminUser?.email || null,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'admin.tokens.revoke',
+        actor: req.adminUser,
+        targetType: 'admin_api_token',
+        targetId: result.id,
+        metadata: {},
+      });
+      res.json({ ok: true, data: result });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'ADMIN_TOKEN_REVOKE_FAILED', error.statusCode || 400);
     }
   });
 

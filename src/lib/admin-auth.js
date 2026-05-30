@@ -4,7 +4,7 @@ const SESSION_TTL_HOURS = 12;
 const OWNER_ROLE = 'owner';
 const EMPLOYEE_ROLE = 'employee';
 
-export function createAdminAuthService({ env = process.env, now = () => new Date() } = {}) {
+export function createAdminAuthService({ env = process.env, now = () => new Date(), apiTokenService = null } = {}) {
   const users = loadAdminUsers(env);
   const secret = readEnv(env, 'ADMIN_SESSION_SECRET')
     || readEnv(env, 'ADMIN_OWNER_TOKEN')
@@ -33,9 +33,18 @@ export function createAdminAuthService({ env = process.env, now = () => new Date
         expiresAt: new Date(expiresAt * 1000).toISOString(),
       };
     },
-    authenticateRequest(req) {
+    async authenticateRequest(req) {
       const token = readRequestToken(req);
       if (!token) return null;
+
+      if (token.startsWith('mw_live_') || token.startsWith('mw_test_')) {
+        if (!apiTokenService) return null;
+        try {
+          return await apiTokenService.authenticate(token);
+        } catch {
+          return null;
+        }
+      }
 
       const session = verifySession(token, secret, now());
       if (!session?.user?.email) return null;
@@ -45,6 +54,7 @@ export function createAdminAuthService({ env = process.env, now = () => new Date
 
       return {
         ...publicUser(user),
+        actorType: 'session',
         sessionExpiresAt: new Date(session.exp * 1000).toISOString(),
       };
     },

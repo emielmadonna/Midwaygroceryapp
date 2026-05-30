@@ -388,6 +388,44 @@
                 </div>
             </details>
 
+            <details class="admin-panel admin-panel--wide admin-accordion owner-only" id="tokensPanel">
+                <summary>
+                    <div>
+                        <p class="admin-eyebrow">Owner</p>
+                        <h2>API Tokens</h2>
+                    </div>
+                    <span id="tokensStatus" class="admin-user"></span>
+                    <span class="admin-accordion__chevron">Open</span>
+                </summary>
+                <div class="admin-panel__body">
+                    <p class="admin-help">Long-lived tokens for MCP clients and integrations. Shown once on create — store it somewhere safe.</p>
+                    <form id="createTokenForm" class="admin-form tokens-form">
+                        <div class="settings-grid">
+                            <label>Token name
+                                <input type="text" name="name" placeholder="Slack bot" required minlength="2" />
+                            </label>
+                            <label>Scope
+                                <select name="scope">
+                                    <option value="read">read</option>
+                                    <option value="write" selected>write</option>
+                                    <option value="owner">owner</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="settings-form__actions">
+                            <button type="submit" class="btn btn--primary">Create token</button>
+                        </div>
+                    </form>
+                    <div id="newTokenReveal" class="tokens-reveal" hidden>
+                        <p class="admin-eyebrow">New token</p>
+                        <code id="newTokenValue" class="tokens-reveal__code"></code>
+                        <button type="button" class="admin-button" data-token-copy>Copy</button>
+                        <p class="admin-help">You will not see this token again. Save it now.</p>
+                    </div>
+                    <ul class="admin-list" id="tokensList"></ul>
+                </div>
+            </details>
+
             <details class="admin-panel admin-panel--wide admin-accordion owner-only" id="auditPanel">
                 <summary>
                     <div>

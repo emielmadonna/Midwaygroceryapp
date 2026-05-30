@@ -62,6 +62,12 @@ const els = {
   bookingsList: document.getElementById('bookingsList'),
   notificationsList: document.getElementById('notificationsList'),
   auditList: document.getElementById('auditList'),
+  tokensPanel: document.getElementById('tokensPanel'),
+  tokensList: document.getElementById('tokensList'),
+  tokensStatus: document.getElementById('tokensStatus'),
+  createTokenForm: document.getElementById('createTokenForm'),
+  newTokenReveal: document.getElementById('newTokenReveal'),
+  newTokenValue: document.getElementById('newTokenValue'),
   manualForm: document.getElementById('manualBookingForm'),
   blockForm: document.getElementById('blockSiteForm'),
   siteSelects: document.querySelectorAll('[data-site-select]'),
@@ -148,6 +154,27 @@ els.hoursForm?.addEventListener('submit', async event => {
   if (state.user?.role !== 'owner') return;
   const rows = collectHoursFormValues();
   await updateHours(rows);
+});
+
+els.createTokenForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.user?.role !== 'owner') return;
+  const form = new FormData(els.createTokenForm);
+  await createToken({
+    name: form.get('name'),
+    scope: form.get('scope') || 'write',
+  });
+});
+
+els.newTokenReveal?.querySelector('[data-token-copy]')?.addEventListener('click', async () => {
+  const value = els.newTokenValue?.textContent || '';
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast('Token copied to clipboard.', 'success');
+  } catch {
+    showToast('Could not copy. Select and copy manually.', 'error');
+  }
 });
 
 els.instagramForm?.addEventListener('submit', async event => {
@@ -275,7 +302,7 @@ async function boot() {
 }
 
 async function loadAdminData() {
-  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, hours] = await Promise.all([
+  const [dashboard, sites, bookings, notifications, audit, settings, providerStatuses, catalogProducts, hours, tokens] = await Promise.all([
     api('/api/admin/dashboard/today'),
     api('/api/admin/rv-sites'),
     api('/api/admin/bookings'),
@@ -285,6 +312,7 @@ async function loadAdminData() {
     featureEnabled('core.provider_adapters') ? api('/api/admin/providers') : Promise.resolve([]),
     state.user?.role === 'owner' && featureEnabled('core.provider_adapters') ? api('/api/admin/square/catalog') : Promise.resolve([]),
     featureEnabled('core.tenant_config') ? api('/api/admin/hours').catch(() => []) : Promise.resolve([]),
+    state.user?.role === 'owner' ? api('/api/admin/tokens').catch(() => []) : Promise.resolve([]),
   ]);
 
   state.dashboard = dashboard;
@@ -296,6 +324,7 @@ async function loadAdminData() {
   state.providerStatuses = providerStatuses;
   state.catalogProducts = catalogProducts;
   state.hours = Array.isArray(hours) ? hours : [];
+  state.tokens = Array.isArray(tokens) ? tokens : [];
 
   render();
 }
@@ -588,6 +617,7 @@ function render() {
   renderSites();
   renderNotifications();
   renderAudit();
+  renderTokens();
   document.body.dataset.role = state.user?.role || 'employee';
   document.body.dataset.manualBooking = state.featureFlags.manualAdminBooking ? 'on' : 'off';
   document.body.dataset.siteStatus = state.featureFlags['booking.site_status_management'] ? 'on' : 'off';
@@ -1277,6 +1307,80 @@ function renderAudit() {
       <span>${escapeHtml(record.actorRole)} · ${escapeHtml(record.targetId || record.targetType || '')} · ${escapeHtml(record.createdAt)}</span>
     </li>
   `, 'No audit records yet.');
+}
+
+function renderTokens() {
+  if (!els.tokensList) return;
+  if (state.user?.role !== 'owner') {
+    els.tokensList.innerHTML = '<li class="empty">Owner permission required.</li>';
+    if (els.tokensStatus) els.tokensStatus.textContent = '';
+    return;
+  }
+  const tokens = state.tokens || [];
+  if (els.tokensStatus) {
+    els.tokensStatus.textContent = tokens.length ? `${tokens.length} active` : 'No tokens yet';
+  }
+  if (!tokens.length) {
+    els.tokensList.innerHTML = '<li class="empty">No tokens. Create one above.</li>';
+    return;
+  }
+  els.tokensList.innerHTML = tokens.map(token => `
+    <li class="token-row" data-token-id="${escapeHtml(token.id)}">
+      <div>
+        <div class="token-row__name">${escapeHtml(token.name)}</div>
+        <div class="token-row__meta">${escapeHtml(token.tokenPrefix)}…</div>
+      </div>
+      <div>${escapeHtml(token.scope)}</div>
+      <div>${escapeHtml(formatTokenTimestamp(token.lastUsedAt) || 'Never used')}</div>
+      <div>${escapeHtml(formatTokenTimestamp(token.createdAt))}</div>
+      <button type="button" class="admin-button" data-token-revoke="${escapeHtml(token.id)}">Revoke</button>
+    </li>
+  `).join('');
+  els.tokensList.querySelectorAll('[data-token-revoke]').forEach(button => {
+    button.addEventListener('click', () => revokeToken(button.dataset.tokenRevoke));
+  });
+}
+
+function formatTokenTimestamp(value) {
+  if (!value) return '';
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
+async function createToken(input) {
+  try {
+    const data = await api('/api/admin/tokens', {
+      method: 'POST',
+      body: input,
+    });
+    showToast('Token created. Copy it now.', 'success');
+    if (els.newTokenReveal && els.newTokenValue) {
+      els.newTokenValue.textContent = data.token || '';
+      els.newTokenReveal.hidden = false;
+    }
+    els.createTokenForm?.reset();
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function revokeToken(id) {
+  if (!id) return;
+  const confirmed = window.confirm('Revoke this token? Any client using it will lose access immediately.');
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    showToast('Token revoked.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 function taskItem({ label, meta, status }) {
