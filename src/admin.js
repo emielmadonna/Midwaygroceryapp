@@ -580,6 +580,47 @@ async function startInstagramConnection(event) {
   }
 }
 
+async function startSlackConnection(event) {
+  const redirectUri = providerRedirectUri('slack');
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Connecting...');
+  try {
+    const data = await api('/api/admin/providers/slack/oauth/start', {
+      method: 'POST',
+      body: { redirectUri },
+    });
+    if (data.installUrl) {
+      sessionStorage.setItem(pendingProviderKey, JSON.stringify({
+        provider: 'slack',
+        state: data.state || '',
+        redirectUri,
+      }));
+      window.location.assign(data.installUrl);
+      return;
+    }
+    showToast('Slack install could not start.', 'error');
+  } catch (error) {
+    showToast(`Slack connection failed: ${error.message}`, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
+async function disconnectSlack(event) {
+  if (!window.confirm('Disconnect Slack? The bot will stop responding to messages.')) return;
+  const trigger = event?.currentTarget;
+  setButtonBusy(trigger, 'Disconnecting...');
+  try {
+    await api('/api/admin/providers/slack', { method: 'DELETE' });
+    showToast('Slack disconnected.', 'success');
+    await loadAdminData();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    setButtonBusy(trigger, null);
+  }
+}
+
 async function startSquareConnection(event) {
   const redirectUri = providerRedirectUri('square');
   const trigger = event?.currentTarget;
@@ -612,14 +653,20 @@ async function completePendingProviderCallback() {
   const params = new URLSearchParams(window.location.search);
   const pending = readPendingProviderConnection();
   const provider = params.get('provider') || pending?.provider || (params.has('code') || params.has('error') ? 'instagram' : '');
-  if (!['instagram', 'square'].includes(provider)) return;
+  if (!['instagram', 'square', 'slack'].includes(provider)) return;
   if (!params.has('code') && !params.has('error')) return;
 
   const redirectUri = pending?.redirectUri || providerRedirectUri(provider);
   const endpoint = provider === 'instagram'
     ? '/api/admin/providers/instagram/oauth/callback'
-    : '/api/admin/providers/square/oauth/callback';
-  const label = provider === 'instagram' ? 'Instagram' : 'Square';
+    : provider === 'slack'
+      ? '/api/admin/providers/slack/oauth/callback'
+      : '/api/admin/providers/square/oauth/callback';
+  const label = provider === 'instagram'
+    ? 'Instagram'
+    : provider === 'slack'
+      ? 'Slack'
+      : 'Square';
 
   try {
     const data = await api(endpoint, {
@@ -953,6 +1000,12 @@ function renderProviderStatuses() {
 
   els.providerStatusGrid.querySelectorAll('[data-provider-action="square-oauth"]').forEach(button => {
     button.addEventListener('click', startSquareConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="slack-oauth"]').forEach(button => {
+    button.addEventListener('click', startSlackConnection);
+  });
+  els.providerStatusGrid.querySelectorAll('[data-provider-action="slack-disconnect"]').forEach(button => {
+    button.addEventListener('click', disconnectSlack);
   });
   els.providerStatusGrid.querySelectorAll('[data-provider-action="instagram-refresh"]').forEach(button => {
     button.addEventListener('click', refreshInstagramToken);
@@ -1905,6 +1958,16 @@ function providerAction(provider = {}) {
       <div class="provider-status-card__actions">
         <button class="admin-button" type="button" data-provider-action="instagram-oauth">${escapeHtml(label)}</button>
         ${connected ? '<button class="admin-button" type="button" data-provider-action="instagram-refresh">Refresh Instagram token</button>' : ''}
+      </div>
+    `;
+  }
+  if (provider.providerKey === 'slack') {
+    const connected = provider.status === 'connected';
+    const label = connected ? 'Reconnect Slack' : 'Connect Slack';
+    return `
+      <div class="provider-status-card__actions">
+        <button class="admin-button" type="button" data-provider-action="slack-oauth">${escapeHtml(label)}</button>
+        ${connected ? '<button class="admin-button" type="button" data-provider-action="slack-disconnect">Disconnect Slack</button>' : ''}
       </div>
     `;
   }

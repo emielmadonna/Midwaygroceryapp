@@ -23,6 +23,13 @@ import {
   verifySquareWebhookSignature,
 } from '../lib/square-api.js';
 import { normalizeSquareWebhookEvent } from '../lib/square-webhooks.js';
+import {
+  buildSlackInstallUrl,
+  exchangeSlackOAuthCode,
+  postSlackMessage,
+  slackProviderConfigFromEnv,
+  verifySlackSignature,
+} from '../lib/slack-api.js';
 
 export function createApiRouter({
   store = null,
@@ -674,6 +681,203 @@ export function createApiRouter({
       sendApiError(res, error, error.code || 'AGENT_TURN_FAILED', error.statusCode || 500);
     }
   });
+
+  router.post('/admin/providers/slack/oauth/start', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = slackProviderConfigFromEnv(env);
+      if (!config.clientId || !config.clientSecret || !config.signingSecret) {
+        throw badRequest('Slack app is not configured. Set SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, and SLACK_SIGNING_SECRET in env.');
+      }
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'slack');
+      const state = crypto.randomBytes(16).toString('hex');
+      const installUrl = buildSlackInstallUrl({
+        clientId: config.clientId,
+        scopes: config.botScopes,
+        redirectUri,
+        state,
+      });
+      res.json({ ok: true, data: { installUrl, redirectUri, state } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_OAUTH_START_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/slack/oauth/callback', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = slackProviderConfigFromEnv(env);
+      const code = req.body?.code;
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'slack');
+      if (!code) throw badRequest('Authorization code is required.');
+      const exchange = await exchangeSlackOAuthCode({
+        code,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        redirectUri,
+        fetchImpl,
+      });
+      const connection = await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'slack',
+        status: 'connected',
+        accessToken: exchange.accessToken,
+        externalAccountId: exchange.teamId,
+        publicConfig: {
+          teamId: exchange.teamId,
+          teamName: exchange.teamName,
+          botUserId: exchange.botUserId,
+          appId: exchange.appId,
+          scope: exchange.scope,
+          authedUserId: exchange.authedUserId,
+        },
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.slack.connect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'slack',
+        metadata: { teamName: exchange.teamName, teamId: exchange.teamId },
+      });
+      res.json({ ok: true, data: { connection } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_OAUTH_CALLBACK_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/providers/slack', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'slack',
+        status: 'not_connected',
+        accessToken: null,
+        externalAccountId: null,
+        publicConfig: {},
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.slack.disconnect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'slack',
+      });
+      res.json({ ok: true, data: {} });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_DISCONNECT_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/webhooks/slack/events', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
+    try {
+      const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {}));
+      const config = slackProviderConfigFromEnv(env);
+      const signature = req.get('x-slack-signature');
+      const timestamp = req.get('x-slack-request-timestamp');
+      if (!verifySlackSignature({ signingSecret: config.signingSecret, body: rawBody, signature, timestamp })) {
+        return res.status(401).json(apiError('SLACK_SIGNATURE_INVALID', 'Invalid Slack signature.'));
+      }
+      const payload = JSON.parse(rawBody);
+      if (payload.type === 'url_verification') {
+        return res.json({ challenge: payload.challenge });
+      }
+      res.status(200).end();
+      handleSlackEvent(payload).catch(error => {
+        console.warn('[Slack] event handler failed:', error.message);
+      });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SLACK_EVENT_FAILED', error.statusCode || 400);
+    }
+  });
+
+  async function handleSlackEvent(payload) {
+    if (payload.type !== 'event_callback') return;
+    const event = payload.event ?? {};
+    if (event.bot_id || event.subtype === 'bot_message') return;
+    const isDirectMessage = event.type === 'message' && event.channel_type === 'im';
+    const isMention = event.type === 'app_mention';
+    if (!isDirectMessage && !isMention) return;
+
+    const text = String(event.text || '').replace(/<@[A-Z0-9]+>/g, '').trim();
+    if (!text) return;
+
+    const connection = await resolvedStore.getProviderConnection?.({
+      tenantId: resolvedStore.tenantId,
+      locationId: resolvedStore.locationId,
+      providerKey: 'slack',
+    });
+    if (!connection?.accessToken) {
+      console.warn('[Slack] event received but no bot token stored.');
+      return;
+    }
+
+    const threadKey = `${event.team || payload.team_id || ''}:${event.channel}:${event.thread_ts || event.ts}`;
+    let conversation = await agentStore.findExternal({ channel: 'slack', externalThreadId: threadKey, tenantId: resolvedStore.tenantId });
+    if (!conversation) {
+      conversation = await agentStore.create({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        channel: 'slack',
+        externalThreadId: threadKey,
+        title: text.slice(0, 60),
+        createdByEmail: null,
+        createdByActorType: 'slack',
+      });
+    }
+
+    const persisted = await agentStore.listMessages({ conversationId: conversation.id });
+    const conversationMessages = persisted.map(toAgentMessage);
+    conversationMessages.push({ role: 'user', content: text });
+
+    const slackActor = {
+      id: `slack:${event.user || 'unknown'}`,
+      actorType: 'slack',
+      role: 'owner',
+      scope: 'owner',
+      name: `Slack user ${event.user || ''}`.trim(),
+    };
+
+    const result = await agent.runTurn({
+      messages: conversationMessages,
+      actor: slackActor,
+    });
+
+    const reply = result.pendingConfirmation
+      ? `I want to run \`${result.pendingConfirmation.toolName}\` with ${JSON.stringify(result.pendingConfirmation.arguments)}. Reply "yes" to approve or "no" to cancel.`
+      : (result.message?.content || '(no reply)');
+
+    await postSlackMessage({
+      token: connection.accessToken,
+      channel: event.channel,
+      text: reply,
+      threadTs: event.thread_ts || event.ts,
+      fetchImpl,
+    });
+
+    const toolMessages = result.trace
+      .filter(entry => entry.type === 'tool_result')
+      .map(entry => ({
+        role: 'tool',
+        toolCallId: entry.toolCallId,
+        toolName: entry.toolName,
+        content: JSON.stringify({ ok: entry.ok ?? false }),
+      }));
+    await agentStore.appendMessages({
+      conversationId: conversation.id,
+      messages: [
+        { role: 'user', content: text, metadata: { slackUserId: event.user, slackTs: event.ts } },
+        ...(result.message ? [{ role: 'assistant', content: result.message.content || '', toolCalls: result.message.toolCalls || null }] : []),
+        ...toolMessages,
+      ],
+    });
+  }
 
   router.get('/admin/providers', async (req, res) => {
     try {
@@ -1380,6 +1584,11 @@ function apiError(code, message) {
     ok: false,
     error: { code, message },
   };
+}
+
+function providerRedirectUriFromRequest(req, providerKey) {
+  const baseUrl = requestPublicUrl(req).replace(/\/$/, '');
+  return `${baseUrl}/admin.html?provider=${encodeURIComponent(providerKey)}`;
 }
 
 function badRequest(message, code = 'BAD_REQUEST') {
