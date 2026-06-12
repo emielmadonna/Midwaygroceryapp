@@ -28,13 +28,13 @@ const DEFAULT_FUEL = {
 };
 
 const DEFAULT_HOURS = {
-    monday: { open: '6:00 AM', close: '9:00 PM' },
-    tuesday: { open: '6:00 AM', close: '9:00 PM' },
-    wednesday: { open: '6:00 AM', close: '9:00 PM' },
-    thursday: { open: '6:00 AM', close: '9:00 PM' },
-    friday: { open: '6:00 AM', close: '10:00 PM' },
-    saturday: { open: '7:00 AM', close: '10:00 PM' },
-    sunday: { open: '7:00 AM', close: '8:00 PM' },
+    monday: { open: '7:00 AM', close: '7:00 PM' },
+    tuesday: { open: '', close: '' },
+    wednesday: { open: '', close: '' },
+    thursday: { open: '7:00 AM', close: '7:00 PM' },
+    friday: { open: '7:00 AM', close: '7:00 PM' },
+    saturday: { open: '7:00 AM', close: '7:00 PM' },
+    sunday: { open: '7:00 AM', close: '7:00 PM' },
 };
 
 const DEFAULT_PRODUCTS = [

@@ -39,7 +39,7 @@ const FALLBACK_INSTAGRAM_SECTION = {
 };
 const FALLBACK_SETTINGS = {
   businessName: 'Midway Gas & Grocery',
-  phone: '(206) 669-5880',
+  phone: '(509) 596-1076',
   address: '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
   timezone: 'America/Los_Angeles',
   instagramHandle: 'midwaygrocer',

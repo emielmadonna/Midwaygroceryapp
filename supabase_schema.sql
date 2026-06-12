@@ -14,6 +14,7 @@ CREATE TABLE fuel_prices (
 CREATE TABLE store_hours (
   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   day TEXT UNIQUE NOT NULL, -- 'monday', 'tuesday', etc.
+  -- Blank open/close values mean the store is closed; admin can edit and persist every day.
   open_time TEXT NOT NULL,
   close_time TEXT NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -467,7 +468,7 @@ ON CONFLICT (id) DO UPDATE SET
   updated_at = NOW();
 
 INSERT INTO locations (tenant_id, id, name, address, phone, timezone, status) VALUES
-('midway', 'plain', 'Midway Gas & Grocery', '14193 Chiwawa Loop RD, Leavenworth, WA 98826', '(206) 669-5880', 'America/Los_Angeles', 'active')
+('midway', 'plain', 'Midway Gas & Grocery', '14193 Chiwawa Loop RD, Leavenworth, WA 98826', '(509) 596-1076', 'America/Los_Angeles', 'active')
 ON CONFLICT (tenant_id, id) DO UPDATE SET
   name = EXCLUDED.name,
   address = EXCLUDED.address,
@@ -486,7 +487,7 @@ INSERT INTO site_settings (
   'Midway Gas & Grocery',
   'Midway Gas & Grocery',
   '14193 Chiwawa Loop RD, Leavenworth, WA 98826',
-  '(206) 669-5880',
+  '(509) 596-1076',
   '',
   'midwayplain',
   'https://www.instagram.com/midwayplain/',
@@ -569,13 +570,13 @@ ON CONFLICT (tenant_id, location_id, provider_key) DO UPDATE SET
 -- Seed initial data. Fuel prices are intentionally not seeded; the public site
 -- should collapse fuel UI until real prices are available.
 INSERT INTO store_hours (day, open_time, close_time) VALUES 
-('monday', '6:00 AM', '9:00 PM'),
-('tuesday', '6:00 AM', '9:00 PM'),
-('wednesday', '6:00 AM', '9:00 PM'),
-('thursday', '6:00 AM', '9:00 PM'),
-('friday', '6:00 AM', '9:00 PM'),
-('saturday', '7:00 AM', '9:00 PM'),
-('sunday', '8:00 AM', '8:00 PM')
+('monday', '7:00 AM', '7:00 PM'),
+('tuesday', '', ''),
+('wednesday', '', ''),
+('thursday', '7:00 AM', '7:00 PM'),
+('friday', '7:00 AM', '7:00 PM'),
+('saturday', '7:00 AM', '7:00 PM'),
+('sunday', '7:00 AM', '7:00 PM')
 ON CONFLICT (day) DO UPDATE SET
   open_time = EXCLUDED.open_time,
   close_time = EXCLUDED.close_time,
