@@ -23,6 +23,18 @@ const els = {
   loginScreen: document.getElementById('loginScreen'),
   dashboard: document.getElementById('adminDashboard'),
   loginForm: document.getElementById('loginForm'),
+  bookingLookupForm: document.getElementById('bookingLookupForm'),
+  lookupResultsList: document.getElementById('lookupResultsList'),
+  editBookingModal: document.getElementById('editBookingModal'),
+  editBookingForm: document.getElementById('editBookingForm'),
+  editModalCode: document.getElementById('editModalCode'),
+  editModalClose: document.getElementById('editModalClose'),
+  editCancelBtn: document.getElementById('editCancelBtn'),
+  editSubmitBtn: document.getElementById('editSubmitBtn'),
+  editPriceDiff: document.getElementById('editPriceDiff'),
+  editSquareSection: document.getElementById('editSquareSection'),
+  editSquareCard: document.getElementById('editSquareCard'),
+  editModalHint: document.getElementById('editModalHint'),
   loginEmail: document.getElementById('loginEmail'),
   loginPassword: document.getElementById('loginPassword'),
   loginStatus: document.getElementById('loginStatus'),
@@ -447,6 +459,183 @@ async function refundBooking(bookingCode) {
   await mutate(`/api/admin/bookings/${encodeURIComponent(bookingCode)}/refund`, {
     reason: reason.trim() || 'Owner approved refund',
   }, 'Booking refunded.');
+}
+
+// ─── Booking lookup ───────────────────────────────────────────────────────────
+
+els.bookingLookupForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const q = new FormData(els.bookingLookupForm).get('q')?.trim();
+  if (!q) return;
+  try {
+    const results = await api(`/api/admin/bookings/lookup?q=${encodeURIComponent(q)}`);
+    renderLookupResults(results);
+  } catch (err) {
+    showToast(`Lookup failed: ${err.message}`, 'error');
+  }
+});
+
+function renderLookupResults(bookings) {
+  if (!els.lookupResultsList) return;
+  if (!bookings.length) {
+    els.lookupResultsList.innerHTML = '<li style="color:var(--admin-muted);font-size:13px;padding:8px 0;">No bookings found.</li>';
+    return;
+  }
+  els.lookupResultsList.innerHTML = bookings.map(b => `
+    <li class="booking-row">
+      <div>
+        <strong>${escapeHtml(b.bookingCode)}</strong>
+        <span>${escapeHtml(b.customerName)} · ${escapeHtml(b.customerPhone || '')} · Site ${escapeHtml(b.rvSiteId)} · ${escapeHtml(b.startDate)} → ${escapeHtml(b.endDate)}</span>
+      </div>
+      <div class="booking-row__actions">
+        <span class="status-pill" data-status="${escapeHtml(b.status)}">${escapeHtml(b.status)}</span>
+        ${['confirmed', 'paid'].includes(b.status)
+          ? `<button type="button" class="admin-link" data-edit="${escapeHtml(b.bookingCode)}">Edit</button>`
+          : ''}
+        ${canRefundBooking(b)
+          ? `<button type="button" class="admin-link" data-refund="${escapeHtml(b.bookingCode)}">Refund</button>`
+          : ''}
+        ${state.user?.role === 'owner' && !['canceled', 'expired', 'refunded'].includes(b.status)
+          ? `<button type="button" class="admin-link" data-cancel="${escapeHtml(b.bookingCode)}">Cancel</button>`
+          : ''}
+      </div>
+    </li>
+  `).join('');
+
+  els.lookupResultsList.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.addEventListener('click', () => openEditModal(bookings.find(b => b.bookingCode === btn.dataset.edit)));
+  });
+  els.lookupResultsList.querySelectorAll('[data-cancel]').forEach(btn => {
+    btn.addEventListener('click', () => cancelBooking(btn.dataset.cancel));
+  });
+  els.lookupResultsList.querySelectorAll('[data-refund]').forEach(btn => {
+    btn.addEventListener('click', () => refundBooking(btn.dataset.refund));
+  });
+}
+
+// ─── Edit booking modal ───────────────────────────────────────────────────────
+
+let editState = { booking: null, squareCard: null, squarePayments: null, pendingDiff: 0, checkoutConfig: null };
+
+function openEditModal(booking) {
+  if (!els.editBookingModal || !booking) return;
+  editState = { booking, squareCard: null, squarePayments: null, pendingDiff: 0, checkoutConfig: null };
+  const form = els.editBookingForm;
+  form.querySelector('[name="bookingCode"]').value = booking.bookingCode;
+  form.querySelector('[name="startDate"]').value = booking.startDate;
+  form.querySelector('[name="endDate"]').value = booking.endDate;
+  form.querySelector('[name="guests"]').value = booking.guests || 1;
+  form.querySelector('[name="vehicles"]').value = booking.vehicles || 1;
+  if (els.editModalCode) els.editModalCode.textContent = booking.bookingCode;
+  if (els.editPriceDiff) els.editPriceDiff.style.display = 'none';
+  if (els.editSquareSection) els.editSquareSection.hidden = true;
+  if (els.editModalHint) els.editModalHint.textContent = '';
+  if (els.editSubmitBtn) els.editSubmitBtn.textContent = 'Save changes';
+  els.editBookingModal.hidden = false;
+}
+
+function closeEditModal() {
+  if (!els.editBookingModal) return;
+  els.editBookingModal.hidden = true;
+  editState.squareCard?.destroy?.();
+  editState = { booking: null, squareCard: null, squarePayments: null, pendingDiff: 0, checkoutConfig: null };
+}
+
+els.editModalClose?.addEventListener('click', closeEditModal);
+els.editCancelBtn?.addEventListener('click', closeEditModal);
+els.editBookingModal?.addEventListener('click', e => { if (e.target === els.editBookingModal) closeEditModal(); });
+
+els.editBookingForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = new FormData(els.editBookingForm);
+  const bookingCode = form.get('bookingCode');
+  const body = {
+    startDate: form.get('startDate'),
+    endDate: form.get('endDate'),
+    guests: Number(form.get('guests') || 1),
+    vehicles: Number(form.get('vehicles') || 1),
+  };
+
+  if (els.editSubmitBtn) els.editSubmitBtn.disabled = true;
+  if (els.editModalHint) els.editModalHint.textContent = 'Saving…';
+
+  try {
+    if (editState.squareCard && editState.pendingDiff > 0) {
+      const result = await editState.squareCard.tokenize();
+      if (result.status !== 'OK') throw new Error(result.errors?.[0]?.message || 'Card declined.');
+      body.sourceId = result.token;
+      body.idempotencyKey = `edit-admin-${bookingCode}-${Date.now()}`.slice(0, 45);
+    }
+
+    const response = await editBookingRequest(bookingCode, body);
+
+    if (response.status === 402 && !body.sourceId) {
+      const { diffCents, checkoutConfig } = response.data ?? {};
+      editState.pendingDiff = diffCents;
+      editState.checkoutConfig = checkoutConfig;
+
+      if (els.editPriceDiff) {
+        const sign = diffCents > 0 ? '+' : '';
+        els.editPriceDiff.style.display = 'block';
+        els.editPriceDiff.innerHTML = `<strong>Price change: ${sign}$${(diffCents / 100).toFixed(2)}</strong> — card required to charge the difference.`;
+      }
+
+      if (checkoutConfig?.mode === 'web-payments' && els.editSquareSection) {
+        els.editSquareSection.hidden = false;
+        if (els.editSubmitBtn) els.editSubmitBtn.textContent = `Pay $${(diffCents / 100).toFixed(2)} and save`;
+        await loadSquareCardIntoEdit(checkoutConfig);
+      }
+      if (els.editModalHint) els.editModalHint.textContent = 'Enter card details to charge the price difference.';
+      if (els.editSubmitBtn) els.editSubmitBtn.disabled = false;
+      return;
+    }
+
+    if (!response.ok) throw new Error(response.error?.message || 'Edit failed.');
+
+    showToast('Booking updated.', 'success');
+    closeEditModal();
+    await loadAdminData();
+  } catch (err) {
+    showToast(`Edit failed: ${err.message}`, 'error');
+    if (els.editModalHint) els.editModalHint.textContent = err.message;
+    if (els.editSubmitBtn) els.editSubmitBtn.disabled = false;
+  }
+});
+
+async function editBookingRequest(bookingCode, body) {
+  const res = await fetch(apiUrl(`/api/admin/bookings/${encodeURIComponent(bookingCode)}`), {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${state.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json().catch(() => ({}));
+  return { status: res.status, ok: res.ok && payload.ok !== false, data: payload.data, error: payload.error };
+}
+
+async function loadSquareCardIntoEdit(checkoutConfig) {
+  try {
+    if (!window.Square) {
+      const src = checkoutConfig.environment === 'production'
+        ? 'https://web.squarecdn.com/v1/square.js'
+        : 'https://sandbox.web.squarecdn.com/v1/square.js';
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src; script.async = true;
+        script.onload = resolve; script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    const payments = window.Square.payments(checkoutConfig.applicationId, checkoutConfig.locationId);
+    const card = await payments.card();
+    await card.attach('#editSquareCard');
+    editState.squareCard = card;
+    editState.squarePayments = payments;
+  } catch (err) {
+    showToast(`Square form failed to load: ${err.message}`, 'error');
+  }
 }
 
 async function updateSiteStatus(siteId, status) {
@@ -1204,6 +1393,9 @@ function renderBookingLists() {
       </div>
       <div class="booking-row__actions">
         <span class="status-pill" data-status="${escapeHtml(booking.status)}">${escapeHtml(booking.status)}</span>
+        ${['confirmed', 'paid'].includes(booking.status) && state.user?.role === 'owner'
+          ? `<button type="button" class="admin-link" data-edit="${escapeHtml(booking.bookingCode)}">Edit</button>`
+          : ''}
         ${canRefundBooking(booking)
           ? `<button type="button" class="admin-link" data-refund="${escapeHtml(booking.bookingCode)}">Refund</button>`
           : ''}
@@ -1219,6 +1411,10 @@ function renderBookingLists() {
   });
   els.bookingsList.querySelectorAll('[data-refund]').forEach(button => {
     button.addEventListener('click', () => refundBooking(button.dataset.refund));
+  });
+  els.bookingsList.querySelectorAll('[data-edit]').forEach(button => {
+    const booking = state.bookings.find(b => b.bookingCode === button.dataset.edit);
+    if (booking) button.addEventListener('click', () => openEditModal(booking));
   });
 }
 

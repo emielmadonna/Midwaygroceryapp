@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  calculateCancellationRefund,
   createBookingHold,
   getAvailableSites,
   quoteBooking,
@@ -163,4 +164,70 @@ test('createBookingHold can hold multiple available sites together', () => {
   assert.equal(hold.rvSiteId, 'site-1');
   assert.equal(hold.quote.sites.length, 2);
   assert.equal(hold.quote.totalCents, 30600);
+});
+
+// ─── calculateCancellationRefund ────────────────────────────────────────────
+
+test('calculateCancellationRefund returns full refund when 30+ days before arrival', () => {
+  const booking = { startDate: '2026-07-20', totalCents: 13200 };
+  const result = calculateCancellationRefund(booking, new Date('2026-06-10T12:00:00.000Z'));
+  assert.equal(result.policyTier, 'full');
+  assert.equal(result.refundCents, 13200);
+  assert.equal(result.daysUntilArrival >= 30, true);
+});
+
+test('calculateCancellationRefund returns 50% refund when 14-29 days before arrival', () => {
+  const booking = { startDate: '2026-06-28', totalCents: 13200 };
+  const result = calculateCancellationRefund(booking, new Date('2026-06-10T12:00:00.000Z'));
+  assert.equal(result.policyTier, 'half');
+  assert.equal(result.refundCents, 6600);
+  assert.equal(result.daysUntilArrival >= 14 && result.daysUntilArrival < 30, true);
+});
+
+test('calculateCancellationRefund returns no refund within 14 days of arrival', () => {
+  const booking = { startDate: '2026-06-15', totalCents: 13200 };
+  const result = calculateCancellationRefund(booking, new Date('2026-06-10T12:00:00.000Z'));
+  assert.equal(result.policyTier, 'none');
+  assert.equal(result.refundCents, 0);
+  assert.equal(result.daysUntilArrival < 14, true);
+});
+
+test('calculateCancellationRefund floors 50% refund on odd-cent totals', () => {
+  const booking = { startDate: '2026-06-28', totalCents: 13301 };
+  const result = calculateCancellationRefund(booking, new Date('2026-06-10T12:00:00.000Z'));
+  assert.equal(result.policyTier, 'half');
+  assert.equal(result.refundCents, 6650);
+});
+
+// ─── getAvailableSites with excludeBookingCode ───────────────────────────────
+
+test('getAvailableSites with excludeBookingCode allows booking to move onto its own dates', () => {
+  const booking = {
+    id: 'booking-own',
+    bookingCode: 'MW-OWN01',
+    rvSiteId: 'site-1',
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    status: 'confirmed',
+  };
+
+  const withoutExclude = getAvailableSites({
+    sites,
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    now,
+    bookings: [booking],
+  });
+
+  const withExclude = getAvailableSites({
+    sites,
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    now,
+    bookings: [booking],
+    excludeBookingCode: 'MW-OWN01',
+  });
+
+  assert.deepEqual(withoutExclude.map(s => s.id), ['site-2']);
+  assert.deepEqual(withExclude.map(s => s.id), ['site-1', 'site-2']);
 });

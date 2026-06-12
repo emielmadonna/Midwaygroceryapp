@@ -25,6 +25,10 @@
       "dest": "/api/[...path].js"
     },
     {
+      "src": "/manage",
+      "dest": "/manage.html"
+    },
+    {
       "handle": "filesystem"
     },
     {

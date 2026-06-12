@@ -273,3 +273,145 @@ test('memory booking store upserts Square catalog inventory by variation id', as
   assert.equal((await store.listStoreInventory()).length, 1);
   assert.equal((await store.findStoreInventoryByVariationId('VAR_1')).name, 'Firewood Bundle');
 });
+
+// ─── lookupBookings (admin search) ──────────────────────────────────────────
+
+async function storeWithConfirmedBooking(fields = {}) {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  const booking = await store.createAdminBooking({
+    siteId: 'site-1',
+    startDate: '2026-05-19',
+    endDate: '2026-05-21',
+    customer: {
+      name: 'Jane Doe',
+      phone: '(555) 010-1234',
+      email: 'jane@example.com',
+      ...fields,
+    },
+  });
+  return { store, booking };
+}
+
+test('lookupBookings finds booking by partial phone number', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const results = await store.lookupBookings({ query: '010-1234' });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].bookingCode, booking.bookingCode);
+});
+
+test('lookupBookings finds booking by email', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const results = await store.lookupBookings({ query: 'jane@example.com' });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].bookingCode, booking.bookingCode);
+});
+
+test('lookupBookings finds booking by partial name', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const results = await store.lookupBookings({ query: 'jane' });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].bookingCode, booking.bookingCode);
+});
+
+test('lookupBookings returns empty array for no match', async () => {
+  const { store } = await storeWithConfirmedBooking();
+  const results = await store.lookupBookings({ query: 'nobody@nowhere.com' });
+  assert.equal(results.length, 0);
+});
+
+// ─── lookupPublicBookings (self-service auth) ────────────────────────────────
+
+test('lookupPublicBookings returns bookings when phone and email match', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const results = await store.lookupPublicBookings({ phone: '(555) 010-1234', email: 'jane@example.com' });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].bookingCode, booking.bookingCode);
+});
+
+test('lookupPublicBookings normalises phone digits before matching', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const results = await store.lookupPublicBookings({ phone: '5550101234', email: 'jane@example.com' });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].bookingCode, booking.bookingCode);
+});
+
+test('lookupPublicBookings returns empty when email does not match', async () => {
+  const { store } = await storeWithConfirmedBooking();
+  const results = await store.lookupPublicBookings({ phone: '(555) 010-1234', email: 'wrong@example.com' });
+  assert.equal(results.length, 0);
+});
+
+test('lookupPublicBookings returns empty when phone does not match', async () => {
+  const { store } = await storeWithConfirmedBooking();
+  const results = await store.lookupPublicBookings({ phone: '(555) 999-0000', email: 'jane@example.com' });
+  assert.equal(results.length, 0);
+});
+
+// ─── updateBookingDetails ────────────────────────────────────────────────────
+
+test('updateBookingDetails changes dates and recalculates price', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const result = await store.updateBookingDetails({
+    bookingCode: booking.bookingCode,
+    patch: { startDate: '2026-05-19', endDate: '2026-05-23' },
+  });
+  assert.equal(result.booking.nights, 4);
+  assert.equal(result.booking.startDate, '2026-05-19');
+  assert.equal(result.booking.endDate, '2026-05-23');
+  assert.equal(result.booking.totalCents, 4400 * 4);
+  assert.equal(result.diffCents, (4400 * 4) - booking.totalCents);
+});
+
+test('updateBookingDetails changes vehicle count and recalculates fee', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const result = await store.updateBookingDetails({
+    bookingCode: booking.bookingCode,
+    patch: { vehicles: 3 },
+  });
+  assert.equal(result.booking.vehicles, 3);
+  assert.equal(result.booking.feeCents, 2000);
+  assert.equal(result.diffCents, 2000);
+});
+
+test('updateBookingDetails allows booking to move onto its own current dates', async () => {
+  const { store, booking } = await storeWithConfirmedBooking();
+  const result = await store.updateBookingDetails({
+    bookingCode: booking.bookingCode,
+    patch: { endDate: '2026-05-22' },
+  });
+  assert.equal(result.booking.endDate, '2026-05-22');
+  assert.equal(result.booking.nights, 3);
+});
+
+test('updateBookingDetails rejects new dates that conflict with another confirmed booking', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  await store.createAdminBooking({
+    siteId: 'site-1',
+    startDate: '2026-05-22',
+    endDate: '2026-05-25',
+    customer: { name: 'Other Guest', phone: '555-0200' },
+  });
+  const booking = await store.createAdminBooking({
+    siteId: 'site-1',
+    startDate: '2026-05-19',
+    endDate: '2026-05-21',
+    customer: { name: 'Edit Guest', phone: '555-0201' },
+  });
+
+  await assert.rejects(
+    () => store.updateBookingDetails({
+      bookingCode: booking.bookingCode,
+      patch: { endDate: '2026-05-24' },
+    }),
+    /not available/,
+  );
+});
+
+test('updateBookingDetails returns null for unknown booking code', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  const result = await store.updateBookingDetails({
+    bookingCode: 'MW-NOPE99',
+    patch: { vehicles: 2 },
+  });
+  assert.equal(result, null);
+});

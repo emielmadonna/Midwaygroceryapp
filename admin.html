@@ -54,6 +54,17 @@
                     <span class="admin-accordion__chevron">Open</span>
                 </summary>
                 <div class="admin-panel__body owner-actions-grid">
+                    <article class="admin-subpanel" style="grid-column: 1 / -1;">
+                        <p class="admin-eyebrow">Owner</p>
+                        <h3>Lookup &amp; Edit Booking</h3>
+                        <form id="bookingLookupForm" class="admin-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                            <label style="flex:1;min-width:180px;">Search by phone, email, or name
+                                <input type="text" name="q" placeholder="555-010-9900 or guest@email.com" autocomplete="off" />
+                            </label>
+                            <button type="submit" class="btn btn--primary" style="margin-top:0;">Search</button>
+                        </form>
+                        <ul class="admin-list admin-list--divided" id="lookupResultsList" style="margin-top:12px;"></ul>
+                    </article>
                     <article class="admin-subpanel">
                         <p class="admin-eyebrow">Owner</p>
                         <h3>Add Booking</h3>
@@ -119,6 +130,44 @@
                     </article>
                 </div>
             </details>
+
+            <!-- Edit booking modal -->
+            <div id="editBookingModal" hidden style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);">
+                <div style="background:var(--admin-panel);border:1px solid var(--admin-line);border-radius:10px;max-width:560px;width:100%;padding:28px;box-shadow:var(--admin-shadow);position:relative;max-height:90vh;overflow-y:auto;">
+                    <button id="editModalClose" type="button" class="admin-link" style="position:absolute;top:14px;right:16px;font-size:18px;line-height:1;" aria-label="Close">×</button>
+                    <p class="admin-eyebrow">Edit Booking</p>
+                    <h3 id="editModalCode" style="margin:4px 0 18px;"></h3>
+                    <form id="editBookingForm" class="admin-form">
+                        <input type="hidden" name="bookingCode" />
+                        <div class="admin-form__row">
+                            <label>Arrival
+                                <input type="date" name="startDate" required />
+                            </label>
+                            <label>Departure
+                                <input type="date" name="endDate" required />
+                            </label>
+                        </div>
+                        <div class="admin-form__row">
+                            <label>Guests
+                                <input type="number" name="guests" min="1" />
+                            </label>
+                            <label>Vehicles
+                                <input type="number" name="vehicles" min="1" />
+                            </label>
+                        </div>
+                        <div id="editPriceDiff" style="display:none;margin:12px 0;padding:12px 14px;background:var(--admin-bg);border-radius:6px;font-size:13px;"></div>
+                        <div id="editSquareSection" hidden style="margin:12px 0;">
+                            <p class="admin-form__hint">Price increased — enter card details to charge the difference.</p>
+                            <div id="editSquareCard" style="min-height:52px;border:1px solid var(--admin-line);border-radius:6px;padding:12px;"></div>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:16px;">
+                            <button type="submit" class="btn btn--primary" id="editSubmitBtn">Save changes</button>
+                            <button type="button" id="editCancelBtn" class="btn">Cancel</button>
+                        </div>
+                        <p class="admin-form__hint" id="editModalHint"></p>
+                    </form>
+                </div>
+            </div>
 
             <details class="admin-panel admin-panel--wide admin-accordion" id="todayPanel" open>
                 <summary>

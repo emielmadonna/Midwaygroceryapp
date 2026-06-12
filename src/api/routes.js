@@ -8,6 +8,7 @@ import { createOpenAiProvider } from '../lib/ai-providers/openai-provider.js';
 import { createApiTokenService } from '../lib/api-tokens.js';
 import { createIdempotencyMiddleware, createIdempotencyService } from '../lib/idempotency.js';
 import { createMcpServer } from '../lib/mcp-server.js';
+import { calculateCancellationRefund } from '../lib/rv-booking.js';
 import { createMidwayHarness } from '../lib/midway-harness.js';
 import { createNotificationService } from '../lib/notifications.js';
 import { createProviderConnectionService } from '../lib/provider-connections.js';
@@ -16,9 +17,11 @@ import { createToolRegistry } from '../lib/tool-registry.js';
 import { registerCoreTools } from '../lib/registered-tools.js';
 import { registerXeroTools } from '../lib/xero-tools.js';
 import {
+  createEditPaymentSession,
   createRvCheckoutPaymentLink,
   createRvWebPaymentSession,
   createSquareRefund,
+  createSquareSupplementPayment,
   createSquareWebPayment,
   listSquareCatalogItems,
   normalizeSquareCatalogItemsForInventory,
@@ -361,6 +364,169 @@ export function createApiRouter({
       return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
     }
     res.json({ ok: true, data: booking });
+  });
+
+  router.post('/bookings/lookup', async (req, res) => {
+    try {
+      const { phone, email } = req.body ?? {};
+      if (!phone || !email) {
+        return res.status(400).json(apiError('LOOKUP_FIELDS_REQUIRED', 'Phone and email are required.'));
+      }
+      const bookings = await resolvedStore.lookupPublicBookings({ phone, email });
+      res.json({ ok: true, data: bookings });
+    } catch (error) {
+      sendApiError(res, error, 'LOOKUP_FAILED');
+    }
+  });
+
+  router.post('/bookings/:bookingCode/edit', async (req, res) => {
+    try {
+      const booking = await resolvedStore.getBooking(req.params.bookingCode);
+      if (!booking) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+
+      const { phone, email, sourceId, verificationToken, idempotencyKey, ...patch } = req.body ?? {};
+      if (!verifyPublicBookingAuth(booking, { phone, email })) {
+        return res.status(403).json(apiError('BOOKING_AUTH_FAILED', 'Phone or email does not match this booking.'));
+      }
+      if (!['confirmed', 'paid'].includes(booking.status)) {
+        return res.status(409).json(apiError('BOOKING_NOT_EDITABLE', 'Only confirmed bookings can be edited.'));
+      }
+
+      const editPatch = pickEditPatch(patch);
+      const preview = await resolvedStore.previewBookingEdit?.({ bookingCode: booking.bookingCode, patch: editPatch });
+      if (!preview) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+
+      const { diffCents, prevTotalCents, newTotalCents } = preview;
+
+      if (diffCents > 0) {
+        if (!sourceId) {
+          const squareConfig = await squareProviderConfig();
+          let checkoutConfig = null;
+          try {
+            checkoutConfig = createEditPaymentSession({ bookingCode: booking.bookingCode, diffCents, env: squareConfig });
+          } catch {
+            // Square not configured — return diff without checkout config
+          }
+          return res.status(402).json({ ok: false, data: { diffCents, prevTotalCents, newTotalCents, checkoutConfig } });
+        }
+        const squareConfig = await squareProviderConfig();
+        const payment = await createSquareSupplementPayment({
+          booking,
+          diffCents,
+          sourceId,
+          verificationToken,
+          idempotencyKey,
+          env: squareConfig,
+          fetchImpl,
+        });
+        if (!isPaymentComplete(payment.status)) {
+          return res.status(402).json(apiError('PAYMENT_NOT_COMPLETED', `Square payment status is ${payment.status || 'unknown'}.`));
+        }
+        const editResult = await resolvedStore.updateBookingDetails({ bookingCode: booking.bookingCode, patch: editPatch });
+        if (!editResult) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+        const updated = editResult.booking;
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.edit_supplement_charged',
+          actor: { id: 'public-checkout', role: 'customer' },
+          targetType: 'rv_booking',
+          targetId: updated.bookingCode,
+          metadata: { diffCents, paymentId: payment.paymentId, prevTotalCents, newTotalCents },
+        });
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.edit',
+          actor: { id: 'self-service', role: 'customer' },
+          targetType: 'rv_booking',
+          targetId: updated.bookingCode,
+          metadata: { prevTotalCents, newTotalCents, diffCents, patch: editPatch },
+        });
+        return res.json({ ok: true, data: { booking: updated, diffCents, prevTotalCents, newTotalCents } });
+      }
+
+      // No payment needed — apply the edit directly
+      const editResult = await resolvedStore.updateBookingDetails({ bookingCode: booking.bookingCode, patch: editPatch });
+      if (!editResult) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+      const { booking: updated } = editResult;
+
+      if (diffCents < 0 && booking.squarePaymentId) {
+        const squareConfig = await squareProviderConfig();
+        const refund = await createSquareRefund({
+          booking,
+          amountCents: Math.abs(diffCents),
+          reason: 'Booking edited — price reduced',
+          env: squareConfig,
+          fetchImpl,
+        });
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.edit_refund_issued',
+          actor: { id: 'public-checkout', role: 'customer' },
+          targetType: 'rv_booking',
+          targetId: updated.bookingCode,
+          metadata: { diffCents, refundId: refund.refundId, prevTotalCents, newTotalCents },
+        });
+      }
+
+      await resolvedStore.recordAuditLog?.({
+        action: 'booking.edit',
+        actor: { id: 'self-service', role: 'customer' },
+        targetType: 'rv_booking',
+        targetId: updated.bookingCode,
+        metadata: { prevTotalCents, newTotalCents, diffCents, patch: pickEditPatch(patch) },
+      });
+
+      res.json({ ok: true, data: { booking: updated, diffCents, prevTotalCents, newTotalCents } });
+    } catch (error) {
+      sendApiError(res, error, 'BOOKING_EDIT_FAILED', 409);
+    }
+  });
+
+  router.post('/bookings/:bookingCode/cancel', async (req, res) => {
+    try {
+      const booking = await resolvedStore.getBooking(req.params.bookingCode);
+      if (!booking) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+
+      const { phone, email } = req.body ?? {};
+      if (!verifyPublicBookingAuth(booking, { phone, email })) {
+        return res.status(403).json(apiError('BOOKING_AUTH_FAILED', 'Phone or email does not match this booking.'));
+      }
+      if (['canceled', 'expired', 'refunded'].includes(booking.status)) {
+        return res.status(409).json(apiError('BOOKING_ALREADY_CANCELED', 'This booking is already canceled.'));
+      }
+
+      const { refundCents, policyTier, daysUntilArrival } = calculateCancellationRefund(booking);
+
+      if (refundCents > 0 && booking.squarePaymentId) {
+        const squareConfig = await squareProviderConfig();
+        const refund = await createSquareRefund({
+          booking,
+          amountCents: refundCents,
+          reason: `Customer self-canceled — ${policyTier} refund policy`,
+          env: squareConfig,
+          fetchImpl,
+        });
+        await resolvedStore.updateBookingStatus({ bookingCode: booking.bookingCode, status: 'canceled' });
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.self_cancel',
+          actor: { id: 'self-service', role: 'customer' },
+          targetType: 'rv_booking',
+          targetId: booking.bookingCode,
+          metadata: { policyTier, refundCents, daysUntilArrival, refundId: refund.refundId },
+        });
+        const canceled = await resolvedStore.getBooking(booking.bookingCode);
+        return res.json({ ok: true, data: { booking: canceled, policyTier, refundCents, daysUntilArrival } });
+      }
+
+      const canceled = await resolvedStore.updateBookingStatus({ bookingCode: booking.bookingCode, status: 'canceled' });
+      await resolvedStore.recordAuditLog?.({
+        action: 'booking.self_cancel',
+        actor: { id: 'self-service', role: 'customer' },
+        targetType: 'rv_booking',
+        targetId: booking.bookingCode,
+        metadata: { policyTier, refundCents: 0, daysUntilArrival },
+      });
+      res.json({ ok: true, data: { booking: canceled, policyTier, refundCents: 0, daysUntilArrival } });
+    } catch (error) {
+      sendApiError(res, error, 'BOOKING_CANCEL_FAILED');
+    }
   });
 
   router.post('/square/webhook', async (req, res) => {
@@ -1233,6 +1399,114 @@ export function createApiRouter({
     }
   });
 
+  router.get('/admin/bookings/lookup', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('booking.rv.enabled', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const q = String(req.query.q || '').trim();
+      if (!q) return res.json({ ok: true, data: [] });
+      const data = await resolvedStore.lookupBookings({ query: q });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_BOOKING_LOOKUP_FAILED');
+    }
+  });
+
+  router.patch('/admin/bookings/:bookingCode', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('booking.rv.enabled', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+
+      const booking = await resolvedStore.getBooking(req.params.bookingCode);
+      if (!booking) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+      if (!['confirmed', 'paid'].includes(booking.status)) {
+        return res.status(409).json(apiError('BOOKING_NOT_EDITABLE', 'Only confirmed bookings can be edited.'));
+      }
+
+      const { sourceId, verificationToken, idempotencyKey, ...patch } = req.body ?? {};
+      const adminEditPatch = pickEditPatch(patch);
+      const preview = await resolvedStore.previewBookingEdit?.({ bookingCode: booking.bookingCode, patch: adminEditPatch });
+      if (!preview) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+
+      const { diffCents, prevTotalCents, newTotalCents } = preview;
+
+      if (diffCents > 0) {
+        if (!sourceId) {
+          const squareConfig = await squareProviderConfig();
+          let checkoutConfig = null;
+          try {
+            checkoutConfig = createEditPaymentSession({ bookingCode: booking.bookingCode, diffCents, env: squareConfig });
+          } catch {
+            // Square not configured
+          }
+          return res.status(402).json({ ok: false, data: { diffCents, prevTotalCents, newTotalCents, checkoutConfig } });
+        }
+        const squareConfig = await squareProviderConfig();
+        const payment = await createSquareSupplementPayment({
+          booking,
+          diffCents,
+          sourceId,
+          verificationToken,
+          idempotencyKey,
+          env: squareConfig,
+          fetchImpl,
+        });
+        if (!isPaymentComplete(payment.status)) {
+          return res.status(402).json(apiError('PAYMENT_NOT_COMPLETED', `Square payment status is ${payment.status || 'unknown'}.`));
+        }
+        const applied = await resolvedStore.updateBookingDetails({ bookingCode: booking.bookingCode, patch: adminEditPatch });
+        if (!applied) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+        const updated = applied.booking;
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.edit_supplement_charged',
+          actor: req.adminUser,
+          targetType: 'rv_booking',
+          targetId: updated.bookingCode,
+          metadata: { diffCents, paymentId: payment.paymentId, prevTotalCents, newTotalCents },
+        });
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.admin_edit',
+          actor: req.adminUser,
+          targetType: 'rv_booking',
+          targetId: updated.bookingCode,
+          metadata: { prevTotalCents, newTotalCents, diffCents, patch: adminEditPatch },
+        });
+        return res.json({ ok: true, data: { booking: updated, diffCents, prevTotalCents, newTotalCents } });
+      }
+
+      // No payment needed — apply edit directly
+      const applied = await resolvedStore.updateBookingDetails({ bookingCode: booking.bookingCode, patch: adminEditPatch });
+      if (!applied) return res.status(404).json(apiError('BOOKING_NOT_FOUND', 'Booking was not found.'));
+      if (diffCents < 0 && booking.squarePaymentId) {
+        const squareConfig = await squareProviderConfig();
+        const refund = await createSquareRefund({
+          booking,
+          amountCents: Math.abs(diffCents),
+          reason: 'Booking edited — price reduced',
+          env: squareConfig,
+          fetchImpl,
+        });
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.edit_refund_issued',
+          actor: req.adminUser,
+          targetType: 'rv_booking',
+          targetId: applied.booking.bookingCode,
+          metadata: { diffCents, refundId: refund.refundId, prevTotalCents, newTotalCents },
+        });
+      }
+      await resolvedStore.recordAuditLog?.({
+        action: 'booking.admin_edit',
+        actor: req.adminUser,
+        targetType: 'rv_booking',
+        targetId: applied.booking.bookingCode,
+        metadata: { prevTotalCents, newTotalCents, diffCents, patch: adminEditPatch },
+      });
+      res.json({ ok: true, data: { booking: applied.booking, diffCents, prevTotalCents, newTotalCents } });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_BOOKING_EDIT_FAILED', 409);
+    }
+  });
+
   router.get('/admin/bookings', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('booking.rv.enabled', { role: req.adminUser.role });
@@ -1765,6 +2039,24 @@ function safeSettingsFields(body = {}) {
     business: Object.keys(body.business || {}).filter(key => !/secret|token|password|key/i.test(key)),
     publicSite: Object.keys(body.publicSite || {}).filter(key => !/secret|token|password|key/i.test(key)),
   };
+}
+
+function pickEditPatch(body = {}) {
+  const result = {};
+  if (body.startDate) result.startDate = body.startDate;
+  if (body.endDate) result.endDate = body.endDate;
+  if (body.siteIds) result.siteIds = body.siteIds;
+  if (body.guests != null) result.guests = Number(body.guests);
+  if (body.vehicles != null) result.vehicles = Number(body.vehicles);
+  return result;
+}
+
+function verifyPublicBookingAuth(booking, { phone, email } = {}) {
+  if (!phone || !email) return false;
+  const normalizePhone = p => (p || '').replace(/\D/g, '');
+  const phoneMatch = normalizePhone(booking.customerPhone) === normalizePhone(phone);
+  const emailMatch = (booking.customerEmail || '').toLowerCase() === email.toLowerCase();
+  return phoneMatch && emailMatch;
 }
 
 function pickSitePatch(body = {}) {

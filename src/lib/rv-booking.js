@@ -28,12 +28,14 @@ export function getAvailableSites({
   startDate,
   endDate,
   now = new Date(),
+  excludeBookingCode = null,
 }) {
   nightsBetween(startDate, endDate);
 
   const blockedSiteIds = new Set();
 
   for (const booking of bookings) {
+    if (excludeBookingCode && booking.bookingCode === excludeBookingCode) continue;
     if (!CONFIRMED_STATUSES.has(booking.status)) continue;
     if (rangesOverlap(startDate, endDate, booking.startDate, booking.endDate)) {
       for (const siteId of siteIdsForStay(booking)) blockedSiteIds.add(siteId);
@@ -221,6 +223,21 @@ export function toPublicSite(site) {
     amenities: site.amenities ?? [],
     customerNotes: site.customerNotes ?? '',
   };
+}
+
+export function calculateCancellationRefund(booking, now = new Date()) {
+  const msPerDay = 86400000;
+  const start = parseLocalDate(booking.startDate);
+  const daysUntilArrival = Math.floor((start - now) / msPerDay);
+  const paidCents = Number(booking.totalCents ?? 0);
+
+  if (daysUntilArrival >= 30) {
+    return { refundCents: paidCents, policyTier: 'full', daysUntilArrival };
+  }
+  if (daysUntilArrival >= 14) {
+    return { refundCents: Math.floor(paidCents / 2), policyTier: 'half', daysUntilArrival };
+  }
+  return { refundCents: 0, policyTier: 'none', daysUntilArrival };
 }
 
 function parseLocalDate(value) {

@@ -1714,3 +1714,449 @@ async function login(server, email, password) {
   assert.equal(response.body.data.user.email, email);
   return response.body.data;
 }
+
+// ─── helpers for edit/cancel tests ──────────────────────────────────────────
+
+function daysFromNow(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function createConfirmedBooking(server, token, overrides = {}) {
+  const created = await api(server, '/api/admin/bookings', {
+    method: 'POST',
+    token,
+    body: {
+      siteId: 'rv-03',
+      startDate: daysFromNow(40),
+      endDate: daysFromNow(43),
+      customer: { name: 'Edit Guest', phone: '(555) 010-9900', email: 'editguest@example.com' },
+      ...overrides,
+    },
+  });
+  assert.equal(created.status, 201);
+  return created.body.data;
+}
+
+// ─── admin booking lookup ────────────────────────────────────────────────────
+
+test('admin can look up bookings by phone number', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    await createConfirmedBooking(server, owner.token);
+    const result = await api(server, '/api/admin/bookings/lookup?q=010-9900', { token: owner.token });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.length >= 1, true);
+    assert.equal(result.body.data.every(b => b.customerPhone?.includes('010-9900') || b.customerName?.includes('Edit')), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin can look up bookings by email', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    await createConfirmedBooking(server, owner.token);
+    const result = await api(server, '/api/admin/bookings/lookup?q=editguest@example.com', { token: owner.token });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.length >= 1, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin can look up bookings by name', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    await createConfirmedBooking(server, owner.token);
+    const result = await api(server, '/api/admin/bookings/lookup?q=Edit+Guest', { token: owner.token });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.length >= 1, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin lookup returns empty array when nothing matches', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const result = await api(server, '/api/admin/bookings/lookup?q=nobody999@nowhere.invalid', { token: owner.token });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.data, []);
+  } finally {
+    await server.close();
+  }
+});
+
+// ─── admin edit booking ──────────────────────────────────────────────────────
+
+test('admin can edit a booking with no price change', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const newStart = daysFromNow(50);
+    const newEnd = daysFromNow(53);
+    const result = await api(server, `/api/admin/bookings/${booking.bookingCode}`, {
+      method: 'PATCH',
+      token: owner.token,
+      body: { startDate: newStart, endDate: newEnd },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.booking.startDate, newStart);
+    assert.equal(result.body.data.booking.endDate, newEnd);
+    assert.equal(result.body.data.diffCents, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin edit returns 402 with checkout config when price increases and no payment token', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const server = await createTestServer({ store });
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, `/api/admin/bookings/${booking.bookingCode}`, {
+      method: 'PATCH',
+      token: owner.token,
+      body: { startDate: daysFromNow(50), endDate: daysFromNow(55) },
+    });
+    assert.equal(result.status, 402);
+    assert.equal(result.body.data.diffCents > 0, true);
+    assert.equal(result.body.data.checkoutConfig.mode, 'web-payments');
+    assert.equal(typeof result.body.data.checkoutConfig.applicationId, 'string');
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin edit charges supplemental payment when price increases and sourceId provided', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const squareBodies = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      const body = JSON.parse(options.body);
+      squareBodies.push({ url: String(url), body });
+      if (/\/v2\/orders$/.test(url)) {
+        return { ok: true, json: async () => ({ order: { id: 'order-supplement-test' } }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          payment: {
+            id: 'payment-supplement-test',
+            status: 'COMPLETED',
+            order_id: 'order-supplement-test',
+            amount_money: body.amount_money,
+          },
+        }),
+      };
+    },
+  });
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, `/api/admin/bookings/${booking.bookingCode}`, {
+      method: 'PATCH',
+      token: owner.token,
+      body: {
+        startDate: daysFromNow(50),
+        endDate: daysFromNow(55),
+        sourceId: 'cnon:card-nonce-ok',
+      },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.booking.nights, 5);
+    assert.equal(result.body.data.diffCents > 0, true);
+    assert.equal(squareBodies.some(r => /\/v2\/payments$/.test(r.url)), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin edit does not change booking when supplemental payment fails', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const server = await createTestServer({
+    store,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        payment: {
+          id: 'payment-declined-test',
+          status: 'FAILED',
+          amount_money: { amount: 8800, currency: 'USD' },
+        },
+      }),
+    }),
+  });
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, `/api/admin/bookings/${booking.bookingCode}`, {
+      method: 'PATCH',
+      token: owner.token,
+      body: {
+        startDate: daysFromNow(50),
+        endDate: daysFromNow(55),
+        sourceId: 'cnon:card-nonce-fail',
+      },
+    });
+    assert.equal(result.status, 402);
+    const unchanged = await store.getBooking(booking.bookingCode);
+    assert.equal(unchanged.startDate, booking.startDate);
+    assert.equal(unchanged.endDate, booking.endDate);
+    assert.equal(unchanged.nights, booking.nights);
+  } finally {
+    await server.close();
+  }
+});
+
+test('admin edit issues Square refund when price decreases', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const squareBodies = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      const body = JSON.parse(options.body);
+      squareBodies.push({ url: String(url), body });
+      return {
+        ok: true,
+        json: async () => ({
+          refund: { id: 'refund-edit-test', status: 'COMPLETED', payment_id: body.payment_id, amount_money: body.amount_money },
+        }),
+      };
+    },
+  });
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    await store.confirmBooking({
+      bookingCode: booking.bookingCode,
+      squarePaymentId: 'payment-edit-refund-test',
+      source: 'square-web-payments',
+    });
+    const result = await api(server, `/api/admin/bookings/${booking.bookingCode}`, {
+      method: 'PATCH',
+      token: owner.token,
+      body: { endDate: daysFromNow(42) },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.diffCents < 0, true);
+    assert.equal(squareBodies.some(r => /\/v2\/refunds$/.test(r.url)), true);
+    assert.equal(squareBodies[0].body.payment_id, 'payment-edit-refund-test');
+    assert.equal(squareBodies[0].body.amount_money.amount, Math.abs(result.body.data.diffCents));
+  } finally {
+    await server.close();
+  }
+});
+
+// ─── public booking lookup ───────────────────────────────────────────────────
+
+test('public lookup returns bookings when phone and email match', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, '/api/bookings/lookup', {
+      method: 'POST',
+      body: { phone: '(555) 010-9900', email: 'editguest@example.com' },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.length >= 1, true);
+    assert.equal(result.body.data[0].bookingCode, booking.bookingCode);
+  } finally {
+    await server.close();
+  }
+});
+
+test('public lookup returns empty when email does not match', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    await createConfirmedBooking(server, owner.token);
+    const result = await api(server, '/api/bookings/lookup', {
+      method: 'POST',
+      body: { phone: '(555) 010-9900', email: 'wrong@example.com' },
+    });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.data, []);
+  } finally {
+    await server.close();
+  }
+});
+
+// ─── public self-service edit ────────────────────────────────────────────────
+
+test('customer can self-service edit a booking with no price change', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const newStart = daysFromNow(50);
+    const newEnd = daysFromNow(53);
+    const result = await api(server, `/api/bookings/${booking.bookingCode}/edit`, {
+      method: 'POST',
+      body: {
+        phone: '(555) 010-9900',
+        email: 'editguest@example.com',
+        startDate: newStart,
+        endDate: newEnd,
+      },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.booking.startDate, newStart);
+    assert.equal(result.body.data.diffCents, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test('customer edit returns 402 with checkout config when price increases and no sourceId', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const server = await createTestServer({ store });
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, `/api/bookings/${booking.bookingCode}/edit`, {
+      method: 'POST',
+      body: {
+        phone: '(555) 010-9900',
+        email: 'editguest@example.com',
+        startDate: daysFromNow(50),
+        endDate: daysFromNow(55),
+      },
+    });
+    assert.equal(result.status, 402);
+    assert.equal(result.body.data.diffCents > 0, true);
+    assert.equal(result.body.data.checkoutConfig.mode, 'web-payments');
+  } finally {
+    await server.close();
+  }
+});
+
+test('customer edit rejects mismatched phone or email', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, `/api/bookings/${booking.bookingCode}/edit`, {
+      method: 'POST',
+      body: {
+        phone: '(555) 010-9900',
+        email: 'impostor@example.com',
+        startDate: daysFromNow(50),
+        endDate: daysFromNow(53),
+      },
+    });
+    assert.equal(result.status, 403);
+  } finally {
+    await server.close();
+  }
+});
+
+// ─── public self-service cancel ──────────────────────────────────────────────
+
+test('customer can cancel within no-refund window with no Square call', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await api(server, '/api/admin/bookings', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        siteId: 'rv-04',
+        startDate: daysFromNow(5),
+        endDate: daysFromNow(8),
+        customer: { name: 'No Refund Guest', phone: '(555) 010-7700', email: 'norefund@example.com' },
+      },
+    });
+    assert.equal(booking.status, 201);
+    const result = await api(server, `/api/bookings/${booking.body.data.bookingCode}/cancel`, {
+      method: 'POST',
+      body: { phone: '(555) 010-7700', email: 'norefund@example.com' },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.booking.status, 'canceled');
+    assert.equal(result.body.data.refundCents, 0);
+    assert.equal(result.body.data.policyTier, 'none');
+  } finally {
+    await server.close();
+  }
+});
+
+test('customer cancel issues full Square refund when 30+ days before arrival', async () => {
+  const store = createMidwayHarness({ env: baseEnv, tenantConfig: createTestTenantConfig() });
+  await store.upsertProviderConnection(squareProviderConnection());
+  const squareBodies = [];
+  const server = await createTestServer({
+    store,
+    fetchImpl: async (url, options) => {
+      const body = JSON.parse(options.body);
+      squareBodies.push({ url: String(url), body });
+      return {
+        ok: true,
+        json: async () => ({
+          refund: { id: 'refund-cancel-test', status: 'COMPLETED', payment_id: body.payment_id, amount_money: body.amount_money },
+        }),
+      };
+    },
+  });
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const created = await api(server, '/api/admin/bookings', {
+      method: 'POST',
+      token: owner.token,
+      body: {
+        siteId: 'rv-05',
+        startDate: daysFromNow(45),
+        endDate: daysFromNow(48),
+        customer: { name: 'Full Refund Guest', phone: '(555) 010-8800', email: 'fullrefund@example.com' },
+      },
+    });
+    assert.equal(created.status, 201);
+    await store.confirmBooking({
+      bookingCode: created.body.data.bookingCode,
+      squarePaymentId: 'payment-cancel-test',
+      source: 'square-web-payments',
+    });
+
+    const result = await api(server, `/api/bookings/${created.body.data.bookingCode}/cancel`, {
+      method: 'POST',
+      body: { phone: '(555) 010-8800', email: 'fullrefund@example.com' },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data.booking.status, 'canceled');
+    assert.equal(result.body.data.policyTier, 'full');
+    assert.equal(result.body.data.refundCents, created.body.data.totalCents);
+    assert.equal(squareBodies.some(r => /\/v2\/refunds$/.test(r.url)), true);
+  } finally {
+    await server.close();
+  }
+});
+
+test('customer cancel rejects mismatched credentials', async () => {
+  const server = await createTestServer();
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const booking = await createConfirmedBooking(server, owner.token);
+    const result = await api(server, `/api/bookings/${booking.bookingCode}/cancel`, {
+      method: 'POST',
+      body: { phone: '(555) 010-9900', email: 'wrong@example.com' },
+    });
+    assert.equal(result.status, 403);
+  } finally {
+    await server.close();
+  }
+});

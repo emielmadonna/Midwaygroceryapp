@@ -1256,6 +1256,10 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
               </div>
               {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
               <div className="reserve-note">Square payment opens next. Your booking is confirmed after payment is complete.</div>
+              <div className="reserve-note" style={{ marginTop: 10, borderTop: '1px solid var(--rule)', paddingTop: 10 }}>
+                <strong style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Cancellation policy</strong><br />
+                Full refund 30+ days before arrival · 50% refund 14–30 days out · No refund within 14 days. <a href="/manage.html" style={{ color: 'var(--oxide)' }}>Manage booking</a>
+              </div>
             </>
           )}
 
@@ -1311,6 +1315,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
               </div>
             </div>
             <div className="conf">Conf. {confirmed.bookingCode}</div>
+            <a className="modal-call" href="/manage.html" style={{ display: 'block', marginTop: 8 }}>Manage or change this booking →</a>
             {phone && <a className="modal-call" href={telHref(phone)}>Call with questions →</a>}
           </div>
         </div>

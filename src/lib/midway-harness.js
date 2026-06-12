@@ -340,6 +340,18 @@ export function createMidwayHarness({
     async listBookings(input) {
       return resolvedBookingStore.listBookings(input);
     },
+    async lookupBookings(input) {
+      return resolvedBookingStore.lookupBookings?.(input) ?? [];
+    },
+    async lookupPublicBookings(input) {
+      return resolvedBookingStore.lookupPublicBookings?.(input) ?? [];
+    },
+    async updateBookingDetails(input) {
+      return resolvedBookingStore.updateBookingDetails?.(input) ?? null;
+    },
+    async previewBookingEdit(input) {
+      return resolvedBookingStore.updateBookingDetails?.({ ...input, dryRun: true }) ?? null;
+    },
     async createAdminBooking(input) {
       return resolvedBookingStore.createAdminBooking(input);
     },

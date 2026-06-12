@@ -542,3 +542,64 @@ export function verifySquareWebhookSignature({ rawBody, signature, notificationU
   const actualBuffer = Buffer.from(signature);
   return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
 }
+
+export function createEditPaymentSession({ bookingCode, diffCents, env = {} }) {
+  const applicationId = readSquareValue(env, 'applicationId');
+  const locationId = readSquareValue(env, 'locationId');
+  const squareEnvironment = readSquareValue(env, 'environment') || 'sandbox';
+  if (!applicationId || !locationId) {
+    throw new Error('Square checkout is not configured for supplemental payments.');
+  }
+  return {
+    mode: 'web-payments',
+    applicationId,
+    locationId,
+    environment: squareEnvironment,
+    bookingCode,
+    amountCents: diffCents,
+    currency: 'USD',
+  };
+}
+
+export async function createSquareSupplementPayment({
+  booking,
+  diffCents,
+  sourceId,
+  verificationToken,
+  idempotencyKey,
+  env = {},
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!booking) throw new Error('Booking is required.');
+  if (!sourceId) throw new Error('Square payment source token is required.');
+
+  const amount = Number(diffCents);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error('Supplemental payment amount must be a positive integer in cents.');
+  }
+
+  const squareConfig = validateSquareCheckoutConfig(env);
+  const key = squareIdempotencyKey(idempotencyKey || `supplement-${booking.bookingCode}`, 'supplement');
+
+  const payload = {
+    idempotency_key: key,
+    source_id: sourceId,
+    amount_money: { amount, currency: booking.currency || 'USD' },
+    location_id: squareConfig.locationId,
+    reference_id: booking.bookingCode,
+    note: `Edit supplement for ${booking.bookingCode}`,
+    autocomplete: true,
+  };
+  if (booking.customerEmail) payload.buyer_email_address = booking.customerEmail;
+  if (verificationToken) payload.verification_token = verificationToken;
+
+  const result = await squareRequest('/v2/payments', { method: 'POST', body: payload, env, fetchImpl });
+  const payment = result.payment ?? {};
+  return {
+    mode: 'square',
+    paymentId: payment.id,
+    status: payment.status,
+    amountCents: Number(payment.amount_money?.amount ?? amount),
+    currency: payment.amount_money?.currency ?? 'USD',
+  };
+}

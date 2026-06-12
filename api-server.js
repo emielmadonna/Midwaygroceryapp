@@ -35,6 +35,10 @@ app.use('/api', createApiRouter({ store: localStore }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
+app.get('/manage', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'manage.html'));
+});
+
 app.use((_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });

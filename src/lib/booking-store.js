@@ -161,6 +161,82 @@ export function createMemoryBookingStore({
         .sort(compareBookings)
         .map(clone);
     },
+    async lookupBookings({ query } = {}) {
+      const q = (query || '').toLowerCase().trim();
+      if (!q) return [];
+      return state.bookings
+        .filter(b =>
+          (b.customerPhone || '').toLowerCase().includes(q) ||
+          (b.customerEmail || '').toLowerCase().includes(q) ||
+          (b.customerName || '').toLowerCase().includes(q),
+        )
+        .sort(compareBookings)
+        .map(clone);
+    },
+    async lookupPublicBookings({ phone, email } = {}) {
+      if (!phone || !email) return [];
+      const normalizedPhone = normalizePhone(phone);
+      return state.bookings
+        .filter(b =>
+          normalizePhone(b.customerPhone || '') === normalizedPhone &&
+          (b.customerEmail || '').toLowerCase() === email.toLowerCase(),
+        )
+        .sort(compareBookings)
+        .map(clone);
+    },
+    async updateBookingDetails({ bookingCode, patch = {}, dryRun = false } = {}) {
+      const booking = state.bookings.find(b => b.bookingCode === bookingCode);
+      if (!booking) return null;
+
+      const siteIds = patch.siteIds ?? booking.rvSiteIds ?? [booking.rvSiteId];
+      const startDate = patch.startDate ?? booking.startDate;
+      const endDate = patch.endDate ?? booking.endDate;
+      const guests = patch.guests ?? booking.guests;
+      const vehicles = patch.vehicles ?? booking.vehicles;
+
+      const available = getAvailableSites({
+        sites: state.sites,
+        bookings: state.bookings,
+        holds: state.holds,
+        startDate,
+        endDate,
+        excludeBookingCode: bookingCode,
+      });
+      const availableIds = new Set(available.map(s => s.id));
+      if (!siteIds.every(id => availableIds.has(id))) {
+        throw new Error('That RV site is not available for the new dates.');
+      }
+
+      const quote = quoteMultiSiteBooking({ sites: state.sites, siteIds, startDate, endDate, guests, vehicles });
+      const prevTotalCents = booking.totalCents;
+      const updatedAt = resolveNow(null, now).toISOString();
+
+      const updatedFields = {
+        rvSiteId: quote.siteId,
+        rvSiteIds: quote.siteIds,
+        siteIds: quote.siteIds,
+        siteLines: quote.sites ?? [],
+        startDate,
+        endDate,
+        nights: quote.nights,
+        guests,
+        vehicles,
+        subtotalCents: quote.subtotalCents,
+        taxCents: quote.taxCents,
+        feeCents: quote.feeCents,
+        totalCents: quote.totalCents,
+        updatedAt,
+      };
+
+      if (!dryRun) Object.assign(booking, updatedFields);
+
+      return {
+        booking: clone({ ...booking, ...updatedFields }),
+        prevTotalCents,
+        newTotalCents: quote.totalCents,
+        diffCents: quote.totalCents - prevTotalCents,
+      };
+    },
     async createAdminBooking(input = {}) {
       const checkedAt = resolveNow(input.now, now);
       expireMemoryRecords(state, checkedAt);
@@ -676,6 +752,113 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []).map(fromSupabaseBooking);
+    },
+    async lookupBookings({ query: q } = {}) {
+      const term = (q || '').trim();
+      if (!term) return [];
+      const pattern = `%${term}%`;
+      const { data, error } = await supabase
+        .from('rv_bookings')
+        .select('*')
+        .or(`customer_phone.ilike.${pattern},customer_email.ilike.${pattern},customer_name.ilike.${pattern}`)
+        .order('start_date', { ascending: true });
+      if (error) throw error;
+      return (data ?? []).map(fromSupabaseBooking);
+    },
+    async lookupPublicBookings({ phone, email } = {}) {
+      if (!phone || !email) return [];
+      // Query by email (case-insensitive), then filter by normalized phone digits in memory
+      // to handle format differences (e.g. "(555) 010-9900" vs "5550109900")
+      const { data, error } = await supabase
+        .from('rv_bookings')
+        .select('*')
+        .ilike('customer_email', email)
+        .order('start_date', { ascending: true });
+      if (error) throw error;
+
+      const normalizedInput = normalizePhone(phone);
+      return (data ?? [])
+        .filter(row => normalizePhone(row.customer_phone || '') === normalizedInput)
+        .map(fromSupabaseBooking);
+    },
+    async updateBookingDetails({ bookingCode, patch = {}, dryRun = false } = {}) {
+      const checkedAt = resolveNow(null, now);
+
+      const { data: existing, error: findError } = await supabase
+        .from('rv_bookings')
+        .select('*')
+        .eq('booking_code', bookingCode)
+        .maybeSingle();
+      if (findError) throw findError;
+      if (!existing) return null;
+
+      const booking = fromSupabaseBooking(existing);
+      const siteIds = patch.siteIds ?? booking.rvSiteIds ?? [booking.rvSiteId];
+      const startDate = patch.startDate ?? booking.startDate;
+      const endDate = patch.endDate ?? booking.endDate;
+      const guests = patch.guests ?? booking.guests;
+      const vehicles = patch.vehicles ?? booking.vehicles;
+
+      const [sites, bookings, holds] = await Promise.all([
+        loadSupabaseSites(supabase),
+        loadSupabaseBlockingBookings(supabase, { startDate, endDate, siteIds }),
+        loadSupabaseActiveHolds(supabase, { startDate, endDate, siteIds, now: checkedAt }),
+      ]);
+
+      const available = getAvailableSites({
+        sites,
+        bookings,
+        holds,
+        startDate,
+        endDate,
+        excludeBookingCode: bookingCode,
+      });
+      const availableIds = new Set(available.map(s => s.id));
+      if (!siteIds.every(id => availableIds.has(id))) {
+        throw new Error('That RV site is not available for the new dates.');
+      }
+
+      const quote = quoteMultiSiteBooking({ sites, siteIds, startDate, endDate, guests, vehicles });
+      const prevTotalCents = booking.totalCents;
+      const updatedAt = checkedAt.toISOString();
+
+      if (dryRun) {
+        return {
+          booking: { ...booking, rvSiteId: quote.siteId, rvSiteIds: quote.siteIds, siteIds: quote.siteIds, siteLines: quote.sites ?? [], startDate, endDate, nights: quote.nights, guests, vehicles, subtotalCents: quote.subtotalCents, taxCents: quote.taxCents, feeCents: quote.feeCents, totalCents: quote.totalCents },
+          prevTotalCents,
+          newTotalCents: quote.totalCents,
+          diffCents: quote.totalCents - prevTotalCents,
+        };
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from('rv_bookings')
+        .update({
+          rv_site_id: quote.siteId,
+          rv_site_ids: quote.siteIds,
+          site_lines: quote.sites ?? [],
+          start_date: startDate,
+          end_date: endDate,
+          nights: quote.nights,
+          guests,
+          vehicles,
+          subtotal_cents: quote.subtotalCents,
+          tax_cents: quote.taxCents,
+          fee_cents: quote.feeCents,
+          total_cents: quote.totalCents,
+          updated_at: updatedAt,
+        })
+        .eq('booking_code', bookingCode)
+        .select('*')
+        .single();
+      if (updateError) throw updateError;
+
+      return {
+        booking: fromSupabaseBooking(updated),
+        prevTotalCents,
+        newTotalCents: quote.totalCents,
+        diffCents: quote.totalCents - prevTotalCents,
+      };
     },
     async createAdminBooking(input = {}) {
       const checkedAt = resolveNow(input.now, now);
@@ -1768,4 +1951,8 @@ function safeDocumentFileName(fileName = '', contentType = '') {
 
 function clone(value) {
   return structuredClone(value);
+}
+
+function normalizePhone(phone) {
+  return (phone || '').replace(/\D/g, '');
 }
