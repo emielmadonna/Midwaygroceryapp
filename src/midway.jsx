@@ -48,7 +48,7 @@ const FALLBACK_SETTINGS = {
   sections: [FALLBACK_INSTAGRAM_SECTION],
 };
 const FALLBACK_HOURS = [
-  { day: 'monday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'monday', closed: true },
   { day: 'tuesday', closed: true },
   { day: 'wednesday', closed: true },
   { day: 'thursday', open: '7:00 AM', close: '7:00 PM' },
@@ -56,6 +56,10 @@ const FALLBACK_HOURS = [
   { day: 'saturday', open: '7:00 AM', close: '7:00 PM' },
   { day: 'sunday', open: '7:00 AM', close: '7:00 PM' },
 ];
+
+// First day of the 2026 season. Before this date the store shows "Opens Thu, Jun 19".
+const SEASON_OPEN_DATE = '2026-06-19';
+const beforeSeason = new Date().toISOString().slice(0, 10) < SEASON_OPEN_DATE;
 const FALLBACK_RV_SITES = STATIC_RV_SITES.map(site => {
   const denormalized = denormalizeMapSite(site);
   return {
@@ -317,7 +321,7 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
       <img className="hero-bg" src="/images/exterior-detailed.jpg" alt="Midway Gas & Grocery storefront in Plain, Washington" />
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
-        {today && <div className="hero-route"><i /> {today.closed ? 'Closed today' : `Open today ${hourLabel(today)}`}</div>}
+        {today && <div className="hero-route"><i /> {beforeSeason ? 'Closed · Opens Thu Jun 19 · 7:00 AM – 7:00 PM' : (today.closed ? 'Closed today' : `Open today ${hourLabel(today)}`)}</div>}
         <h1 className="sr-only">Midway Gas &amp; Grocery</h1>
         <p className="hero-lede">Fuel, coffee, groceries, and campsites on Chiwawa Loop Road.</p>
         <div className="hero-actions">
@@ -341,7 +345,10 @@ const Ticker = ({ onJumpStay, sites, bootstrap }) => {
   if (!today && !hasFuel && !hasRvBooking && !phone) return null;
   return (
     <section id="today" className="ticker today-strip">
-      {today && <div><div className="l"><i /> {today.closed ? 'CLOSED TODAY' : 'OPEN TODAY'}</div><div className="v">{hourLabel(today)}</div><div className="s">{dateLabel()}</div></div>}
+      {today && (beforeSeason
+        ? <div><div className="l"><i /> CLOSED</div><div className="v">Opens Thu, Jun 19</div><div className="s">7:00 AM – 7:00 PM</div></div>
+        : <div><div className="l"><i /> {today.closed ? 'CLOSED TODAY' : 'OPEN TODAY'}</div><div className="v">{hourLabel(today)}</div><div className="s">{dateLabel()}</div></div>
+      )}
       {hasFuel && fuel.map(price => (
         <div key={price.type}><div className="l"><i className="amber" /> {price.label}</div><div className="v">{price.price.toFixed(2)}<small>/GAL</small></div><div className="s">Live store update</div></div>
       ))}
@@ -1084,6 +1091,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
       <div className="head">
         <h2>Book RV or tent. <em>Right behind Midway.</em></h2>
         <p>Full hookup sites include water, septic, and electricity. Partial hookup sites include water and electricity. Tent areas T01-T10 sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
+        <a href="/manage.html" style={{ display: 'inline-block', marginTop: 12, fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--oxide)', textDecoration: 'none' }}>Already have a booking? Manage it →</a>
       </div>
 
       <div className="book-wrap">
@@ -1483,6 +1491,7 @@ const Foot = ({ visible = {}, phone = '', address = '', instagramUrl = '' }) => 
         {visible.coffee && <a href="#coffee">Coffee</a>}
         {visible.products && <a href="#pantry">Pantry &amp; provisions</a>}
         {visible.rvBooking && <a href="#stay">Book Site</a>}
+        {visible.rvBooking && <a href="/manage.html">Manage booking</a>}
         {visible.instagram && (
           <a href={instagramUrl || FALLBACK_SETTINGS.instagramUrl} target="_blank" rel="noreferrer">
             Instagram

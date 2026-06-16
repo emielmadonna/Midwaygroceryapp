@@ -28,7 +28,7 @@ const DEFAULT_FUEL = {
 };
 
 const DEFAULT_HOURS = {
-    monday: { open: '7:00 AM', close: '7:00 PM' },
+    monday: { open: '', close: '' },
     tuesday: { open: '', close: '' },
     wednesday: { open: '', close: '' },
     thursday: { open: '7:00 AM', close: '7:00 PM' },
