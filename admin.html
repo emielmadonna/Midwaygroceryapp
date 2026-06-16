@@ -169,6 +169,18 @@
                 </div>
             </div>
 
+            <!-- License viewer modal -->
+            <div id="licenseModal" hidden style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);">
+                <div style="background:var(--admin-panel);border:1px solid var(--admin-line);border-radius:10px;max-width:680px;width:100%;padding:28px;box-shadow:var(--admin-shadow);position:relative;max-height:90vh;overflow-y:auto;">
+                    <button id="licenseModalClose" type="button" class="admin-link" style="position:absolute;top:14px;right:16px;font-size:18px;line-height:1;" aria-label="Close">×</button>
+                    <p class="admin-eyebrow">Driver's License</p>
+                    <h3 id="licenseModalCode" style="margin:4px 0 18px;"></h3>
+                    <div id="licenseModalContent" style="text-align:center;"></div>
+                    <div id="licenseModalActions" style="display:flex;gap:8px;margin-top:16px;"></div>
+                    <p id="licenseModalHint" class="admin-form__hint" style="margin-top:8px;"></p>
+                </div>
+            </div>
+
             <details class="admin-panel admin-panel--wide admin-accordion" id="todayPanel" open>
                 <summary>
                     <div>

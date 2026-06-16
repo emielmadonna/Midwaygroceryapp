@@ -737,6 +737,41 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
 
       return fromSupabaseBookingDocument(document);
     },
+    async listBookingDocuments({ bookingCode } = {}) {
+      if (!bookingCode) return [];
+      const { data, error } = await supabase
+        .from('booking_documents')
+        .select('*')
+        .eq('booking_code', bookingCode)
+        .neq('status', 'deleted')
+        .order('uploaded_at', { ascending: false });
+      if (error) throw error;
+      const docs = (data ?? []).map(fromSupabaseBookingDocument);
+      await Promise.all(docs.map(async doc => {
+        const { data: urlData } = await supabase.storage
+          .from(doc.storageBucket)
+          .createSignedUrl(doc.storagePath, 3600);
+        doc.signedUrl = urlData?.signedUrl ?? null;
+      }));
+      return docs;
+    },
+    async updateDocumentStatus({ bookingCode, documentId, status } = {}) {
+      if (!bookingCode || !documentId || !status) return null;
+      const { data, error } = await supabase
+        .from('booking_documents')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', documentId)
+        .eq('booking_code', bookingCode)
+        .select('*')
+        .single();
+      if (error) throw error;
+      if (status === 'verified' || status === 'rejected') {
+        await supabase.from('rv_bookings')
+          .update({ driver_license_status: status, updated_at: new Date().toISOString() })
+          .eq('booking_code', bookingCode);
+      }
+      return fromSupabaseBookingDocument(data);
+    },
     async listBookings({ from, to, status } = {}) {
       await expireSupabaseRecords(supabase, resolveNow(null, now));
 

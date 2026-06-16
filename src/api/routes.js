@@ -1507,6 +1507,42 @@ export function createApiRouter({
     }
   });
 
+  router.get('/admin/bookings/:bookingCode/documents', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const docs = await resolvedStore.listBookingDocuments({ bookingCode: req.params.bookingCode });
+      res.json({ ok: true, data: docs });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_DOCUMENTS_UNAVAILABLE');
+    }
+  });
+
+  router.patch('/admin/bookings/:bookingCode/documents/:documentId', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const { status } = req.body ?? {};
+      if (!['verified', 'rejected'].includes(status)) {
+        return res.status(400).json(apiError('INVALID_STATUS', 'Status must be "verified" or "rejected".'));
+      }
+      const doc = await resolvedStore.updateDocumentStatus({
+        bookingCode: req.params.bookingCode,
+        documentId: req.params.documentId,
+        status,
+      });
+      if (!doc) return res.status(404).json(apiError('DOCUMENT_NOT_FOUND', 'Document not found.'));
+      await resolvedStore.recordAuditLog?.({
+        action: `document.${status}`,
+        actor: { id: req.adminUser.id, role: req.adminUser.role },
+        targetType: 'booking_document',
+        targetId: req.params.bookingCode,
+        metadata: { documentId: req.params.documentId, status },
+      });
+      res.json({ ok: true, data: doc });
+    } catch (error) {
+      sendApiError(res, error, 'ADMIN_DOCUMENT_UPDATE_FAILED');
+    }
+  });
+
   router.get('/admin/bookings', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('booking.rv.enabled', { role: req.adminUser.role });

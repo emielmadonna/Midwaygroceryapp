@@ -337,6 +337,12 @@ export function createMidwayHarness({
     async recordDriverLicenseUpload(input) {
       return resolvedBookingStore.recordDriverLicenseUpload?.(input);
     },
+    async listBookingDocuments(input) {
+      return resolvedBookingStore.listBookingDocuments?.(input) ?? [];
+    },
+    async updateDocumentStatus(input) {
+      return resolvedBookingStore.updateDocumentStatus?.(input) ?? null;
+    },
     async listBookings(input) {
       return resolvedBookingStore.listBookings(input);
     },

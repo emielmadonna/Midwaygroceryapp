@@ -96,6 +96,12 @@ const els = {
   createTokenForm: document.getElementById('createTokenForm'),
   newTokenReveal: document.getElementById('newTokenReveal'),
   newTokenValue: document.getElementById('newTokenValue'),
+  licenseModal: document.getElementById('licenseModal'),
+  licenseModalClose: document.getElementById('licenseModalClose'),
+  licenseModalCode: document.getElementById('licenseModalCode'),
+  licenseModalContent: document.getElementById('licenseModalContent'),
+  licenseModalActions: document.getElementById('licenseModalActions'),
+  licenseModalHint: document.getElementById('licenseModalHint'),
   manualForm: document.getElementById('manualBookingForm'),
   blockForm: document.getElementById('blockSiteForm'),
   siteSelects: document.querySelectorAll('[data-site-select]'),
@@ -498,6 +504,9 @@ function renderLookupResults(bookings) {
         ${state.user?.role === 'owner' && !['canceled', 'expired', 'refunded'].includes(b.status)
           ? `<button type="button" class="admin-link" data-cancel="${escapeHtml(b.bookingCode)}">Cancel</button>`
           : ''}
+        ${['uploaded', 'verified', 'rejected'].includes(b.driverLicenseStatus)
+          ? `<button type="button" class="admin-link" data-viewid="${escapeHtml(b.bookingCode)}">View ID</button>`
+          : ''}
       </div>
     </li>
   `).join('');
@@ -510,6 +519,9 @@ function renderLookupResults(bookings) {
   });
   els.lookupResultsList.querySelectorAll('[data-refund]').forEach(btn => {
     btn.addEventListener('click', () => refundBooking(btn.dataset.refund));
+  });
+  els.lookupResultsList.querySelectorAll('[data-viewid]').forEach(btn => {
+    btn.addEventListener('click', () => viewLicense(btn.dataset.viewid));
   });
 }
 
@@ -544,6 +556,68 @@ function closeEditModal() {
 els.editModalClose?.addEventListener('click', closeEditModal);
 els.editCancelBtn?.addEventListener('click', closeEditModal);
 els.editBookingModal?.addEventListener('click', e => { if (e.target === els.editBookingModal) closeEditModal(); });
+
+// ─── License viewer modal ─────────────────────────────────────────────────────
+
+function closeLicenseModal() {
+  if (els.licenseModal) els.licenseModal.hidden = true;
+}
+
+els.licenseModalClose?.addEventListener('click', closeLicenseModal);
+els.licenseModal?.addEventListener('click', e => { if (e.target === els.licenseModal) closeLicenseModal(); });
+
+async function viewLicense(bookingCode) {
+  if (!els.licenseModal) return;
+  els.licenseModalCode.textContent = bookingCode;
+  els.licenseModalContent.innerHTML = '<p style="color:var(--admin-muted);font-size:13px;">Loading…</p>';
+  els.licenseModalActions.innerHTML = '';
+  els.licenseModalHint.textContent = '';
+  els.licenseModal.hidden = false;
+
+  try {
+    const docs = await api(`/api/admin/bookings/${encodeURIComponent(bookingCode)}/documents`);
+    if (!docs || docs.length === 0) {
+      els.licenseModalContent.innerHTML = '<p style="color:var(--admin-muted);font-size:13px;">No documents uploaded for this booking.</p>';
+      return;
+    }
+    const doc = docs[0];
+    if (doc.signedUrl) {
+      els.licenseModalContent.innerHTML = `<img src="${escapeHtml(doc.signedUrl)}" alt="Driver's license" style="max-width:100%;border-radius:6px;border:1px solid var(--admin-line);" />`;
+    } else {
+      els.licenseModalContent.innerHTML = '<p style="color:var(--admin-muted);font-size:13px;">Document URL unavailable.</p>';
+    }
+    const statusLabel = doc.status === 'verified' ? 'Verified ✓' : doc.status === 'rejected' ? 'Rejected ✗' : 'Pending review';
+    const uploadDate = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : 'unknown date';
+    els.licenseModalHint.textContent = `Status: ${statusLabel} · Uploaded ${uploadDate}`;
+
+    if (!['verified', 'rejected'].includes(doc.status)) {
+      els.licenseModalActions.innerHTML = `
+        <button type="button" class="btn btn--primary" id="licenseVerifyBtn">Verify</button>
+        <button type="button" class="btn" id="licenseRejectBtn">Reject</button>
+      `;
+      document.getElementById('licenseVerifyBtn')?.addEventListener('click', () => updateLicenseStatus(bookingCode, doc.id, 'verified'));
+      document.getElementById('licenseRejectBtn')?.addEventListener('click', () => updateLicenseStatus(bookingCode, doc.id, 'rejected'));
+    }
+  } catch (err) {
+    els.licenseModalContent.innerHTML = `<p style="color:var(--admin-error,#c00);font-size:13px;">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function updateLicenseStatus(bookingCode, documentId, status) {
+  els.licenseModalHint.textContent = 'Saving…';
+  els.licenseModalActions.innerHTML = '';
+  try {
+    await api(`/api/admin/bookings/${encodeURIComponent(bookingCode)}/documents/${encodeURIComponent(documentId)}`, {
+      method: 'PATCH',
+      body: { status },
+    });
+    els.licenseModalHint.textContent = `Marked as ${status}.`;
+    showToast(`License ${status}.`, 'success');
+  } catch (err) {
+    els.licenseModalHint.textContent = err.message;
+    showToast(err.message, 'error');
+  }
+}
 
 els.editBookingForm?.addEventListener('submit', async event => {
   event.preventDefault();
@@ -1402,6 +1476,9 @@ function renderBookingLists() {
         ${state.user?.role === 'owner' && !['canceled', 'expired', 'refunded'].includes(booking.status)
           ? `<button type="button" class="admin-link" data-cancel="${escapeHtml(booking.bookingCode)}">Cancel</button>`
           : ''}
+        ${['uploaded', 'verified', 'rejected'].includes(booking.driverLicenseStatus)
+          ? `<button type="button" class="admin-link" data-viewid="${escapeHtml(booking.bookingCode)}">View ID</button>`
+          : ''}
       </div>
     </li>
   `, 'No bookings yet.');
@@ -1415,6 +1492,9 @@ function renderBookingLists() {
   els.bookingsList.querySelectorAll('[data-edit]').forEach(button => {
     const booking = state.bookings.find(b => b.bookingCode === button.dataset.edit);
     if (booking) button.addEventListener('click', () => openEditModal(booking));
+  });
+  els.bookingsList.querySelectorAll('[data-viewid]').forEach(button => {
+    button.addEventListener('click', () => viewLicense(button.dataset.viewid));
   });
 }
 
