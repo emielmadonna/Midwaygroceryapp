@@ -292,7 +292,7 @@ function buildBookingConfirmationHtml(booking, env = {}) {
               </table>
 
               <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">
-                Questions? Reply to this email or call us and we'll be happy to help.
+                Questions? Reply to this email or call us at <a href="tel:+15095961076" style="color:#1a3d2b;font-weight:600;text-decoration:none;">(509) 596-1076</a> and we'll be happy to help.
               </p>
             </td>
           </tr>
