@@ -1091,7 +1091,7 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
       <div className="head">
         <h2>Book RV or tent. <em>Right behind Midway.</em></h2>
         <p>Full hookup sites include water, septic, and electricity. Partial hookup sites include water and electricity. Tent areas T01-T10 sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
-        <a href="/manage.html" style={{ display: 'inline-block', marginTop: 12, fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--oxide)', textDecoration: 'none' }}>Already have a booking? Manage it →</a>
+        <a href="/manage.html" style={{ display: 'inline-block', marginTop: 20, padding: '14px 28px', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--ink)', borderRadius: 999 }}>Manage existing booking →</a>
       </div>
 
       <div className="book-wrap">
