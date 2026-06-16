@@ -81,7 +81,7 @@ async function sendCustomerBookingEmail({ booking, fetchImpl, store, env }) {
 
 async function sendViaResend({ booking, notification, resendApiKey, fetchImpl, store, env }) {
   const from = env?.FROM_EMAIL ?? 'Midway RV Park <bookings@midwayrv.com>';
-  const html = buildBookingConfirmationHtml(booking);
+  const html = buildBookingConfirmationHtml(booking, env);
 
   try {
     const response = await fetchImpl('https://api.resend.com/emails', {
@@ -121,7 +121,10 @@ function formatCents(cents) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function buildBookingConfirmationHtml(booking) {
+function buildBookingConfirmationHtml(booking, env = {}) {
+  const siteUrl = (env?.SITE_URL ?? '').replace(/\/$/, '');
+  const logoUrl = siteUrl ? `${siteUrl}/assets/midway-logo.png` : null;
+
   const siteDisplay = booking.siteLines?.length
     ? booking.siteLines.map(s => `Site ${s.siteNumber}`).join(', ')
     : booking.siteNumber
@@ -163,9 +166,16 @@ function buildBookingConfirmationHtml(booking) {
       <td align="center">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
 
+          <!-- Logo -->
+          ${logoUrl ? `<tr>
+            <td style="background-color:#ffffff;border-radius:8px 8px 0 0;padding:24px 40px;text-align:center;border-bottom:1px solid #efefef;">
+              <img src="${escHtml(logoUrl)}" alt="Midway Gas &amp; Grocery" width="160" style="display:block;margin:0 auto;max-width:160px;height:auto;" />
+            </td>
+          </tr>` : ''}
+
           <!-- Header -->
           <tr>
-            <td style="background-color:#1a3d2b;border-radius:8px 8px 0 0;padding:32px 40px;text-align:center;">
+            <td style="background-color:#1a3d2b;${logoUrl ? '' : 'border-radius:8px 8px 0 0;'}padding:32px 40px;text-align:center;">
               <p style="margin:0 0 4px;color:#a8d5b5;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Midway RV Park</p>
               <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:-0.5px;">Booking Confirmed</h1>
             </td>
