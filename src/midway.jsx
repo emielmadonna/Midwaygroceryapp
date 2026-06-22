@@ -159,6 +159,12 @@ const hourLabel = (hour) => {
   if (hour.closed) return 'Closed';
   return `${hour.open} - ${hour.close}`;
 };
+// "8:00 AM" / "7:00 PM" → "8–7" for the compact today-strip cell.
+const compactHour = (hour) => {
+  if (!hour || hour.closed) return 'Closed';
+  const h = (t = '') => (String(t).match(/\d{1,2}/) || ['?'])[0];
+  return `${h(hour.open)}–${h(hour.close)}`;
+};
 const dateLabel = () => new Date().toLocaleDateString(undefined, {
   weekday: 'short',
   month: 'short',
@@ -297,8 +303,8 @@ const Nav = ({ visible = {}, phone = '', address = '' }) => {
       </a>
       <div className="nav-links">
         <a href="#today">Today</a>
+        {visible.products && <a href="#order">Order Ahead</a>}
         {visible.coffee && <a href="#coffee">Coffee</a>}
-        {visible.products && <a href="#pantry">Pantry</a>}
         {visible.rvBooking && <a href="#stay">RV Sites</a>}
         {visible.events && <a href="#events">Events</a>}
         {visible.instagram && <a href="#instagram">Instagram</a>}
@@ -314,20 +320,26 @@ const Nav = ({ visible = {}, phone = '', address = '' }) => {
 };
 
 // ─── Hero ─────────────────────────────────────────────────────────────────
-const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
+const Hero = ({ flags = {}, hours = [] }) => {
   const today = todayHour(hours);
+  const statusLabel = beforeSeason
+    ? 'Opens Thu, Jun 19'
+    : (today && !today.closed ? `Store open · ${hourLabel(today)}` : (today?.closed ? 'Closed today' : 'Store hours vary'));
   return (
     <header id="top" className="hero hero-redesign">
-      <img className="hero-bg" src="/images/exterior-detailed.jpg" alt="Midway Gas & Grocery storefront in Plain, Washington" />
+      <img className="hero-bg" src="/images/exterior-wide.jpg" alt="Midway Gas & Grocery storefront in Plain, Washington" />
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
-        {today && <div className="hero-route"><i /> {beforeSeason ? 'Closed · Opens Thu Jun 19 · 7:00 AM – 7:00 PM' : (today.closed ? 'Closed today' : `Open today ${hourLabel(today)}`)}</div>}
-        <h1 className="sr-only">Midway Gas &amp; Grocery</h1>
-        <p className="hero-lede">Fuel, coffee, groceries, and campsites on Chiwawa Loop Road.</p>
+        <div className="hero-status">
+          <span className="hero-status-open"><i /> {statusLabel}</span>
+          <span className="hero-status-sep">/</span>
+          <span className="hero-status-gas">Gas 24/7</span>
+        </div>
+        <h1 className="hero-headline">The provisions stop between town and the wild.</h1>
+        <p className="hero-lede">Fuel around the clock, fresh coffee, real groceries, and full-hookup campsites on Chiwawa Loop Road in Plain, Washington.</p>
         <div className="hero-actions">
-          {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book Site <span>→</span></a>}
-          {address && <a href={directionsHref(address)} target="_blank" rel="noreferrer" className="hero-link hero-secondary">Directions <span>↗</span></a>}
-          {phone && <a href={telHref(phone)} className="hero-link hero-secondary">Call <span>{phone}</span></a>}
+          {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book a site <span>→</span></a>}
+          {flags.products && <a href="#order" className="hero-link hero-secondary">Order this week</a>}
         </div>
       </div>
     </header>
@@ -338,35 +350,50 @@ const Hero = ({ flags = {}, phone = '', address = '', hours = [] }) => {
 const Ticker = ({ onJumpStay, sites, bootstrap }) => {
   const openCount = sites.filter(s => !s.taken).length;
   const fuel = bootstrap.fuelPrices || [];
-  const phone = bootstrap.settings?.phone || '';
   const today = todayHour(bootstrap.hours || []);
   const hasFuel = Boolean(bootstrap.featureFlags?.fuel && fuel.length);
   const hasRvBooking = Boolean(bootstrap.featureFlags?.rvBooking && sites.length);
-  if (!today && !hasFuel && !hasRvBooking && !phone) return null;
+  const nonEthanol = fuel.find(p => p.type === 'unleaded') || fuel[0];
   return (
     <section id="today" className="ticker today-strip">
-      {today && (beforeSeason
-        ? <div><div className="l"><i /> CLOSED</div><div className="v">Opens Thu, Jun 19</div><div className="s">7:00 AM – 7:00 PM</div></div>
-        : <div><div className="l"><i /> {today.closed ? 'CLOSED TODAY' : 'OPEN TODAY'}</div><div className="v">{hourLabel(today)}</div><div className="s">{dateLabel()}</div></div>
+      {today && (
+        <div>
+          <div className="l">Store today</div>
+          <div className="v">{beforeSeason ? 'Closed' : compactHour(today)}</div>
+          <div className="s">{beforeSeason ? 'Opens Thu, Jun 19' : (today.closed ? 'Closed today' : hourLabel(today))}</div>
+        </div>
       )}
-      {hasFuel && fuel.map(price => (
-        <div key={price.type}><div className="l"><i className="amber" /> {price.label}</div><div className="v">{price.price.toFixed(2)}<small>/GAL</small></div><div className="s">Live store update</div></div>
-      ))}
-      {hasRvBooking && <div className="open" onClick={onJumpStay}><div className="l"><i /> CAMP SITES</div><div className="v">{openCount}<small>/{sites.length} OPEN</small></div><div className="s">Tap to book →</div></div>}
-      {phone && <div><div className="l"><i /> CALL AHEAD</div><div className="v" style={{ fontSize: 25, lineHeight: 1.05, paddingTop: 6 }}>{phone}</div><div className="s">Confirm sites, hours, and arrival</div></div>}
+      <div className="gas">
+        <div className="l">Gas · pay at pump</div>
+        <div className="v accent">24/7</div>
+        <div className="s">Always open at the pump</div>
+      </div>
+      {hasFuel && nonEthanol && (
+        <div>
+          <div className="l">{nonEthanol.label}</div>
+          <div className="v">${nonEthanol.price.toFixed(2)}<small>/gal</small></div>
+          <div className="s">Live store price</div>
+        </div>
+      )}
+      {hasRvBooking && (
+        <div className="open" onClick={onJumpStay}>
+          <div className="l">Camp sites open</div>
+          <div className="v">{openCount}<small>/{sites.length}</small></div>
+          <div className="s">Tap to book →</div>
+        </div>
+      )}
     </section>
   );
 };
 
 // ─── Marquee ──────────────────────────────────────────────────────────────
+const MARQUEE_ITEMS = ['24/7 fuel', 'diesel', 'espresso', 'soft serve', 'scoop ice cream', 'groceries', 'beer & wine', 'bait & tackle', 'rv sites', 'ice', 'firewood', 'propane', 'plain, washington'];
 const Marquee = () => (
-  <div className="marquee reveal">
+  <div className="marquee">
     <div className="marquee-track">
       {[...Array(2)].map((_, k) => (
         <React.Fragment key={k}>
-          <span>non-ethanol fuel</span><span>diesel</span><span>espresso</span><span>ice cream</span>
-          <span>groceries</span><span>beer &amp; wine</span><span>bait &amp; tackle</span><span>rv sites</span>
-          <span>ice</span><span>firewood</span><span>propane</span><span>plain, washington</span>
+          {MARQUEE_ITEMS.map((item, i) => <span key={`${k}-${i}`}>{item}</span>)}
         </React.Fragment>
       ))}
     </div>
@@ -400,62 +427,233 @@ const Coffee = ({ menu = COFFEE }) => {
   );
 };
 
-// ─── Pantry ──────────────────────────────────────────────────────────────
-const Pantry = ({ products = [] }) => {
-  if (!products.length) return null;
+// ─── Order ahead (Square catalog → cart → Square checkout) ──────────────────
+const OrderPaymentForm = ({ session, customer, lines, onPay, onSuccess, onCancel }) => {
+  const cardId = useMemo(() => `order-card-${session.orderCode}`, [session.orderCode]);
+  const [card, setCard] = useState(null);
+  const [payments, setPayments] = useState(null);
+  const [status, setStatus] = useState('Preparing secure payment…');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const checkout = session.checkout || {};
+  const amountCents = session.amountCents;
+
+  useEffect(() => {
+    let disposed = false;
+    let mounted = null;
+    (async () => {
+      try {
+        const square = await loadSquareSdk(checkout.environment);
+        if (!square?.payments) throw new Error('Square payment form is unavailable.');
+        const client = square.payments(checkout.applicationId, checkout.locationId);
+        mounted = await client.card();
+        await mounted.attach(`#${cardId}`);
+        if (disposed) { mounted.destroy?.(); return; }
+        setPayments(client);
+        setCard(mounted);
+        setStatus('Secure card form ready.');
+      } catch (err) {
+        setError(err.message || 'Square payment form is unavailable.');
+        setStatus('');
+      }
+    })();
+    return () => { disposed = true; mounted?.destroy?.(); };
+  }, [checkout.environment, checkout.applicationId, checkout.locationId, cardId]);
+
+  const submit = async () => {
+    if (busy || !card) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await card.tokenize();
+      if (result.status !== 'OK') {
+        throw new Error(result.errors?.map(e => e.message).filter(Boolean).join(' ') || 'Card details could not be verified.');
+      }
+      let verificationToken = null;
+      if (payments?.verifyBuyer) {
+        const verification = await payments.verifyBuyer(result.token, buildSquareVerificationDetails({ checkout, session: { guest: customer }, amountCents }));
+        verificationToken = verification?.token || null;
+      }
+      const paid = await onPay({
+        orderId: session.orderId,
+        orderCode: session.orderCode,
+        sourceId: result.token,
+        verificationToken,
+        idempotencyKey: createPaymentIdempotencyKey(session.orderCode, 'order'),
+        customer,
+        itemsSummary: lines.map(l => ({ name: l.p.name, quantity: l.qty, lineCents: l.p.priceCents * l.qty })),
+      });
+      onSuccess(paid);
+    } catch (err) {
+      setError(err.message || 'Payment failed. Please try again or call Midway.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-bg" onClick={onCancel}>
+      <div className="modal payment-modal" onClick={e => e.stopPropagation()}>
+        <button className="x" type="button" onClick={onCancel}>Close</button>
+        <div className="payment-brand-row"><SquareMark /><span>Encrypted payment</span></div>
+        <h3>Pay <em>securely.</em></h3>
+        <p>Order {session.orderCode} · pickup Wednesday afternoon at the counter.</p>
+        <div className="payment-summary"><span>{session.orderCode}</span><strong>{moneyExact(amountCents)}</strong></div>
+        <div id={cardId} className="square-card-host" />
+        {status && <div className="reserve-note" aria-live="polite">{status}</div>}
+        {error && <div className="reserve-note" aria-live="polite" style={{ color: 'var(--oxide)' }}>{error}</div>}
+        <button className="cta payment-submit" type="button" onClick={submit} disabled={busy || !card}>
+          {busy ? 'Processing payment…' : `Pay ${moneyExact(amountCents)}`}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const OrderAhead = ({ products = [], onCheckout, onPay }) => {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('All');
-  const pantry = useMemo(() => products.map((p, i) => ({
-    idx: String(i + 1).padStart(2, '0'),
-    name: p.name,
-    desc: p.sku ? `${p.description || 'Square catalog item'} · SKU ${p.sku}` : (p.description || 'Square catalog item'),
-    tag: p.category || 'Store',
-    price: moneyExact(p.priceCents).replace('$', ''),
-    g: iconForProduct(p),
-  })), [products]);
-  const cats = useMemo(() => ['All', ...Array.from(new Set(pantry.map(p => p.tag)))], [pantry]);
-  const filtered = useMemo(() => pantry.filter(p => {
-    const matchQ = !q || (p.name + ' ' + p.desc + ' ' + p.tag).toLowerCase().includes(q.toLowerCase());
-    const matchC = cat === 'All' || p.tag === cat;
-    return matchQ && matchC;
-  }), [q, cat, pantry]);
+  const [cart, setCart] = useState({});
+  const [customer, setCustomer] = useState({ name: '', phone: '', email: '' });
+  const [session, setSession] = useState(null);
+  const [confirmed, setConfirmed] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const byId = useMemo(() => new Map(products.map(p => [p.variationId || p.id, p])), [products]);
+  const cats = useMemo(() => ['All', ...Array.from(new Set(products.map(p => p.category || 'Store')))], [products]);
+  const filtered = useMemo(() => products.filter(p => {
+    const c = p.category || 'Store';
+    const matchC = cat === 'All' || c === cat;
+    const matchQ = !q || (p.name + ' ' + c).toLowerCase().includes(q.toLowerCase());
+    return matchC && matchQ;
+  }), [products, q, cat]);
+  const lines = useMemo(() => Object.entries(cart)
+    .map(([id, qty]) => { const p = byId.get(id); return p ? { id, qty, p } : null; })
+    .filter(Boolean), [cart, byId]);
+  const totalCents = lines.reduce((s, l) => s + l.p.priceCents * l.qty, 0);
+  const cartCount = lines.reduce((s, l) => s + l.qty, 0);
+  const hasCart = lines.length > 0;
+
+  if (!products.length) return null;
+
+  const add = (id) => { setCart(c => ({ ...c, [id]: (c[id] || 0) + 1 })); setError(''); };
+  const remove = (id) => setCart(c => { const n = { ...c }; const q = (n[id] || 0) - 1; if (q > 0) n[id] = q; else delete n[id]; return n; });
+
+  const startCheckout = async () => {
+    if (!hasCart || busy) return;
+    if (!customer.name.trim() || !customer.email.trim()) { setError('Add your name and email for the pickup confirmation.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const data = await onCheckout({ items: lines.map(l => ({ variationId: l.id, quantity: l.qty })), customer });
+      setSession(data);
+    } catch (err) {
+      setError(err.message || 'Could not start checkout right now.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <section className="section reveal" id="pantry">
-      <div className="head">
-      <h2>Pantry &amp; <em>provisions.</em></h2>
-        <p>The practical shelf: fuel, coffee, cold drinks, ice cream, groceries, camping supplies, beer, wine, and the stay options people ask about most.</p>
+    <section className="section reveal" id="order">
+      <div className="order-head">
+        <div className="eyebrow" style={{ color: 'var(--oxide)' }}>New — weekly grocery order-ahead</div>
+        <h2>Order by Monday noon. <em>Pick it up Wednesday.</em></h2>
+        <p>Build your box from the Midway shelves and check out with Square by Monday at 12 PM. We shop and pack it midweek — ready at the counter Wednesday afternoon. Pickup only, every week.</p>
       </div>
-      <div className="pantry-tools">
+
+      <div className="order-tools">
         <div className="pantry-search">
           <span className="ic">⌕</span>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the pantry — ice, bait, coffee…" />
-          {q && <button onClick={() => setQ('')} style={{ fontFamily:'var(--mono)', fontSize:11, color:'var(--mute)' }}>clear ✕</button>}
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the pantry — coffee, ice, bait…" />
+          {q && <button onClick={() => setQ('')} style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mute)' }}>clear ✕</button>}
         </div>
         <div className="pantry-chips">
-          {cats.map(c => (
-            <button key={c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>{c}</button>
-          ))}
+          {cats.map(c => <button key={c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>{c}</button>)}
         </div>
       </div>
-      <div className="pantry-count">{filtered.length} of {pantry.length} Square products</div>
-      <div className="pantry-scroll">
-        <div className="pantry-list" style={{ borderTop: 0 }}>
-          {filtered.length === 0 ? (
-            <div className="pantry-empty">Nothing matches — try the chips above.</div>
-          ) : filtered.map(it => (
-            <div className="pantry-row" key={it.idx}>
-              <div className="idx">{it.idx}</div>
-              <div className="img"><Ph g={it.g} label={it.tag.toUpperCase()} /></div>
-              <div>
-                <div className="name">{it.name}</div>
-                <div className="desc">{it.desc}</div>
+      <div className="pantry-count">{filtered.length} of {products.length} Square products</div>
+
+      <div className="order-layout">
+        <div className="order-grid">
+          {filtered.length === 0 && <div className="pantry-empty">Nothing matches — try the chips above.</div>}
+          {filtered.slice(0, 60).map(p => {
+            const id = p.variationId || p.id;
+            const qty = cart[id] || 0;
+            return (
+              <div className="order-card" key={id}>
+                <div className="order-card-ph">
+                  <Ph g={iconForProduct(p)} label={(p.category || 'Store').toUpperCase()} />
+                  {qty > 0 && <span className="order-qty">{qty}</span>}
+                </div>
+                <div className="order-card-body">
+                  <div className="order-card-name">{p.name}</div>
+                  <div className="order-card-cat">{p.category || 'Store'}</div>
+                  <div className="order-card-foot">
+                    <span className="order-card-price">{moneyExact(p.priceCents)}</span>
+                    <button className="order-add" onClick={() => add(id)}>Add +</button>
+                  </div>
+                </div>
               </div>
-              <div className="tag">{it.tag}</div>
-              <div className="price">${it.price}</div>
-            </div>
-          ))}
+            );
+          })}
+          {filtered.length > 60 && <div className="order-more">Showing 60 of {filtered.length} — search or filter to narrow down.</div>}
         </div>
+
+        <aside className="order-cart">
+          <div className="order-cart-head">
+            <span>Your weekly box</span>
+            <span className="order-cart-count">{cartCount > 0 ? `${cartCount} item${cartCount === 1 ? '' : 's'}` : 'Empty'}</span>
+          </div>
+          {hasCart ? (
+            <>
+              <div className="order-cart-lines">
+                {lines.map(l => (
+                  <div className="order-cart-line" key={l.id}>
+                    <span><button onClick={() => remove(l.id)} className="order-line-minus" aria-label="Remove one">−</button>{l.qty}× {l.p.name}</span>
+                    <span>{moneyExact(l.p.priceCents * l.qty)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="order-total"><span>Total</span><strong>{moneyExact(totalCents)}</strong></div>
+              <div className="order-fields">
+                <input placeholder="Name" value={customer.name} onChange={e => setCustomer(c => ({ ...c, name: e.target.value }))} />
+                <input placeholder="Mobile — for the ready text" value={customer.phone} onChange={e => setCustomer(c => ({ ...c, phone: e.target.value }))} />
+                <input placeholder="Email — for the receipt" type="email" value={customer.email} onChange={e => setCustomer(c => ({ ...c, email: e.target.value }))} />
+              </div>
+              <div className="order-pickup">Pickup Wed afternoon · at the counter</div>
+              <button className="cta" onClick={startCheckout} disabled={busy}>{busy ? 'Starting…' : 'Checkout with Square →'}</button>
+              {error && <div className="reserve-note" style={{ color: 'var(--oxide)' }}>{error}</div>}
+              <div className="order-cart-note">Order by Mon 12 PM · pickup Wed · no delivery.</div>
+            </>
+          ) : (
+            <div className="order-cart-empty">Your box is empty.<br />Add provisions to start →</div>
+          )}
+        </aside>
       </div>
+
+      {session && (
+        <OrderPaymentForm
+          session={session}
+          customer={customer}
+          lines={lines}
+          onPay={onPay}
+          onCancel={() => setSession(null)}
+          onSuccess={(paid) => { setSession(null); setConfirmed(paid); setCart({}); }}
+        />
+      )}
+
+      {confirmed && (
+        <div className="modal-bg" onClick={() => setConfirmed(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <button className="x" onClick={() => setConfirmed(null)}>Close ✕</button>
+            <h3>Order <em>received.</em></h3>
+            <p>Your Square payment is complete. We'll have your box packed for pickup Wednesday afternoon at the counter — check your email for the receipt.</p>
+            <div className="conf">Conf. {confirmed.orderCode}</div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
@@ -648,13 +846,13 @@ const SitePlan = ({ sel, setSel, sites }) => {
         </defs>
 
         <g className="map-world" transform={mapTransform}>
-        <rect x="-360" y="-260" width="1920" height="1320" fill="#D9D2B4"/>
-        <rect x="-360" y="-260" width="1920" height="1320" fill="url(#forest)" opacity="0.35"/>
+        <rect x="-360" y="-260" width="1920" height="1320" fill="#17171A"/>
+        <rect x="-360" y="-260" width="1920" height="1320" fill="url(#forest)" opacity="0.5"/>
 
         {/* Store drive and RV loop */}
         <path d="M-80 150 L560 -42" stroke="#2A2925" strokeWidth="56" fill="none" strokeLinecap="round" opacity="0.9"/>
         <path d="M-80 150 L560 -42" stroke="#EDE7D7" strokeWidth="2" strokeDasharray="18 18" fill="none" opacity="0.8"/>
-        <text x="84" y="106" fontFamily="JetBrains Mono" fontSize="11" letterSpacing="2" fill="#11100E" transform="rotate(-17 84 106)">CHIWAWA LOOP RD</text>
+        <text x="84" y="106" fontFamily="JetBrains Mono" fontSize="11" letterSpacing="2" fill="#A6A49C" transform="rotate(-17 84 106)">CHIWAWA LOOP RD</text>
 
         <path d="M286 158 C318 232 346 266 372 300" stroke="#11100E" strokeWidth="32" fill="none" strokeLinecap="round" opacity="0.82"/>
         <path d="M286 158 C318 232 346 266 372 300" stroke="#EDE7D7" strokeWidth="2" strokeDasharray="7 11" fill="none"/>
@@ -664,7 +862,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <path className="roadline" d="M372 300 C496 232 700 238 820 320 C922 392 908 566 780 650 C656 732 454 698 356 578 C272 476 288 374 372 300 Z"
               stroke="#EDE7D7" strokeWidth="2" strokeDasharray="7 11" fill="none"/>
         <path d="M430 364 C526 312 668 314 748 366 C812 408 802 522 724 582 C632 654 480 626 414 536 C358 458 368 400 430 364 Z"
-              fill="#C5C3A2" opacity="0.78"/>
+              fill="#1E1E22" opacity="0.9"/>
         <path d="M456 392 C540 354 654 356 720 398 C764 430 760 500 706 548 C634 612 512 590 456 522 C414 468 414 420 456 392 Z"
               fill="none" stroke="#7A776E" strokeWidth="1.3" strokeDasharray="5 8" opacity="0.5"/>
 
@@ -682,8 +880,8 @@ const SitePlan = ({ sel, setSel, sites }) => {
 
         {/* Tent area marker */}
         <g>
-          <rect x="456" y="392" width="284" height="220" fill="none" stroke="#11100E" strokeWidth="1.4" strokeDasharray="4 6" rx="8"/>
-          <text x="598" y="624" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1.5" textAnchor="middle" fill="#11100E">TENT AREAS T01-T10</text>
+          <rect x="456" y="392" width="284" height="220" fill="none" stroke="#A6A49C" strokeWidth="1.4" strokeDasharray="4 6" rx="8"/>
+          <text x="598" y="624" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1.5" textAnchor="middle" fill="#A6A49C">TENT AREAS T01-T10</text>
         </g>
 
         {/* Trees */}
@@ -1089,8 +1287,8 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
   return (
     <section className="section reveal booking-section" id="stay" style={{ background: 'var(--paper)' }}>
       <div className="head">
-        <h2>Book RV or tent. <em>Right behind Midway.</em></h2>
-        <p>Full hookup sites include water, septic, and electricity. Partial hookup sites include water and electricity. Tent areas T01-T10 sit on the center island, close to coffee, fuel, ice, firewood, and groceries.</p>
+        <h2>Reserve your <em>site.</em></h2>
+        <p>Full-hookup RV pads and walk-in tent areas right behind Midway. Pick a pad on the live map, choose your dates, and pay upfront with Square. Full hookups include water, septic, and electricity; tent areas T01–T10 sit on the center island, steps from coffee, fuel, ice, and firewood.</p>
         <a href="/manage.html" style={{ display: 'inline-block', marginTop: 20, padding: '14px 28px', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--ink)', borderRadius: 999 }}>Manage existing booking →</a>
       </div>
 
@@ -1378,23 +1576,20 @@ const Instagram = ({ settings = {} }) => {
   const posts = buildInstagramPosts(settings);
   if (posts.length === 0) return null;
 
+  const handle = settings.instagramHandle || 'midwaygrocer';
+  const profileUrl = settings.instagramUrl || `https://www.instagram.com/${handle}/`;
   return (
     <section className="section reveal instagram-section" id="instagram">
-      <div className="head">
+      <div className="instagram-head">
         <h2>{section?.title || <>Fresh from <em>Midway.</em></>}</h2>
-        <p>{section?.copy || 'Fresh store updates, seasonal notes, and a closer look at life around Midway.'}</p>
+        <a className="instagram-handle" href={profileUrl} target="_blank" rel="noreferrer">@{handle} →</a>
       </div>
       <div className="instagram-gallery" aria-label="Midway Instagram gallery">
         {posts.map((post, index) => (
-          <article className="instagram-card" key={`${post.title}-${index}`}>
-            <img src={post.image} alt="" loading="lazy" onError={event => { event.currentTarget.src = fallbackInstagramImage(index); }} />
-            <div>
-              <span>{post.label || 'Post'} {String(index + 1).padStart(2, '0')}</span>
-              <h3>{post.title}</h3>
-              <p>{post.caption}</p>
-              {post.href && <a href={post.href} target="_blank" rel="noreferrer">Open on Instagram →</a>}
-            </div>
-          </article>
+          <a className="instagram-card" key={`${post.title}-${index}`} href={post.href || profileUrl} target="_blank" rel="noreferrer">
+            <img src={post.image} alt={post.caption || 'Midway Instagram post'} loading="lazy" onError={event => { event.currentTarget.src = fallbackInstagramImage(index); }} />
+            {post.caption && <span className="instagram-cap">{post.caption}</span>}
+          </a>
         ))}
       </div>
     </section>
@@ -1469,6 +1664,10 @@ const Find = ({ phone = '', address = '', hours = [] }) => {
               <span className="t">{hourLabel(row)}</span>
             </div>
           ))}
+          <div className="h-row">
+            <span>Gas · pay at pump</span>
+            <span className="t" style={{ color: 'var(--oxide)' }}>24/7</span>
+          </div>
           <div style={{ marginTop: 32, display:'grid', gap: 10 }}>
             <div className="eyebrow">Contact</div>
             {phone && <div style={{ fontFamily:'var(--serif)', fontSize: 26 }}>{phone}</div>}
@@ -1489,7 +1688,7 @@ const Foot = ({ visible = {}, phone = '', address = '', instagramUrl = '' }) => 
         <h4>The Store</h4>
         <a href="#today">Hours &amp; status</a>
         {visible.coffee && <a href="#coffee">Coffee</a>}
-        {visible.products && <a href="#pantry">Pantry &amp; provisions</a>}
+        {visible.products && <a href="#order">Pantry &amp; order ahead</a>}
         {visible.rvBooking && <a href="#stay">Book Site</a>}
         {visible.rvBooking && <a href="/manage.html">Manage booking</a>}
         {visible.instagram && (
@@ -1577,6 +1776,9 @@ const App = () => {
     }),
   });
 
+  const orderCheckout = async (payload) => api('/orders/checkout', { method: 'POST', body: JSON.stringify(payload) });
+  const orderPay = async (payload) => api('/orders/pay', { method: 'POST', body: JSON.stringify(payload) });
+
   useReveal();
 
   const jumpStay = () => document.getElementById('stay')?.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -1592,8 +1794,9 @@ const App = () => {
       <Nav visible={visibleSections} phone={bootstrap.settings?.phone} address={bootstrap.settings?.address} />
       <Hero flags={bootstrap.featureFlags} phone={bootstrap.settings?.phone} address={bootstrap.settings?.address} hours={bootstrap.hours || []} />
       <Ticker onJumpStay={jumpStay} sites={sites} bootstrap={bootstrap} />
+      <Marquee />
+      {visibleSections.products && <OrderAhead products={bootstrap.products || []} onCheckout={orderCheckout} onPay={orderPay} />}
       {visibleSections.coffee && <Coffee menu={bootstrap.coffeeMenu || COFFEE} />}
-      {visibleSections.products && <Pantry products={bootstrap.products || []} />}
       {visibleSections.rvBooking && (
         <Stay
           sites={sites}

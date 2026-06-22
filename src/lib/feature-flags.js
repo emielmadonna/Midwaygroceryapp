@@ -27,7 +27,7 @@ const DEFAULT_FLAGS = {
   'payments.enabled': true,
   'payments.provider.square': true,
   'payments.refunds': false,
-  'inventory.cache': false,
+  'inventory.cache': true,
   'inventory.low_stock_alerts': false,
   'fuel.prices': true,
   'fuel.tank_levels': true,

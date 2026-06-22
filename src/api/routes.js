@@ -27,6 +27,8 @@ import {
   normalizeSquareCatalogItemsForInventory,
   verifySquareWebhookSignature,
 } from '../lib/square-api.js';
+import { getSquareStorefront } from '../lib/square-storefront.js';
+import { createSquareOrder, retrieveSquareOrder, createOrderPayment, sendOrderConfirmationEmail, sendOwnerOrderEmail } from '../lib/order-checkout.js';
 import { normalizeSquareWebhookEvent } from '../lib/square-webhooks.js';
 import {
   buildSlackInstallUrl,
@@ -175,19 +177,20 @@ export function createApiRouter({
   router.get('/public/bootstrap', async (req, res) => {
     try {
       const featureFlags = resolvedStore.flags?.() ?? {};
-      if (featureFlags.products) {
+      if (featureFlags.products || featureFlags.coffee) {
         try {
           const squareConfig = await squareProviderConfig();
-          const persistedProducts = await resolvedStore.listStoreInventory?.({ activeOnly: true }) ?? [];
-          if (persistedProducts.length) {
+          if (squareConfig.accessToken) {
+            const storefront = await getSquareStorefront({ env: squareConfig, fetchImpl });
+            resolvedStore.state.squareProducts = storefront.products;
+            resolvedStore.state.squareCoffeeMenu = storefront.coffeeMenu;
+          } else {
+            const persistedProducts = await resolvedStore.listStoreInventory?.({ activeOnly: true }) ?? [];
             resolvedStore.state.squareProducts = persistedProducts;
-          } else if (squareConfig.accessToken) {
-            const items = await listSquareCatalogItems({ env: squareConfig, fetchImpl });
-            resolvedStore.state.squareProducts = normalizeSquareCatalogItemsForInventory(items);
           }
         } catch (error) {
-          console.warn('[Square] Product sync unavailable:', error.message);
-          resolvedStore.state.squareProducts = [];
+          console.warn('[Square] Storefront sync unavailable:', error.message);
+          resolvedStore.state.squareProducts = resolvedStore.state.squareProducts || [];
         }
       }
 
@@ -200,6 +203,96 @@ export function createApiRouter({
       });
     } catch (error) {
       res.status(502).json(apiError('PUBLIC_BOOTSTRAP_UNAVAILABLE', error.message));
+    }
+  });
+
+  // ─── Order ahead (Square catalog pickup orders) ───────────────────────────
+  router.post('/orders/checkout', async (req, res) => {
+    try {
+      const items = (Array.isArray(req.body.items) ? req.body.items : [])
+        .map(i => ({ variationId: String(i.variationId || ''), quantity: Math.max(1, parseInt(i.quantity, 10) || 1) }))
+        .filter(i => i.variationId);
+      if (!items.length) throw new Error('Your cart is empty.');
+      const customer = req.body.customer || {};
+      const squareConfig = await squareProviderConfig();
+      if (!squareConfig.accessToken) throw new Error('Online ordering is unavailable right now.');
+      const orderCode = `MWO-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      const order = await createSquareOrder({ items, orderCode, customer, env: squareConfig, fetchImpl });
+      res.json({
+        ok: true,
+        data: {
+          orderCode,
+          orderId: order.orderId,
+          amountCents: order.amountCents,
+          currency: order.currency,
+          checkout: {
+            mode: 'web-payments',
+            environment: squareConfig.environment || (env.NODE_ENV === 'production' ? 'production' : 'sandbox'),
+            applicationId: squareConfig.applicationId,
+            locationId: squareConfig.locationId,
+            currency: order.currency,
+          },
+        },
+      });
+    } catch (error) {
+      res.status(400).json(apiError('ORDER_CHECKOUT_FAILED', error.message));
+    }
+  });
+
+  router.post('/orders/pay', async (req, res) => {
+    try {
+      const { orderId, orderCode, sourceId, verificationToken, idempotencyKey } = req.body;
+      const customer = req.body.customer || {};
+      if (!orderId || !sourceId) throw new Error('Missing payment details.');
+      const squareConfig = await squareProviderConfig();
+      const authoritative = await retrieveSquareOrder({ orderId, env: squareConfig, fetchImpl });
+      const payment = await createOrderPayment({
+        orderId,
+        amountCents: authoritative.amountCents,
+        currency: authoritative.currency,
+        sourceId,
+        verificationToken,
+        idempotencyKey,
+        orderCode,
+        buyerEmail: customer.email,
+        env: squareConfig,
+        fetchImpl,
+      });
+      const orderForEmail = {
+        orderCode,
+        amountCents: payment.amountCents,
+        customerEmail: customer.email,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        items: Array.isArray(req.body.itemsSummary) ? req.body.itemsSummary : [],
+        receiptUrl: payment.receiptUrl,
+      };
+      try {
+        await sendOrderConfirmationEmail({ order: orderForEmail, env, fetchImpl });
+      } catch (emailError) {
+        console.warn('[Order] customer email failed:', emailError.message);
+      }
+      const ownerEmail = env.ADMIN_OWNER_EMAIL || env.OWNER_EMAIL;
+      if (ownerEmail) {
+        try {
+          await sendOwnerOrderEmail({ order: orderForEmail, ownerEmail, env, fetchImpl });
+        } catch (emailError) {
+          console.warn('[Order] owner email failed:', emailError.message);
+        }
+      }
+      try {
+        await resolvedStore.recordNotification?.({
+          type: 'admin.order_received',
+          channel: 'dashboard',
+          recipient: 'owner',
+          subject: `New pickup order ${orderCode}`,
+          body: `${customer.name || 'A customer'} placed a pickup order for $${(payment.amountCents / 100).toFixed(2)}.`,
+          status: 'queued',
+        });
+      } catch { /* best effort */ }
+      res.json({ ok: true, data: { orderCode, payment, pickup: 'Wednesday afternoon' } });
+    } catch (error) {
+      res.status(402).json(apiError('ORDER_PAYMENT_FAILED', error.message));
     }
   });
 
