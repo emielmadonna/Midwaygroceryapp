@@ -40,7 +40,11 @@ html {
 /* Reserve a left gutter for the accent ribbon so nothing sits under it */
 body { padding-left: var(--ribbon); max-width: 100%; }
 .nav { left: var(--ribbon) !important; }
-@media (max-width: 600px) { :root { --ribbon: 18px; } }
+@media (max-width: 600px) {
+  :root { --ribbon: 18px; }
+  /* Hero sub-heading is too wordy on small screens — headline carries it */
+  .hero-redesign .hero-lede { display: none; }
+}
 body {
   background: var(--bone);
   color: var(--ink);
