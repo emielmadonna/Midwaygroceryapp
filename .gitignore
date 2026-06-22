@@ -27,3 +27,6 @@ dist-ssr
 
 # Claude Code session state
 .claude/
+
+# Local backfill state
+scripts/.harbor-tried.json
