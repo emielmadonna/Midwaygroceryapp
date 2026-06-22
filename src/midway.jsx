@@ -343,7 +343,7 @@ const Hero = ({ flags = {}, hours = [] }) => {
     : (today && !today.closed ? `Store open · ${hourLabel(today)}` : (today?.closed ? 'Closed today' : 'Store hours vary'));
   return (
     <header id="top" className="hero hero-redesign">
-      <img className="hero-bg" src="/images/exterior-wide.jpg" alt="Midway Gas & Grocery storefront in Plain, Washington" />
+      <img className="hero-bg" src="/images/store-dusk.jpg" alt="Midway Gas & Grocery storefront at dusk in Plain, Washington" />
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
         <div className="hero-status">
@@ -562,6 +562,8 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
 
   const add = (id) => { setCart(c => ({ ...c, [id]: (c[id] || 0) + 1 })); setError(''); };
   const remove = (id) => setCart(c => { const n = { ...c }; const q = (n[id] || 0) - 1; if (q > 0) n[id] = q; else delete n[id]; return n; });
+  const removeLine = (id) => setCart(c => { const n = { ...c }; delete n[id]; return n; });
+  const clearCart = () => { setCart({}); setError(''); };
 
   const startCheckout = async () => {
     if (!hasCart || busy) return;
@@ -641,15 +643,27 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
         <aside className="order-cart">
           <div className="order-cart-head">
             <span>Your weekly box</span>
-            <span className="order-cart-count">{cartCount > 0 ? `${cartCount} item${cartCount === 1 ? '' : 's'}` : 'Empty'}</span>
+            {hasCart
+              ? <button className="order-cart-clear" onClick={clearCart}>Clear</button>
+              : <span className="order-cart-count">Empty</span>}
           </div>
           {hasCart ? (
             <>
               <div className="order-cart-lines">
                 {lines.map(l => (
                   <div className="order-cart-line" key={l.id}>
-                    <span><button onClick={() => remove(l.id)} className="order-line-minus" aria-label="Remove one">−</button>{l.qty}× {l.p.name}</span>
-                    <span>{moneyExact(l.p.priceCents * l.qty)}</span>
+                    <div className="order-line-info">
+                      <span className="order-line-name">{l.p.name}</span>
+                      <span className="order-line-price">{moneyExact(l.p.priceCents * l.qty)}</span>
+                    </div>
+                    <div className="order-line-controls">
+                      <div className="order-qty-stepper">
+                        <button onClick={() => remove(l.id)} aria-label="Remove one">−</button>
+                        <span className="order-qty-num">{l.qty}</span>
+                        <button onClick={() => add(l.id)} aria-label="Add one">+</button>
+                      </div>
+                      <button className="order-line-remove" onClick={() => removeLine(l.id)} aria-label="Remove item">Remove</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -746,7 +760,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
   };
   const zoomAt = (clientX, clientY, nextZoom) => {
     const v = viewRef.current;
-    const targetZoom = clamp(nextZoom, 1, 2.4);
+    const targetZoom = clamp(nextZoom, 1, 4);
     if (targetZoom === v.zoom) return;
     const focal = pointInViewBox(clientX, clientY);
     const ratio = targetZoom / v.zoom;
@@ -760,7 +774,10 @@ const SitePlan = ({ sel, setSel, sites }) => {
   const onWheel = (event) => {
     event.preventDefault();
     // exponential factor = smooth, consistent zoom regardless of delta magnitude
-    zoomAt(event.clientX, event.clientY, viewRef.current.zoom * Math.exp(-event.deltaY * 0.0015));
+    // Mac trackpad pinch arrives as ctrl+wheel with tiny deltas — needs a much
+    // larger multiplier than a mouse wheel to feel responsive.
+    const intensity = event.ctrlKey ? 0.015 : 0.0025;
+    zoomAt(event.clientX, event.clientY, viewRef.current.zoom * Math.exp(-event.deltaY * intensity));
   };
   useEffect(() => {
     const sitePlan = sitePlanRef.current;
@@ -820,7 +837,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
     const pointers = Array.from(pointersRef.current.values());
     if (gesture.mode === 'pinch' && pointers.length >= 2) {
       const [first, second] = pointers;
-      const nextZoom = clamp(gesture.startZoom * (pointerDistance(first, second) / gesture.startDistance), 1, 2.4);
+      const nextZoom = clamp(gesture.startZoom * (pointerDistance(first, second) / gesture.startDistance), 1, 4);
       const ratio = nextZoom / gesture.startZoom;
       setView(nextZoom,
         gesture.startCenter.x - (gesture.startCenter.x - gesture.startPan.x) * ratio,
@@ -968,6 +985,9 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <div className="l"><i className="open" /> Open</div>
         <div className="l"><i className="t" /> Taken</div>
         <div className="l"><i className="s" /> Your picks</div>
+      </div>
+      <div className="siteplan-hint" aria-hidden="true">
+        <span className="siteplan-hint-ic">⤢</span> Scroll to zoom · drag to pan
       </div>
     </div>
   );

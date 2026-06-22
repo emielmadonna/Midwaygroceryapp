@@ -27,16 +27,18 @@
   --mono: 'JetBrains Mono', 'Menlo', monospace;
 
   --pad: clamp(20px, 4vw, 64px);
+  --ribbon: 26px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html {
   scroll-behavior: smooth;
-  scroll-snap-type: y proximity;   /* gentle snap to section tops; free-scroll within tall sections */
-  scroll-padding-top: 80px;        /* clear the fixed nav when snapping/anchoring */
+  scroll-padding-top: 84px;        /* clear the fixed nav for anchor links */
 }
-/* Top-level sections snap to the top as you scroll near them */
-.hero, .ticker, .marquee, .section, .foot { scroll-snap-align: start; }
+/* Reserve a left gutter for the accent ribbon so nothing sits under it */
+body { padding-left: var(--ribbon); }
+.nav { left: var(--ribbon) !important; }
+@media (max-width: 600px) { :root { --ribbon: 18px; } }
 body {
   background: var(--bone);
   color: var(--ink);
@@ -302,7 +304,7 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 }
 .hero-redesign .hero-bg {
   object-fit: cover;
-  object-position: center 42%;
+  object-position: center 52%;
   filter: saturate(1.04) contrast(1.02) brightness(.98);
 }
 .hero-redesign .hero-shade {
@@ -960,12 +962,28 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 .reveal { opacity: 1; }
 /* No fill-mode: if the animation can't run, the element stays at its base
    opacity:1 (never blank). When it runs it plays 0 -> 1 then settles on base. */
-.reveal.in { animation: revealUp .5s cubic-bezier(.22,.7,.25,1); }
-@keyframes revealUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+.reveal.in { animation: revealUp .55s cubic-bezier(.22,.7,.25,1); }
+@keyframes revealUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+
+/* Light, minimal cascade for grid items as their section reveals. fill-mode is
+   left at `none`, so if the animation can't run the items stay visible (never blank). */
+.reveal.in .order-card,
+.reveal.in .instagram-card,
+.reveal.in .coffee-cat .item,
+.reveal.in .ticker > div { animation: revealUp .5s cubic-bezier(.22,.7,.25,1); }
+.reveal.in .order-card:nth-child(3n+2),
+.reveal.in .coffee-cat .item:nth-child(2),
+.reveal.in .instagram-card:nth-child(2) { animation-delay: .05s; }
+.reveal.in .order-card:nth-child(3n),
+.reveal.in .coffee-cat .item:nth-child(3),
+.reveal.in .instagram-card:nth-child(3) { animation-delay: .1s; }
+.reveal.in .instagram-card:nth-child(4) { animation-delay: .15s; }
+
 body.anim-still .reveal,
-body.anim-still .reveal.in { animation: none; }
+body.anim-still .reveal.in,
+body.anim-still .reveal.in * { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .reveal.in { animation: none; }
+  .reveal.in, .reveal.in * { animation: none; }
   html { scroll-behavior: auto; }
 }
 body.anim-still .marquee-track { animation: none; }
@@ -1569,10 +1587,30 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .order-cart { position: sticky; top: 90px; border: 1px solid var(--ink); padding: 18px 20px; background: var(--paper); }
 .order-cart-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); padding-bottom: 13px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
 .order-cart-count { color: var(--oxide); }
-.order-cart-lines { padding: 13px 0; border-bottom: 1px dashed var(--rule-2); display: grid; gap: 4px; }
-.order-cart-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
-.order-line-minus { border: 0; background: transparent; color: var(--mute); cursor: pointer; font-family: var(--mono); font-size: 14px; margin-right: 6px; }
-.order-line-minus:hover { color: var(--oxide); }
+.order-cart-clear {
+  border: 0; background: transparent; cursor: pointer; color: var(--mute);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  text-decoration: underline; text-underline-offset: 3px; transition: color .2s;
+}
+.order-cart-clear:hover { color: var(--oxide); }
+.order-cart-lines { padding: 13px 0; border-bottom: 1px dashed var(--rule-2); display: grid; gap: 14px; }
+.order-cart-line { display: grid; gap: 7px; }
+.order-line-info { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.order-line-name { font-size: 13px; line-height: 1.3; color: var(--ink); }
+.order-line-price { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.order-line-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.order-qty-stepper { display: inline-flex; align-items: center; border: 1px solid var(--rule-2); border-radius: 999px; }
+.order-qty-stepper button {
+  width: 30px; height: 28px; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+  font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; transition: color .2s;
+}
+.order-qty-stepper button:hover { color: var(--oxide); }
+.order-qty-num { min-width: 26px; text-align: center; font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.order-line-remove {
+  border: 0; background: transparent; cursor: pointer; color: var(--mute);
+  font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; transition: color .2s;
+}
+.order-line-remove:hover { color: var(--oxide); }
 .order-total { display: flex; align-items: baseline; justify-content: space-between; padding-top: 13px; }
 .order-total span { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
 .order-total strong { font-family: var(--serif); font-size: 30px; font-weight: 400; }
@@ -1668,3 +1706,52 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .ticker.today-strip > div .v.accent { color: var(--accent-blue); }
 .instagram-handle { color: var(--accent-yellow); }
 .order-head .eyebrow { color: var(--accent-yellow) !important; }
+
+/* ─── Left-edge accent ribbon: red | white | yellow | white | blue (vertical bars) ─── */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 26px;
+  z-index: 100;
+  background: linear-gradient(
+    90deg,
+    var(--accent-red) 0 7px,
+    #ffffff 7px 10px,
+    var(--accent-yellow) 10px 16px,
+    #ffffff 16px 19px,
+    var(--accent-blue) 19px 26px
+  );
+}
+@media (max-width: 600px) {
+  body::before {
+    width: 18px;
+    background: linear-gradient(90deg, var(--accent-red) 0 5px, #fff 5px 7px, var(--accent-yellow) 7px 12px, #fff 12px 14px, var(--accent-blue) 14px 18px);
+  }
+}
+
+/* ─── Booking map: zoom hint ─── */
+.siteplan-hint {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(15,15,17,0.72);
+  border: 1px solid var(--rule-2);
+  backdrop-filter: blur(8px);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  pointer-events: none;
+  z-index: 3;
+}
+.siteplan-hint-ic { font-size: 12px; color: var(--accent-blue); transform: rotate(45deg); display: inline-block; }
+@media (max-width: 600px) { .siteplan-hint { font-size: 8px; padding: 6px 10px; } }

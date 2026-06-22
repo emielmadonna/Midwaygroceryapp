@@ -27,7 +27,7 @@ const DEFAULT_FLAGS = {
   'payments.enabled': true,
   'payments.provider.square': true,
   'payments.refunds': false,
-  'inventory.cache': true,
+  'inventory.cache': false, // Order Ahead catalog hidden for now; flip true (or FEATURE_FLAG_INVENTORY__CACHE=true) to re-enable
   'inventory.low_stock_alerts': false,
   'fuel.prices': true,
   'fuel.tank_levels': true,
