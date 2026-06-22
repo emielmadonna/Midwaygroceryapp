@@ -13,6 +13,11 @@ export function createNotificationService({
         recorded.push(await sendCustomerBookingEmail({ booking, fetchImpl, store, env }));
       }
 
+      const ownerEmail = env?.ADMIN_OWNER_EMAIL || env?.OWNER_EMAIL;
+      if (ownerEmail && env?.RESEND_API_KEY) {
+        recorded.push(await sendOwnerBookingEmail({ booking, ownerEmail, fetchImpl, store, env }));
+      }
+
       await sendSlackBookingNotification({ booking, fetchImpl, store });
       return recorded;
     },
@@ -106,6 +111,66 @@ async function sendViaResend({ booking, notification, resendApiKey, fetchImpl, s
     return store?.recordNotification?.({ ...notification, status: 'failed', errorMessage: error.message })
       ?? { ...notification, status: 'failed', errorMessage: error.message };
   }
+}
+
+async function sendOwnerBookingEmail({ booking, ownerEmail, fetchImpl, store, env }) {
+  const notification = {
+    type: 'owner.booking_confirmed',
+    channel: 'email',
+    recipient: ownerEmail,
+    subject: `New RV booking ${booking.bookingCode} — ${formatCents(booking.totalCents)}`,
+    body: `${booking.customerName} booked ${booking.rvSiteId} from ${booking.startDate} to ${booking.endDate}.`,
+    bookingCode: booking.bookingCode,
+    status: 'queued',
+  };
+  const from = env?.FROM_EMAIL ?? 'Midway Gas & Grocery <bookings@midwayplain.com>';
+  try {
+    const response = await fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.RESEND_API_KEY}` },
+      body: JSON.stringify({ from, to: [ownerEmail], subject: notification.subject, html: buildOwnerBookingHtml(booking) }),
+    });
+    if (!response.ok) throw new Error(`Resend returned ${response.status}`);
+    return store?.recordNotification?.({ ...notification, status: 'sent' }) ?? { ...notification, status: 'sent' };
+  } catch (error) {
+    return store?.recordNotification?.({ ...notification, status: 'failed', errorMessage: error.message })
+      ?? { ...notification, status: 'failed', errorMessage: error.message };
+  }
+}
+
+function buildOwnerBookingHtml(booking = {}) {
+  const siteDisplay = booking.siteLines?.length
+    ? booking.siteLines.map(s => `Site ${s.siteNumber}`).join(', ')
+    : booking.siteNumber ? `Site ${booking.siteNumber}` : (booking.rvSiteId ?? 'Site');
+  const nights = booking.nights ?? 1;
+  const row = (label, value, href) => value
+    ? `<tr><td style="padding:5px 0;color:#888;font-size:13px;width:96px;">${label}</td><td style="padding:5px 0;color:#222;font-size:14px;">${href ? `<a href="${escHtml(href)}" style="color:#1B1B1D;">${escHtml(value)}</a>` : escHtml(value)}</td></tr>`
+    : '';
+  return `<!DOCTYPE html><html><body style="margin:0;background:#ece9e1;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#ece9e1;padding:28px 16px;"><tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:10px;overflow:hidden;">
+      <tr><td style="background:#0F0F11;padding:22px 32px;">
+        <p style="margin:0 0 4px;color:#54c6cb;font-size:11px;letter-spacing:2px;text-transform:uppercase;">New RV booking</p>
+        <h1 style="margin:0;color:#F1F0EB;font-size:22px;font-weight:600;">${escHtml(booking.bookingCode || '')} · ${formatCents(booking.totalCents)} paid</h1></td></tr>
+      <tr><td style="padding:26px 32px;">
+        <p style="margin:0 0 12px;color:#1B1B1D;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Guest</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:22px;">
+          ${row('Name', booking.customerName)}
+          ${row('Phone', booking.customerPhone, booking.customerPhone ? `tel:${String(booking.customerPhone).replace(/[^\d+]/g, '')}` : '')}
+          ${row('Email', booking.customerEmail, booking.customerEmail ? `mailto:${booking.customerEmail}` : '')}
+        </table>
+        <p style="margin:0 0 12px;color:#1B1B1D;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Stay</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          ${row('Site', siteDisplay)}
+          ${row('Arrival', formatDate(booking.startDate))}
+          ${row('Departure', formatDate(booking.endDate))}
+          ${row('Nights', `${nights} night${nights === 1 ? '' : 's'}`)}
+          ${row('Party', `${booking.guests ?? 1} guest${(booking.guests ?? 1) === 1 ? '' : 's'} · ${booking.vehicles ?? 1} vehicle${(booking.vehicles ?? 1) === 1 ? '' : 's'}`)}
+          <tr><td style="padding-top:12px;font-size:15px;font-weight:700;color:#1B1B1D;">Total paid</td>
+          <td style="padding-top:12px;font-size:15px;font-weight:700;color:#1B1B1D;">${formatCents(booking.totalCents)}</td></tr>
+        </table>
+      </td></tr>
+    </table></td></tr></table></body></html>`;
 }
 
 function formatDate(dateStr) {

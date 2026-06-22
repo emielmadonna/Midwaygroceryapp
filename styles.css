@@ -1,19 +1,25 @@
-/* Midway — Bone & Oxide. Editorial farmhouse minimalism. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,400..700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+/* Midway — Dusk redesign. Editorial dark minimalism. */
+@import url('https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,400..700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 :root {
-  --bone: #EDE7D7;
-  --bone-2: #DED7C2;
-  --paper: #F5F0E1;
-  --ink: #11100E;
-  --ink-2: #2A2925;
-  --mute: #7A776E;
-  --rule: rgba(17,16,14,0.16);
-  --rule-2: rgba(17,16,14,0.32);
-  --oxide: #B0341E;
-  --olive: #545636;
+  /* Dark palette — tokens are inverted from the original light theme:
+     --ink is now the light "ink on dark", --paper/--bone are dark surfaces. */
+  --bone: #1B1B1D;          /* page background */
+  --bone-2: #26262A;        /* raised / hover surface */
+  --paper: #161618;         /* alternate section surface, cards, modals */
+  --ink: #F1F0EB;           /* primary text + light pills */
+  --ink-2: #C9C7BD;         /* secondary text */
+  --mute: #8C8A82;          /* muted labels */
+  --rule: rgba(241,240,235,0.14);
+  --rule-2: rgba(241,240,235,0.30);
+  --oxide: #54C6CB;         /* accent (teal) */
+  --olive: #2A9DA2;         /* secondary accent (deep teal) */
 
-  --serif: 'Fraunces', 'Times New Roman', serif;
+  /* Surfaces used by the dark-theme overrides */
+  --ink-solid: #0F0F11;     /* deepest surface (footer, gas cell) */
+  --accent-soft: rgba(84,198,203,0.14);
+
+  --serif: 'Libre Caslon Display', 'Fraunces', 'Times New Roman', serif;
   --sans: 'Geist', 'Söhne', 'Helvetica Neue', sans-serif;
   --mono: 'JetBrains Mono', 'Menlo', monospace;
 
@@ -264,144 +270,120 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 
 /* ─── Rebuilt opening ─── */
 .hero.hero-redesign {
-  min-height: clamp(520px, 72svh, 680px);
-  padding: calc(74px + clamp(30px, 5vw, 58px)) var(--pad) clamp(42px, 6vw, 70px);
-  display: grid;
-  grid-template-rows: 1fr;
-  gap: clamp(24px, 4vw, 42px);
-  align-items: stretch;
+  position: relative;
+  min-height: clamp(560px, 84svh, 680px);
+  padding: clamp(96px, 12vw, 140px) clamp(24px, 6vw, 48px) clamp(56px, 8vw, 80px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0;
   overflow: hidden;
-  color: var(--paper);
-  background: var(--ink);
+  color: #F1F0EB;
+  background: var(--bone);
   border-bottom: 1px solid var(--rule);
 }
 .hero-redesign .hero-bg,
 .hero-redesign .hero-shade {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
 }
 .hero-redesign .hero-bg {
-  left: 0;
-  width: 100%;
   object-fit: cover;
-  object-position: center 47%;
-  filter: saturate(1.05) contrast(1.02) brightness(.96);
+  object-position: center 42%;
+  filter: saturate(1.04) contrast(1.02) brightness(.98);
 }
 .hero-redesign .hero-shade {
-  left: 0;
-  background:
-    linear-gradient(90deg, rgba(17,16,14,.82) 0%, rgba(17,16,14,.54) 36%, rgba(17,16,14,.16) 70%, rgba(17,16,14,.30) 100%),
-    linear-gradient(180deg, rgba(17,16,14,.20) 0%, rgba(17,16,14,.08) 38%, rgba(17,16,14,.80) 100%);
+  background: radial-gradient(120% 100% at 50% 36%, rgba(15,15,17,.32) 0%, rgba(15,15,17,.84) 100%);
 }
 .hero-redesign .hero-copy {
   position: relative;
   z-index: 1;
-  grid-row: 1;
-  align-self: end;
-  min-width: 0;
-  width: min(100%, 860px);
-  max-width: 860px;
-  display: grid;
-  gap: clamp(13px, 1.7vw, 18px);
+  width: min(100%, 940px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.hero-route {
+/* status line — "Store open · 8–7 / Gas 24/7" */
+.hero-status {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  width: fit-content;
-  padding: 9px 13px;
-  border: 1px solid rgba(245,240,225,.34);
-  border-radius: 999px;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
   font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .18em;
+  font-size: 11px;
+  letter-spacing: .22em;
   text-transform: uppercase;
-  color: rgba(245,240,225,.90);
-  background: rgba(17,16,14,.28);
-  backdrop-filter: blur(8px);
+  color: #dcdacd;
 }
-.hero-route i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #5fb86b;
-  box-shadow: 0 0 0 0 rgba(95,184,107,.6);
+.hero-status-open { display: inline-flex; align-items: center; gap: 8px; }
+.hero-status-open i {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--oxide);
+  box-shadow: 0 0 0 0 rgba(84,198,203,.5);
   animation: pulse 2.5s infinite;
 }
-.hero-redesign h1 {
-  max-width: 12.2ch;
-  font-size: clamp(54px, 8vw, 108px);
-  line-height: .92;
-  letter-spacing: 0;
-  color: var(--paper);
-  text-shadow: 0 2px 20px rgba(0,0,0,.30);
-}
-.hero-redesign h1 .line { padding: 0; }
-.hero-redesign h1 .it {
-  color: var(--paper);
-  font-style: italic;
+.hero-status-sep { color: #6f6d65; }
+.hero-status-gas { color: var(--oxide); }
+.hero-redesign .hero-headline {
+  margin-top: 22px;
+  max-width: 19ch;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(40px, 7vw, 82px);
+  line-height: 1.02;
+  letter-spacing: -.01em;
+  color: #F1F0EB;
+  text-shadow: 0 2px 24px rgba(0,0,0,.34);
 }
 .hero-redesign .hero-lede {
-  width: min(100%, 43ch);
-  max-width: 12.4ch;
-  margin: 0;
-  font-family: var(--serif);
-  font-size: clamp(42px, 6vw, 86px);
+  margin-top: 22px;
+  max-width: 50ch;
+  font-family: var(--sans);
+  font-size: clamp(15px, 1.5vw, 18px);
   font-weight: 400;
-  line-height: .98;
+  line-height: 1.55;
   letter-spacing: 0;
-  color: var(--paper);
-  text-shadow: 0 1px 14px rgba(0,0,0,.35);
+  color: #cbc9bf;
+  text-shadow: 0 1px 12px rgba(0,0,0,.3);
 }
 .hero-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 14px;
   flex-wrap: wrap;
+  margin-top: 32px;
 }
 .hero-link {
-  width: fit-content;
-  min-height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 0 18px;
-  border: 1px solid rgba(245,240,225,.78);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: var(--paper);
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 32px;
+  border: 1.5px solid rgba(241,240,235,.6);
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #F1F0EB;
   background: transparent;
-  transition: background .22s, color .22s, border-color .22s;
+  transition: background .22s, color .22s, border-color .22s, transform .22s;
 }
 .hero-primary {
-  border-color: var(--paper);
-  background: var(--paper);
-  color: var(--ink);
+  border-color: #F1F0EB;
+  background: #F1F0EB;
+  color: #1B1B1D;
 }
-.hero-secondary {
-  border-color: rgba(245,240,225,.46);
-  background: rgba(17,16,14,.28);
-  color: var(--paper);
-  backdrop-filter: blur(8px);
-}
-.hero-secondary span {
-  color: rgba(245,240,225,.58);
-}
-.hero-link:hover {
-  border-color: var(--oxide);
-  background: var(--oxide);
-  color: var(--paper);
-}
-.hero-link:hover span {
-  color: color-mix(in srgb, var(--paper) 78%, transparent);
-}
+.hero-primary:hover { background: var(--oxide); border-color: var(--oxide); color: #0F0F11; transform: translateY(-1px); }
+.hero-secondary:hover { border-color: #F1F0EB; background: rgba(241,240,235,.08); }
 /* ─── Live ticker (under hero) ─── */
 .ticker {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1255,65 +1237,70 @@ body.density-compact .section .head { margin-bottom: 40px; }
   background: var(--bone);
 }
 
+.instagram-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.instagram-head h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(34px, 5vw, 50px);
+  line-height: 1;
+  letter-spacing: -.01em;
+}
+.instagram-head h2 em { font-style: italic; color: var(--oxide); }
+.instagram-handle {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--oxide);
+  white-space: nowrap;
+}
+
 .instagram-gallery {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  border-top: 1px solid var(--ink);
-  padding-top: 28px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .instagram-card {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  min-width: 0;
-  border: 1px solid var(--ink);
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  overflow: hidden;
   background: var(--paper);
 }
 
 .instagram-card img {
   width: 100%;
-  aspect-ratio: 4 / 5;
+  height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform .5s cubic-bezier(.2,.7,.3,1);
 }
+.instagram-card:hover img { transform: scale(1.05); }
 
-.instagram-card > div {
-  padding: 18px;
-  display: grid;
-  gap: 8px;
+.instagram-cap {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 28px 14px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #F1F0EB;
+  background: linear-gradient(180deg, transparent, rgba(15,15,17,.86));
+  opacity: 0;
+  transition: opacity .3s;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-
-.instagram-card span {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: var(--mute);
-}
-
-.instagram-card h3 {
-  font-family: var(--serif);
-  font-size: clamp(25px, 2.4vw, 38px);
-  line-height: 1;
-  font-weight: 400;
-}
-
-.instagram-card p {
-  color: var(--ink-2);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.instagram-card a {
-  width: max-content;
-  max-width: 100%;
-  color: var(--oxide);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-}
+.instagram-card:hover .instagram-cap { opacity: 1; }
 
 @media (max-width: 920px) {
   .nav {
@@ -1475,3 +1462,164 @@ body.density-compact .section .head { margin-bottom: 40px; }
     text-align: left;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   DUSK REDESIGN — dark-theme overrides
+   The base rules above assume a light theme where --ink was dark and
+   --paper was light. With the inverted tokens, these zones (which were
+   already "dark zones" or relied on the light/dark duality) need fixing.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Logos — dark artwork, lighten on the dark canvas */
+.nav-logo,
+.foot .wm { filter: invert(1) brightness(1.7); }
+
+/* ─── Nav — translucent dark bar, outlined CTA ─── */
+.nav { background: color-mix(in srgb, var(--bone) 86%, transparent); }
+.nav.scrolled { background: color-mix(in srgb, var(--bone) 95%, transparent); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.nav-cta {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid rgba(241,240,235,.45);
+}
+.nav-cta:hover { background: var(--oxide); border-color: var(--oxide); color: var(--ink-solid); }
+
+/* Hero colours are handled in the main hero block above. */
+
+/* ─── Order ahead ─── */
+.order-head { max-width: 760px; margin-bottom: 30px; }
+.order-head h2 {
+  font-family: var(--serif); font-weight: 400;
+  font-size: clamp(34px, 5vw, 58px); line-height: 1.04; letter-spacing: -.01em;
+  margin-top: 12px;
+}
+.order-head h2 em { font-style: italic; color: var(--oxide); }
+.order-head p { margin-top: 14px; font-size: 16px; line-height: 1.6; color: var(--ink-2); max-width: 60ch; }
+
+.order-tools {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--rule-2);
+}
+
+.order-layout {
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 32px;
+  align-items: start; margin-top: 20px;
+}
+.order-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-content: start; }
+.order-more { grid-column: 1 / -1; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); padding: 14px 0; }
+
+.order-card { border: 1px solid var(--rule); background: var(--paper); display: flex; flex-direction: column; transition: border-color .2s; }
+.order-card:hover { border-color: var(--rule-2); }
+.order-card-ph { position: relative; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--rule); overflow: hidden; }
+.order-qty {
+  position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 999px; background: var(--oxide); color: #0F0F11;
+  font-family: var(--mono); font-size: 11px; display: flex; align-items: center; justify-content: center;
+}
+.order-card-body { padding: 14px; display: flex; flex-direction: column; flex: 1; }
+.order-card-name { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--ink); }
+.order-card-cat { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); margin-top: 5px; }
+.order-card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 14px; }
+.order-card-price { font-family: var(--serif); font-size: 22px; }
+.order-add {
+  border: 1px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding: 9px 13px;
+  transition: background .2s, color .2s;
+}
+.order-add:hover { background: var(--ink); color: var(--bone); }
+
+.order-cart { position: sticky; top: 90px; border: 1px solid var(--ink); padding: 18px 20px; background: var(--paper); }
+.order-cart-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); padding-bottom: 13px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
+.order-cart-count { color: var(--oxide); }
+.order-cart-lines { padding: 13px 0; border-bottom: 1px dashed var(--rule-2); display: grid; gap: 4px; }
+.order-cart-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+.order-line-minus { border: 0; background: transparent; color: var(--mute); cursor: pointer; font-family: var(--mono); font-size: 14px; margin-right: 6px; }
+.order-line-minus:hover { color: var(--oxide); }
+.order-total { display: flex; align-items: baseline; justify-content: space-between; padding-top: 13px; }
+.order-total span { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
+.order-total strong { font-family: var(--serif); font-size: 30px; font-weight: 400; }
+.order-fields { display: grid; gap: 8px; margin-top: 14px; }
+.order-fields input { border: 1px solid var(--rule-2); background: var(--bone); padding: 11px 12px; font-family: var(--sans); font-size: 14px; color: var(--ink); outline: 0; }
+.order-fields input::placeholder { color: var(--mute); }
+.order-pickup { margin-top: 14px; padding: 12px 14px; background: var(--accent-soft); border: 1px solid var(--oxide); font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--oxide); }
+.order-cart-note { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-align: center; color: var(--mute); margin-top: 12px; line-height: 1.7; }
+.order-cart-empty { padding: 26px 4px; text-align: center; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); line-height: 1.9; }
+
+/* Base CTA pill for the order cart (the original .cta is scoped to .book-form). */
+.order-cart .cta {
+  width: 100%; margin-top: 14px; padding: 16px;
+  border-radius: 999px; background: var(--ink); color: var(--bone);
+  font-family: var(--mono); font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+  transition: background .25s, letter-spacing .25s;
+}
+.order-cart .cta:hover:not(:disabled) { background: var(--oxide); color: #0F0F11; }
+.order-cart .cta:disabled { opacity: .4; cursor: not-allowed; }
+
+@media (max-width: 880px) {
+  .order-layout { grid-template-columns: 1fr; }
+  .order-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-cart { position: static; }
+}
+
+/* ─── Today strip — emphasise the 24/7 gas cell ─── */
+.ticker.today-strip > div.gas {
+  background: var(--paper);
+}
+.ticker.today-strip > div.gas .l { color: var(--oxide); }
+.ticker.today-strip > div .v.accent { color: var(--oxide); }
+
+/* ─── Marquee — quieter dividers ─── */
+.marquee { background: var(--ink-solid); }
+.marquee span {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+.marquee span::after { content: '·'; color: var(--mute); font-size: 11px; }
+
+/* ─── Coffee menu — dark dividers ─── */
+.coffee-grid { border-top-color: var(--rule-2); }
+
+/* ─── Site plan map — dark canvas + legend ─── */
+.siteplan {
+  background:
+    linear-gradient(rgba(241,240,235,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(241,240,235,.05) 1px, transparent 1px),
+    linear-gradient(180deg, #18181B 0%, #121214 100%);
+  background-size: 38px 38px, 38px 38px, 100% 100%;
+}
+.siteplan .legend {
+  background: rgba(15,15,17,0.78);
+  border-color: var(--rule-2);
+  color: var(--ink-2);
+}
+.siteplan .legend i { border-color: rgba(241,240,235,.55); }
+.siteplan .legend i.open { background: transparent; }
+.siteplan .legend i.t { background-color: #2a2a2e; background-image: repeating-linear-gradient(45deg, transparent 0 2px, rgba(241,240,235,.35) 2px 3px); }
+.siteplan .pad.taken rect:first-child { fill: #2a2a2e; }
+.siteplan .pad.taken .taken-shade { opacity: .5; }
+
+/* ─── Agreement panel — dark card ─── */
+.agreement-panel {
+  background: linear-gradient(180deg, #1d1d20, #161618);
+  box-shadow: 0 14px 36px rgba(0,0,0,.5);
+}
+.agreement-panel .booking-check { background: rgba(255,255,255,.03); }
+.agreement-scroll { background: var(--paper); }
+
+/* ─── Footer — deepest surface ─── */
+.foot { background: var(--ink-solid); color: var(--ink); padding-top: 48px; }
+.foot .wm { width: auto; height: 26px; object-fit: contain; object-position: left center; }
+.foot-cols { margin-top: 28px; }
+
+/* ─── Form controls — readable on dark ─── */
+.book-form input,
+.book-form select,
+.pantry-search { color: var(--ink); background: var(--paper); border-color: var(--rule-2); }
+.book-form input::placeholder { color: var(--mute); }
+.book-form select option { background: var(--paper); color: var(--ink); }
+/* native date/number controls invert their glyphs on dark */
+.book-form input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .6; }
