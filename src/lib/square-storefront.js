@@ -19,6 +19,9 @@ const ICECREAM_VESSEL_RX = /(cup|cone|jimmies|sprinkle)/i;
 const BOOKING_SKU_RX = /^MIDWAY-(RV|TENT|EXTRA)/i;
 // Age-restricted categories are excluded from online order-ahead (verified at the counter only).
 const EXCLUDED_CATEGORIES = new Set(['Tobacco', 'Cigarettes', 'Tobacco Accessories']);
+// Safety net for alcohol that isn't flagged `is_alcoholic` in Square (e.g. boxed wine).
+// Square's `is_alcoholic` flag is the real fix; this catches obvious wine/beer/spirits by name.
+const ALCOHOL_NAME_RX = /\b(wine|cabernet|sauvignon|merlot|pinot|chardonnay|riesling|zinfandel|moscato|prosecco|champagne|vermouth|sangria|vodka|whiskey|whisky|bourbon|tequila|brandy|cognac|ipa|lager|pilsner|brewing|hard seltzer|hard cider|malt liquor)\b|bota box/i;
 
 function itemDataOf(o) { return o.item_data ?? o.itemData ?? {}; }
 function variationDataOf(v) { return v.item_variation_data ?? v.itemVariationData ?? {}; }
@@ -35,21 +38,25 @@ function priceLabel(cents) {
 export async function fetchSquareCatalog({ env, fetchImpl } = {}) {
   const items = [];
   const categories = {};
+  const images = {};
   let cursor;
   do {
-    const path = `/v2/catalog/list?types=ITEM,CATEGORY${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const path = `/v2/catalog/list?types=ITEM,CATEGORY,IMAGE${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
     const res = await squareRequest(path, { env, fetchImpl });
     for (const o of res.objects ?? []) {
       if (o.type === 'CATEGORY') {
         const cd = o.category_data ?? o.categoryData ?? {};
         if (cd.name) categories[o.id] = cd.name;
+      } else if (o.type === 'IMAGE') {
+        const url = (o.image_data ?? o.imageData ?? {}).url;
+        if (url) images[o.id] = url;
       } else if (o.type === 'ITEM') {
         items.push(o);
       }
     }
     cursor = res.cursor;
   } while (cursor);
-  return { items, categories };
+  return { items, categories, images };
 }
 
 // Map squareItemId -> category name by querying each category's items.
@@ -73,13 +80,14 @@ async function fetchItemCategoryMap({ env, fetchImpl, categories }) {
   return map;
 }
 
-function variationRows(item, categoryName) {
+function variationRows(item, categoryName, imageUrl = null) {
   const it = itemDataOf(item);
   const alcoholic = it.is_alcoholic === true;
   return (it.variations ?? []).map(v => {
     const vd = variationDataOf(v);
     return {
       alcoholic,
+      imageUrl,
       id: item.id,
       variationId: v.id,
       squareItemId: item.id,
@@ -98,7 +106,7 @@ function variationRows(item, categoryName) {
   });
 }
 
-export function buildStorefront({ items, categories }, categoryMap = {}) {
+export function buildStorefront({ items, categories, images = {} }, categoryMap = {}) {
   const products = [];
   const espresso = [];
   const iceCream = [];
@@ -106,7 +114,8 @@ export function buildStorefront({ items, categories }, categoryMap = {}) {
   for (const item of items) {
     const it = itemDataOf(item);
     const nameLower = String(it.name ?? '').trim().toLowerCase();
-    const rows = variationRows(item, categoryMap[item.id]);
+    const imageUrl = (it.image_ids ?? it.imageIds ?? []).map(id => images[id]).find(Boolean) ?? null;
+    const rows = variationRows(item, categoryMap[item.id], imageUrl);
 
     if (MENU_ITEM_NAMES.has(nameLower)) {
       for (const r of rows) {
@@ -126,6 +135,7 @@ export function buildStorefront({ items, categories }, categoryMap = {}) {
       if (r.priceCents <= 0) continue;
       if (!r.active || !r.sellable) continue;
       if (r.alcoholic) continue;
+      if (ALCOHOL_NAME_RX.test(r.itemName)) continue;
       if (EXCLUDED_CATEGORIES.has(r.category)) continue;
       if (BOOKING_SKU_RX.test(r.sku)) continue;
       products.push(r);
@@ -136,8 +146,11 @@ export function buildStorefront({ items, categories }, categoryMap = {}) {
   if (espresso.length) coffeeMenu['Espresso bar'] = espresso;
   if (iceCream.length) coffeeMenu['Ice cream'] = iceCream;
 
-  // Sort products by category then name for a tidy grid.
-  products.sort((a, b) => (a.category.localeCompare(b.category)) || a.name.localeCompare(b.name));
+  // Products with photos first (so the grid opens visually rich), then category, then name.
+  products.sort((a, b) =>
+    (Boolean(b.imageUrl) - Boolean(a.imageUrl))
+    || a.category.localeCompare(b.category)
+    || a.name.localeCompare(b.name));
 
   return { products, coffeeMenu, categories: Object.values(categories) };
 }
