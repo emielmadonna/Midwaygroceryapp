@@ -343,7 +343,7 @@ const Hero = ({ flags = {}, hours = [] }) => {
     : (today && !today.closed ? `Store open · ${hourLabel(today)}` : (today?.closed ? 'Closed today' : 'Store hours vary'));
   return (
     <header id="top" className="hero hero-redesign">
-      <img className="hero-bg" src="/images/exterior-wide.jpg" alt="Midway Gas & Grocery storefront in Plain, Washington" />
+      <img className="hero-bg" src="/images/store-dusk.jpg" alt="Midway Gas & Grocery storefront at dusk in Plain, Washington" />
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
         <div className="hero-status">
@@ -432,8 +432,8 @@ const Coffee = ({ menu = COFFEE }) => {
           {items.map(it => (
             <div className="item" key={it.n}>
               <div className="n">{it.n}</div>
-              <div className="p">${it.p}</div>
-              <div className="d">{it.d}</div>
+              <div className="p">{it.p}</div>
+              {it.d && <div className="d">{it.d}</div>}
             </div>
           ))}
         </div>
@@ -529,6 +529,7 @@ const OrderPaymentForm = ({ session, customer, lines, onPay, onSuccess, onCancel
 const OrderAhead = ({ products = [], onCheckout, onPay }) => {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('All');
+  const [page, setPage] = useState(1);
   const [cart, setCart] = useState({});
   const [customer, setCustomer] = useState({ name: '', phone: '', email: '' });
   const [session, setSession] = useState(null);
@@ -551,10 +552,18 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
   const cartCount = lines.reduce((s, l) => s + l.qty, 0);
   const hasCart = lines.length > 0;
 
+  const PAGE_SIZE = 18;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  useEffect(() => { setPage(1); }, [q, cat]);
+
   if (!products.length) return null;
 
   const add = (id) => { setCart(c => ({ ...c, [id]: (c[id] || 0) + 1 })); setError(''); };
   const remove = (id) => setCart(c => { const n = { ...c }; const q = (n[id] || 0) - 1; if (q > 0) n[id] = q; else delete n[id]; return n; });
+  const removeLine = (id) => setCart(c => { const n = { ...c }; delete n[id]; return n; });
+  const clearCart = () => { setCart({}); setError(''); };
 
   const startCheckout = async () => {
     if (!hasCart || busy) return;
@@ -589,12 +598,17 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
           {cats.map(c => <button key={c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>{c}</button>)}
         </div>
       </div>
-      <div className="pantry-count">{filtered.length} of {products.length} Square products</div>
+      <div className="pantry-count">
+        {filtered.length === 0
+          ? `0 of ${products.length} products`
+          : `${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, filtered.length)} of ${filtered.length}${cat === 'All' ? '' : ` in ${cat}`}`}
+      </div>
 
       <div className="order-layout">
+        <div className="order-grid-wrap">
         <div className="order-grid">
           {filtered.length === 0 && <div className="pantry-empty">Nothing matches — try the chips above.</div>}
-          {filtered.slice(0, 60).map(p => {
+          {pageItems.map(p => {
             const id = p.variationId || p.id;
             const qty = cart[id] || 0;
             return (
@@ -616,21 +630,40 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
               </div>
             );
           })}
-          {filtered.length > 60 && <div className="order-more">Showing 60 of {filtered.length} — search or filter to narrow down.</div>}
+        </div>
+        {pageCount > 1 && (
+          <div className="order-pager">
+            <button className="order-page-btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}>← Prev</button>
+            <span className="order-page-label">Page {safePage} of {pageCount}</span>
+            <button className="order-page-btn" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>Next →</button>
+          </div>
+        )}
         </div>
 
         <aside className="order-cart">
           <div className="order-cart-head">
             <span>Your weekly box</span>
-            <span className="order-cart-count">{cartCount > 0 ? `${cartCount} item${cartCount === 1 ? '' : 's'}` : 'Empty'}</span>
+            {hasCart
+              ? <button className="order-cart-clear" onClick={clearCart}>Clear</button>
+              : <span className="order-cart-count">Empty</span>}
           </div>
           {hasCart ? (
             <>
               <div className="order-cart-lines">
                 {lines.map(l => (
                   <div className="order-cart-line" key={l.id}>
-                    <span><button onClick={() => remove(l.id)} className="order-line-minus" aria-label="Remove one">−</button>{l.qty}× {l.p.name}</span>
-                    <span>{moneyExact(l.p.priceCents * l.qty)}</span>
+                    <div className="order-line-info">
+                      <span className="order-line-name">{l.p.name}</span>
+                      <span className="order-line-price">{moneyExact(l.p.priceCents * l.qty)}</span>
+                    </div>
+                    <div className="order-line-controls">
+                      <div className="order-qty-stepper">
+                        <button onClick={() => remove(l.id)} aria-label="Remove one">−</button>
+                        <span className="order-qty-num">{l.qty}</span>
+                        <button onClick={() => add(l.id)} aria-label="Add one">+</button>
+                      </div>
+                      <button className="order-line-remove" onClick={() => removeLine(l.id)} aria-label="Remove item">Remove</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -694,22 +727,29 @@ const SitePlan = ({ sel, setSel, sites }) => {
   const gestureRef = useRef(null);
   const draggedRef = useRef(false);
   const movedRef = useRef(false);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  // Zoom/pan live in refs and are written straight to the SVG group's transform
+  // via requestAnimationFrame — no React re-render of the (hundreds of) map nodes
+  // per wheel/pinch tick, which keeps trackpad zoom smooth.
+  const worldRef = useRef(null);
+  const viewRef = useRef({ zoom: 1, x: 0, y: 0 });
+  const rafRef = useRef(0);
   const selectedIds = Array.isArray(sel) ? sel : (sel ? [sel] : []);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds.join('|')]);
 
-  const mapTransform = `translate(${pan.x} ${pan.y}) scale(${zoom})`;
-  const clampPan = (candidate, nextZoom = zoom) => {
-    const maxX = 0;
-    const maxY = 0;
-    const minX = -1200 * (nextZoom - 1);
-    const minY = -800 * (nextZoom - 1);
-    return {
-      x: clamp(candidate.x, minX, maxX),
-      y: clamp(candidate.y, minY, maxY),
-    };
+  const clampView = (zoom, x, y) => ({
+    zoom,
+    x: clamp(x, -1200 * (zoom - 1), 0),
+    y: clamp(y, -800 * (zoom - 1), 0),
+  });
+  const applyTransform = () => {
+    const v = viewRef.current;
+    worldRef.current?.setAttribute('transform', `translate(${v.x} ${v.y}) scale(${v.zoom})`);
   };
+  const scheduleApply = () => {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => { rafRef.current = 0; applyTransform(); });
+  };
+  const setView = (zoom, x, y) => { viewRef.current = clampView(zoom, x, y); scheduleApply(); };
   const pointInViewBox = (clientX, clientY) => {
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect) return { x: 600, y: 400 };
@@ -719,14 +759,12 @@ const SitePlan = ({ sel, setSel, sites }) => {
     };
   };
   const zoomAt = (clientX, clientY, nextZoom) => {
-    const targetZoom = clamp(Number(nextZoom.toFixed(3)), 1, 2.25);
+    const v = viewRef.current;
+    const targetZoom = clamp(nextZoom, 1, 4);
+    if (targetZoom === v.zoom) return;
     const focal = pointInViewBox(clientX, clientY);
-    const ratio = targetZoom / zoom;
-    setPan(current => clampPan({
-      x: focal.x - (focal.x - current.x) * ratio,
-      y: focal.y - (focal.y - current.y) * ratio,
-    }, targetZoom));
-    setZoom(targetZoom);
+    const ratio = targetZoom / v.zoom;
+    setView(targetZoom, focal.x - (focal.x - v.x) * ratio, focal.y - (focal.y - v.y) * ratio);
   };
   const pointerDistance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   const pointerCenter = (a, b) => ({
@@ -735,14 +773,22 @@ const SitePlan = ({ sel, setSel, sites }) => {
   });
   const onWheel = (event) => {
     event.preventDefault();
-    zoomAt(event.clientX, event.clientY, zoom - (event.deltaY * 0.0012));
+    // exponential factor = smooth, consistent zoom regardless of delta magnitude
+    // Mac trackpad pinch arrives as ctrl+wheel with tiny deltas — needs a much
+    // larger multiplier than a mouse wheel to feel responsive.
+    const intensity = event.ctrlKey ? 0.015 : 0.0025;
+    zoomAt(event.clientX, event.clientY, viewRef.current.zoom * Math.exp(-event.deltaY * intensity));
   };
   useEffect(() => {
     const sitePlan = sitePlanRef.current;
     if (!sitePlan) return undefined;
+    applyTransform();
     sitePlan.addEventListener('wheel', onWheel, { passive: false });
-    return () => sitePlan.removeEventListener('wheel', onWheel);
-  }, [onWheel]);
+    return () => {
+      sitePlan.removeEventListener('wheel', onWheel);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
   const onPointerDown = (event) => {
     draggedRef.current = false;
     movedRef.current = false;
@@ -751,14 +797,15 @@ const SitePlan = ({ sel, setSel, sites }) => {
       clientY: event.clientY,
     });
     const pointers = Array.from(pointersRef.current.values());
+    const v = viewRef.current;
     if (pointers.length >= 2) {
       const [first, second] = pointers;
       const center = pointerCenter(first, second);
       gestureRef.current = {
         mode: 'pinch',
         startDistance: pointerDistance(first, second),
-        startZoom: zoom,
-        startPan: pan,
+        startZoom: v.zoom,
+        startPan: { x: v.x, y: v.y },
         startCenter: pointInViewBox(center.clientX, center.clientY),
       };
     } else {
@@ -766,7 +813,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
         mode: 'pan',
         startClientX: event.clientX,
         startClientY: event.clientY,
-        startPan: pan,
+        startPan: { x: v.x, y: v.y },
       };
     }
   };
@@ -790,22 +837,17 @@ const SitePlan = ({ sel, setSel, sites }) => {
     const pointers = Array.from(pointersRef.current.values());
     if (gesture.mode === 'pinch' && pointers.length >= 2) {
       const [first, second] = pointers;
-      const nextZoom = clamp(gesture.startZoom * (pointerDistance(first, second) / gesture.startDistance), 1, 2.25);
+      const nextZoom = clamp(gesture.startZoom * (pointerDistance(first, second) / gesture.startDistance), 1, 4);
       const ratio = nextZoom / gesture.startZoom;
-      setZoom(nextZoom);
-      setPan(clampPan({
-        x: gesture.startCenter.x - (gesture.startCenter.x - gesture.startPan.x) * ratio,
-        y: gesture.startCenter.y - (gesture.startCenter.y - gesture.startPan.y) * ratio,
-      }, nextZoom));
+      setView(nextZoom,
+        gesture.startCenter.x - (gesture.startCenter.x - gesture.startPan.x) * ratio,
+        gesture.startCenter.y - (gesture.startCenter.y - gesture.startPan.y) * ratio);
       return;
     }
     if (gesture.mode === 'pan' && pointers.length === 1) {
       const dx = ((event.clientX - gesture.startClientX) / rect.width) * 1200;
       const dy = ((event.clientY - gesture.startClientY) / rect.height) * 800;
-      setPan(clampPan({
-        x: gesture.startPan.x + dx,
-        y: gesture.startPan.y + dy,
-      }));
+      setView(viewRef.current.zoom, gesture.startPan.x + dx, gesture.startPan.y + dy);
     }
   };
   const onPointerUp = (event) => {
@@ -816,7 +858,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
         mode: 'pan',
         startClientX: remaining.clientX,
         startClientY: remaining.clientY,
-        startPan: pan,
+        startPan: { x: viewRef.current.x, y: viewRef.current.y },
       };
     } else if (pointersRef.current.size === 0) {
       gestureRef.current = null;
@@ -863,7 +905,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
           </pattern>
         </defs>
 
-        <g className="map-world" transform={mapTransform}>
+        <g className="map-world" ref={worldRef} transform="translate(0 0) scale(1)">
         <rect x="-360" y="-260" width="1920" height="1320" fill="#17171A"/>
         <rect x="-360" y="-260" width="1920" height="1320" fill="url(#forest)" opacity="0.5"/>
 
@@ -943,6 +985,9 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <div className="l"><i className="open" /> Open</div>
         <div className="l"><i className="t" /> Taken</div>
         <div className="l"><i className="s" /> Your picks</div>
+      </div>
+      <div className="siteplan-hint" aria-hidden="true">
+        <span className="siteplan-hint-ic">⤢</span> Scroll to zoom · drag to pan
       </div>
     </div>
   );
