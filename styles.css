@@ -34,9 +34,11 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 84px;        /* clear the fixed nav for anchor links */
+  overflow-x: hidden;              /* lock out any horizontal scroll/drag */
+  max-width: 100%;
 }
 /* Reserve a left gutter for the accent ribbon so nothing sits under it */
-body { padding-left: var(--ribbon); }
+body { padding-left: var(--ribbon); max-width: 100%; }
 .nav { left: var(--ribbon) !important; }
 @media (max-width: 600px) { :root { --ribbon: 18px; } }
 body {
@@ -1458,10 +1460,8 @@ body.density-compact .section .head { margin-bottom: 40px; }
   }
   .siteplan {
     border-radius: 0;
-    width: 100vw;
-    max-width: 100vw;
-    margin-left: calc(50% - 50vw);
-    margin-right: calc(50% - 50vw);
+    width: 100%;
+    max-width: 100%;
     min-height: 360px;
   }
   .siteplan .legend {
