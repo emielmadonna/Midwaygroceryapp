@@ -432,8 +432,8 @@ const Coffee = ({ menu = COFFEE }) => {
           {items.map(it => (
             <div className="item" key={it.n}>
               <div className="n">{it.n}</div>
-              <div className="p">${it.p}</div>
-              <div className="d">{it.d}</div>
+              <div className="p">{it.p}</div>
+              {it.d && <div className="d">{it.d}</div>}
             </div>
           ))}
         </div>

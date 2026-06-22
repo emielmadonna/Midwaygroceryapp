@@ -27,7 +27,13 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  scroll-snap-type: y proximity;   /* gentle snap to section tops; free-scroll within tall sections */
+  scroll-padding-top: 80px;        /* clear the fixed nav when snapping/anchoring */
+}
+/* Top-level sections snap to the top as you scroll near them */
+.hero, .ticker, .marquee, .section, .foot { scroll-snap-align: start; }
 body {
   background: var(--bone);
   color: var(--ink);
@@ -472,7 +478,8 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 }
 
 /* ─── Coffee menu (printed-broadsheet style) ─── */
-.coffee-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 56px 64px; border-top: 1px solid var(--ink); padding-top: 40px; }
+.coffee-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px 72px; border-top: 1px solid var(--ink); padding-top: 40px; }
+.coffee-cat .item .p { white-space: nowrap; }
 .coffee-cat h3 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--mute); margin-bottom: 18px; font-weight: 400; }
 .coffee-cat .item { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 14px 0; border-bottom: 1px dashed var(--rule); align-items: baseline; }
 .coffee-cat .item .n { font-family: var(--serif); font-weight: 400; font-size: 22px; line-height: 1.1; }
@@ -944,9 +951,20 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 .ph.dark .lbl { color: var(--paper); background: rgba(0,0,0,0.4); border-color: rgba(255,255,255,.3); }
 
 /* ─── Reveal ─── */
-.reveal { opacity: 0; transform: translateY(28px); transition: opacity .9s cubic-bezier(.2,.7,.3,1), transform .9s cubic-bezier(.2,.7,.3,1); }
-.reveal.in { opacity: 1; transform: none; }
-body.anim-still .reveal { opacity: 1; transform: none; transition: none; }
+/* Reveal-on-scroll. Content is VISIBLE BY DEFAULT — the entrance is a pure
+   enhancement applied via a one-shot animation when the section scrolls in. If
+   the reveal class is never added (any env quirk), content still shows. */
+.reveal { opacity: 1; }
+/* No fill-mode: if the animation can't run, the element stays at its base
+   opacity:1 (never blank). When it runs it plays 0 -> 1 then settles on base. */
+.reveal.in { animation: revealUp .5s cubic-bezier(.22,.7,.25,1); }
+@keyframes revealUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+body.anim-still .reveal,
+body.anim-still .reveal.in { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal.in { animation: none; }
+  html { scroll-behavior: auto; }
+}
 body.anim-still .marquee-track { animation: none; }
 
 body.density-compact .section { padding: 80px var(--pad); }

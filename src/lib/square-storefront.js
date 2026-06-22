@@ -106,6 +106,31 @@ function variationRows(item, categoryName, imageUrl = null) {
   });
 }
 
+// Collapse per-size variations into one tidy menu line:
+//   "Americano 12oz" + "Americano 16oz" -> { n:'Americano', d:'12 / 16oz', p:'$3.75 / $4.25' }
+const MENU_SIZE_RX = /\s*[-–]?\s*(\d+\s*oz|small|large|sm|lg|sml|lrg)\s*$/i;
+function groupMenu(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const m = r.name.match(MENU_SIZE_RX);
+    const base = (m ? r.name.slice(0, m.index) : r.name).replace(/[-–\s]+$/, '').trim() || r.name.trim();
+    const size = m ? m[1].replace(/\s+/g, '').replace(/^sml$/i, 'Small').replace(/^lrg$/i, 'Large').replace(/^sm$/i, 'Small').replace(/^lg$/i, 'Large') : '';
+    if (!groups.has(base)) groups.set(base, []);
+    groups.get(base).push({ size, cents: r.cents });
+  }
+  return [...groups.values()].length
+    ? [...groups].map(([base, variants]) => {
+        variants.sort((a, b) => a.cents - b.cents);
+        const sizes = variants.map(v => v.size).filter(Boolean);
+        return {
+          n: base,
+          d: sizes.length ? sizes.join(' / ') : '',
+          p: variants.map(v => `$${priceLabel(v.cents)}`).join(' / '),
+        };
+      })
+    : [];
+}
+
 export function buildStorefront({ items, categories, images = {} }, categoryMap = {}) {
   const products = [];
   const espresso = [];
@@ -122,10 +147,10 @@ export function buildStorefront({ items, categories, images = {} }, categoryMap 
         if (r.priceCents <= 0) continue;
         if (nameLower === 'coffee') {
           if (COFFEE_MODIFIER_RX.test(r.variationName)) continue;
-          espresso.push({ n: r.variationName || r.itemName, p: priceLabel(r.priceCents), d: '' });
+          espresso.push({ name: r.variationName || r.itemName, cents: r.priceCents });
         } else {
           if (ICECREAM_VESSEL_RX.test(r.variationName)) continue;
-          iceCream.push({ n: r.variationName || r.itemName, p: priceLabel(r.priceCents), d: '' });
+          iceCream.push({ name: r.variationName || r.itemName, cents: r.priceCents });
         }
       }
       continue; // bar menu items are not retail products
@@ -143,8 +168,10 @@ export function buildStorefront({ items, categories, images = {} }, categoryMap 
   }
 
   const coffeeMenu = {};
-  if (espresso.length) coffeeMenu['Espresso bar'] = espresso;
-  if (iceCream.length) coffeeMenu['Ice cream'] = iceCream;
+  const espressoMenu = groupMenu(espresso);
+  const iceCreamMenu = groupMenu(iceCream);
+  if (espressoMenu.length) coffeeMenu['Espresso bar'] = espressoMenu;
+  if (iceCreamMenu.length) coffeeMenu['Ice cream'] = iceCreamMenu;
 
   // Products with photos first (so the grid opens visually rich), then category, then name.
   products.sort((a, b) =>
