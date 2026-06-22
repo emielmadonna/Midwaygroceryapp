@@ -1510,7 +1510,15 @@ body.density-compact .section .head { margin-bottom: 40px; }
 
 .order-card { border: 1px solid var(--rule); background: var(--paper); display: flex; flex-direction: column; transition: border-color .2s; }
 .order-card:hover { border-color: var(--rule-2); }
-.order-card-ph { position: relative; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--rule); overflow: hidden; }
+.order-card-ph {
+  position: relative; aspect-ratio: 4 / 3; border-bottom: 1px solid var(--rule); overflow: hidden;
+  display: flex; align-items: center; justify-content: center; background: #ffffff;
+}
+.order-card-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.order-card-ph-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--mute);
+}
+.order-card:has(.order-card-ph-label) .order-card-ph { background: var(--bone-2); }
 .order-qty {
   position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px;
   border-radius: 999px; background: var(--oxide); color: #0F0F11;

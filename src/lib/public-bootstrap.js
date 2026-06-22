@@ -12,6 +12,7 @@ export function normalizeSquareProducts(products = []) {
           priceCents,
           currency: product.currency ?? 'USD',
           category: product.category ?? 'Store',
+          imageUrl: product.imageUrl ?? product.image_url ?? null,
           active: product.active !== false,
           hidden: product.hidden === true,
           source: product.source ?? 'square',

@@ -335,8 +335,8 @@ const Hero = ({ flags = {}, hours = [] }) => {
           <span className="hero-status-sep">/</span>
           <span className="hero-status-gas">Gas 24/7</span>
         </div>
-        <h1 className="hero-headline">The provisions stop between town and the wild.</h1>
-        <p className="hero-lede">Fuel around the clock, fresh coffee, real groceries, and full-hookup campsites on Chiwawa Loop Road in Plain, Washington.</p>
+        <h1 className="hero-headline">Gas, coffee, ice cream, and the essentials.</h1>
+        <p className="hero-lede">Your stop on Chiwawa Loop Road for 24/7 fuel, espresso and soft serve, real groceries, and full-hookup campsites — in Plain, Washington.</p>
         <div className="hero-actions">
           {flags.rvBooking && <a href="#stay" className="hero-link hero-primary">Book a site <span>→</span></a>}
           {flags.products && <a href="#order" className="hero-link hero-secondary">Order this week</a>}
@@ -584,7 +584,9 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
             return (
               <div className="order-card" key={id}>
                 <div className="order-card-ph">
-                  <Ph g={iconForProduct(p)} label={(p.category || 'Store').toUpperCase()} />
+                  {p.imageUrl
+                    ? <img className="order-card-img" src={p.imageUrl} alt="" loading="lazy" onError={e => { e.currentTarget.remove(); }} />
+                    : <span className="order-card-ph-label">{p.category || 'Store'}</span>}
                   {qty > 0 && <span className="order-qty">{qty}</span>}
                 </div>
                 <div className="order-card-body">
