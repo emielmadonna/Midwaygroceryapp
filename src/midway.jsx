@@ -255,7 +255,7 @@ const useReveal = () => {
     const observed = new WeakSet();
     const io = new IntersectionObserver((es) => {
       es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
 
     const observeReveals = (root = document) => {
       root.querySelectorAll?.('.reveal').forEach(el => {
@@ -266,6 +266,20 @@ const useReveal = () => {
     };
 
     observeReveals();
+
+    // Scroll-position fallback: IntersectionObserver can fail to fire for very
+    // tall sections or in headless/odd-viewport contexts, leaving content stuck
+    // at opacity:0. This guarantees anything reaching the viewport reveals.
+    const revealInView = () => {
+      const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+      document.querySelectorAll('.reveal:not(.in)').forEach(el => {
+        if (el.getBoundingClientRect().top < vh - 20) el.classList.add('in');
+      });
+    };
+    revealInView();
+    window.addEventListener('scroll', revealInView, { passive: true });
+    window.addEventListener('resize', revealInView);
+
     const mutations = new MutationObserver(entries => {
       entries.forEach(entry => {
         entry.addedNodes.forEach(node => {
@@ -283,6 +297,8 @@ const useReveal = () => {
     return () => {
       mutations.disconnect();
       io.disconnect();
+      window.removeEventListener('scroll', revealInView);
+      window.removeEventListener('resize', revealInView);
     };
   }, []);
 };
