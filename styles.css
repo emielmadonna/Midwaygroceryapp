@@ -1041,9 +1041,9 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .siteplan .legend i.t { background-image: repeating-linear-gradient(45deg, transparent 0 2px, var(--rule-2) 2px 3px); background-color: var(--bone-2); }
 .siteplan .legend i.s { background: var(--oxide); border-color: var(--oxide); }
 .siteplan .legend i.open { background: var(--paper); }
-.siteplan .legend i.full    { background: #9DC9A3; border-color: #9DC9A3; }
-.siteplan .legend i.partial { background: #9BB8CC; border-color: #9BB8CC; }
-.siteplan .legend i.elec    { background: #EDE7D7; border-color: #C4BDB0; }
+.siteplan .legend i.full    { background: #BFDBFE; border-color: #93C5FD; }
+.siteplan .legend i.partial { background: #FDE68A; border-color: #FCD34D; }
+.siteplan .legend i.elec    { background: #FECACA; border-color: #FCA5A5; }
 /* Selected site detail card (replaces "Pick a site" header when a site is chosen) */
 .site-detail { padding: 18px 20px; background: var(--bone); border: 1px solid var(--ink); border-radius: 10px; margin-bottom: 20px; }
 .site-detail .row1 { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
@@ -1682,9 +1682,9 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .siteplan .legend i { border-color: rgba(241,240,235,.55); }
 .siteplan .legend i.open { background: transparent; }
 .siteplan .legend i.t { background-color: #2a2a2e; background-image: repeating-linear-gradient(45deg, transparent 0 2px, rgba(241,240,235,.35) 2px 3px); }
-.siteplan .legend i.full    { background: #9DC9A3; border-color: #9DC9A3; }
-.siteplan .legend i.partial { background: #9BB8CC; border-color: #9BB8CC; }
-.siteplan .legend i.elec    { background: #EDE7D7; border-color: #C4BDB0; }
+.siteplan .legend i.full    { background: #BFDBFE; border-color: #93C5FD; }
+.siteplan .legend i.partial { background: #FDE68A; border-color: #FCD34D; }
+.siteplan .legend i.elec    { background: #FECACA; border-color: #FCA5A5; }
 .siteplan .pad.taken rect:first-child { fill: #2a2a2e; }
 .siteplan .pad.taken .taken-shade { opacity: .5; }
 

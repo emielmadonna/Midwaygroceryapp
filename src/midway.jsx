@@ -965,7 +965,7 @@ const SitePlan = ({ sel, setSel, sites }) => {
                  !s.taken && toggleSite(s.id);
                }}>
               <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
-                    fill={s.type === 'tent' ? '#C5C3A2' : s.hookup === 'full' ? '#9DC9A3' : s.hookup === 'partial' ? '#9BB8CC' : '#EDE7D7'}
+                    fill={s.type === 'tent' ? '#C5C3A2' : s.hookup === 'full' ? '#BFDBFE' : s.hookup === 'partial' ? '#FDE68A' : '#FECACA'}
                     stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
               {s.taken && (
                 <rect className="taken-shade" x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5" fill="url(#takenHatch)"/>
@@ -1687,6 +1687,8 @@ function instagramPostCaption(postUrl = '') {
   return cleaned ? `The latest Midway update from ${cleaned}.` : 'The latest Midway update from Instagram.';
 }
 
+const staticHookupById = Object.fromEntries(STATIC_RV_SITES.map(s => [s.id, s.hookup]));
+
 function normalizeBootstrap(data = {}) {
   const settings = data.settings || {};
   const sections = Array.isArray(settings.sections)
@@ -1697,6 +1699,9 @@ function normalizeBootstrap(data = {}) {
   const hasHours = Array.isArray(data.hours) && data.hours.length > 0;
   return {
     ...data,
+    rvSites: Array.isArray(data.rvSites)
+      ? data.rvSites.map(s => ({ hookup: staticHookupById[s.id] ?? 'full', ...s }))
+      : emptyBootstrap.rvSites,
     settings: {
       ...FALLBACK_SETTINGS,
       ...settings,
