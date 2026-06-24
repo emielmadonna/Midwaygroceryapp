@@ -48,13 +48,13 @@ const FALLBACK_SETTINGS = {
   sections: [FALLBACK_INSTAGRAM_SECTION],
 };
 const FALLBACK_HOURS = [
-  { day: 'monday', open: '8:00 AM', close: '7:00 PM' },
+  { day: 'monday', open: '8:00 AM', close: '5:00 PM' },
   { day: 'tuesday', closed: true },
   { day: 'wednesday', closed: true },
-  { day: 'thursday', open: '8:00 AM', close: '7:00 PM' },
-  { day: 'friday', open: '8:00 AM', close: '7:00 PM' },
-  { day: 'saturday', open: '8:00 AM', close: '7:00 PM' },
-  { day: 'sunday', closed: true },
+  { day: 'thursday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'friday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'saturday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'sunday', open: '8:00 AM', close: '5:00 PM' },
 ];
 
 // First day of the 2026 season. Before this date the store shows "Opens Thu, Jun 19".
