@@ -1041,6 +1041,7 @@ body.density-compact .section .head { margin-bottom: 40px; }
 .siteplan .legend i.t { background-image: repeating-linear-gradient(45deg, transparent 0 2px, var(--rule-2) 2px 3px); background-color: var(--bone-2); }
 .siteplan .legend i.s { background: var(--oxide); border-color: var(--oxide); }
 .siteplan .legend i.open { background: var(--paper); }
+.siteplan .legend .hookup-icons { display: inline-flex; gap: 2px; align-items: center; }
 /* Selected site detail card (replaces "Pick a site" header when a site is chosen) */
 .site-detail { padding: 18px 20px; background: var(--bone); border: 1px solid var(--ink); border-radius: 10px; margin-bottom: 20px; }
 .site-detail .row1 { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
@@ -1717,7 +1718,8 @@ body::before {
   position: fixed;
   top: 0;
   left: 0;
-  bottom: 0;
+  height: 100vh;
+  height: 100dvh;
   width: 26px;
   z-index: 100;
   background: linear-gradient(

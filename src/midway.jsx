@@ -48,13 +48,13 @@ const FALLBACK_SETTINGS = {
   sections: [FALLBACK_INSTAGRAM_SECTION],
 };
 const FALLBACK_HOURS = [
-  { day: 'monday', closed: true },
+  { day: 'monday', open: '8:00 AM', close: '7:00 PM' },
   { day: 'tuesday', closed: true },
   { day: 'wednesday', closed: true },
-  { day: 'thursday', open: '7:00 AM', close: '7:00 PM' },
-  { day: 'friday', open: '7:00 AM', close: '7:00 PM' },
-  { day: 'saturday', open: '7:00 AM', close: '7:00 PM' },
-  { day: 'sunday', open: '7:00 AM', close: '7:00 PM' },
+  { day: 'thursday', open: '8:00 AM', close: '7:00 PM' },
+  { day: 'friday', open: '8:00 AM', close: '7:00 PM' },
+  { day: 'saturday', open: '8:00 AM', close: '7:00 PM' },
+  { day: 'sunday', closed: true },
 ];
 
 // First day of the 2026 season. Before this date the store shows "Opens Thu, Jun 19".
@@ -77,6 +77,7 @@ const toMapSite = (site, availableIds = null) => ({
   h: site.mapHeight,
   rot: site.rotation || 0,
   amp: site.amp,
+  hookup: site.hookup,
   type: site.type,
   shade: site.shade,
   feats: site.amenities || [],
@@ -964,17 +965,34 @@ const SitePlan = ({ sel, setSel, sites }) => {
                  !s.taken && toggleSite(s.id);
                }}>
               <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
-                    fill={s.type === 'tent' ? '#C5C3A2' : s.amp === '50A' ? '#F5F0E1' : '#EDE7D7'}
+                    fill={s.type === 'tent' ? '#C5C3A2' : s.hookup === 'partial' ? '#C8D4CF' : (s.amp === '50A' ? '#F5F0E1' : '#EDE7D7')}
                     stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
               {s.taken && (
                 <rect className="taken-shade" x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5" fill="url(#takenHatch)"/>
               )}
-              <text x="0" y="1" fontFamily="Fraunces" fontSize="18" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
+              <text x="0" y="0" fontFamily="Fraunces" fontSize="16" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
                 {String(label).padStart(2,'0')}
               </text>
-              <text x="0" y="16" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1" textAnchor="middle" fill="#7A776E" dominantBaseline="middle">
+              <text x="0" y="11" fontFamily="JetBrains Mono" fontSize="6.5" letterSpacing="0.5" textAnchor="middle" fill="#7A776E" dominantBaseline="middle">
                 {s.amp}
               </text>
+              {s.type !== 'tent' && (
+                <g transform="translate(0, 16.5)">
+                  {/* Water drop */}
+                  <path transform={`translate(${s.hookup === 'full' ? -5 : -2.75}, 0)`}
+                    d="M0,-2.5 L-1.8,0.8 A1.8,1.8 0 0 0 1.8,0.8 Z"
+                    fill="#4A8BAE" opacity="0.9"/>
+                  {/* Lightning bolt */}
+                  <path transform={`translate(${s.hookup === 'full' ? 0 : 2.75}, 0)`}
+                    d="M0.6,-2.3 L-0.8,0.2 L0.4,0.2 L-0.6,2.3"
+                    stroke="#C9A83C" strokeWidth="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  {/* Sewer ring — full hookup only */}
+                  {s.hookup === 'full' && <>
+                    <circle cx="5" cy="0" r="1.8" fill="none" stroke="#8A7A6A" strokeWidth="0.65"/>
+                    <circle cx="5" cy="0" r="0.65" fill="#8A7A6A"/>
+                  </>}
+                </g>
+              )}
             </g>
           );
         })}
@@ -984,7 +1002,22 @@ const SitePlan = ({ sel, setSel, sites }) => {
       <div className="legend">
         <div className="l"><i className="open" /> Open</div>
         <div className="l"><i className="t" /> Taken</div>
-        <div className="l"><i className="s" /> Your picks</div>
+        <div className="l"><i className="s" /> Selected</div>
+        <div className="l">
+          <span className="hookup-icons">
+            <svg viewBox="-2.5 -3 5 6.5" width="8" height="9"><path d="M0,-2.5 L-1.8,0.8 A1.8,1.8 0 0 0 1.8,0.8 Z" fill="#4A8BAE"/></svg>
+            <svg viewBox="-1.5 -3 3 6.5" width="6" height="9"><path d="M0.6,-2.3 L-0.8,0.2 L0.4,0.2 L-0.6,2.3" stroke="#C9A83C" strokeWidth="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <svg viewBox="-2.5 -2.5 5 5" width="8" height="8"><circle cx="0" cy="0" r="1.8" fill="none" stroke="#8A7A6A" strokeWidth="0.65"/><circle cx="0" cy="0" r="0.65" fill="#8A7A6A"/></svg>
+          </span>
+          Full hookup
+        </div>
+        <div className="l">
+          <span className="hookup-icons">
+            <svg viewBox="-2.5 -3 5 6.5" width="8" height="9"><path d="M0,-2.5 L-1.8,0.8 A1.8,1.8 0 0 0 1.8,0.8 Z" fill="#4A8BAE"/></svg>
+            <svg viewBox="-1.5 -3 3 6.5" width="6" height="9"><path d="M0.6,-2.3 L-0.8,0.2 L0.4,0.2 L-0.6,2.3" stroke="#C9A83C" strokeWidth="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+          Water + electric
+        </div>
       </div>
       <div className="siteplan-hint" aria-hidden="true">
         <span className="siteplan-hint-ic">⤢</span> Scroll to zoom · drag to pan
@@ -1387,10 +1420,13 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
                       <span className="site-type-badge rv">{selSites.length === 1 ? 'Selected' : `${selSites.length} sites`}</span>
                       <em>{selSites.map(site => site.type === 'tent' ? site.siteNumber : `No. ${String(site.siteNumber).padStart(2,'0')}`).join(', ')}</em>
                     </div>
-                    <div className="amp">{selSites.length === 1 ? `${selSite.type !== 'tent' ? `${selSite.amp} · ` : ''}${siteKindLabel} · ${selSite.shade} shade · ${siteCapacityLabel}` : `${selSites.length} pads held together on one checkout`}</div>
+                    <div className="amp">{selSites.length === 1 ? `${selSite.type !== 'tent' ? `${selSite.amp} · ` : ''}${selSite.hookup === 'full' ? 'full hookup · ' : selSite.hookup === 'partial' ? 'water + electric · ' : ''}${siteKindLabel} · ${selSite.shade} shade · ${siteCapacityLabel}` : `${selSites.length} pads held together on one checkout`}</div>
                   </div>
                   <div className="feats">
-                    {selSites.map(site => <span key={site.id}>{site.type === 'tent' ? site.siteNumber : `Site ${site.siteNumber}`} · {money(site.nightlyPriceCents)}/night</span>)}
+                    {selSites.length === 1
+                      ? <>{selSite.feats?.map(feat => <span key={feat}>{feat}</span>)}<span>{money(selSite.nightlyPriceCents)}/night</span></>
+                      : selSites.map(site => <span key={site.id}>{site.type === 'tent' ? site.siteNumber : `Site ${site.siteNumber}`} · {money(site.nightlyPriceCents)}/night</span>)
+                    }
                   </div>
                 </div>
               ) : (
