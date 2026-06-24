@@ -965,34 +965,17 @@ const SitePlan = ({ sel, setSel, sites }) => {
                  !s.taken && toggleSite(s.id);
                }}>
               <rect x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5"
-                    fill={s.type === 'tent' ? '#C5C3A2' : s.hookup === 'partial' ? '#C8D4CF' : (s.amp === '50A' ? '#F5F0E1' : '#EDE7D7')}
+                    fill={s.type === 'tent' ? '#C5C3A2' : s.hookup === 'full' ? '#9DC9A3' : s.hookup === 'partial' ? '#9BB8CC' : '#EDE7D7'}
                     stroke="#11100E" strokeWidth={isSel ? 3 : 1.6}/>
               {s.taken && (
                 <rect className="taken-shade" x={-padW/2} y={-padH/2} width={padW} height={padH} rx="5" fill="url(#takenHatch)"/>
               )}
-              <text x="0" y="0" fontFamily="Fraunces" fontSize="16" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
+              <text x="0" y="1" fontFamily="Fraunces" fontSize="18" textAnchor="middle" fill="#11100E" dominantBaseline="middle">
                 {String(label).padStart(2,'0')}
               </text>
-              <text x="0" y="11" fontFamily="JetBrains Mono" fontSize="6.5" letterSpacing="0.5" textAnchor="middle" fill="#7A776E" dominantBaseline="middle">
+              <text x="0" y="16" fontFamily="JetBrains Mono" fontSize="8" letterSpacing="1" textAnchor="middle" fill="#7A776E" dominantBaseline="middle">
                 {s.amp}
               </text>
-              {s.type !== 'tent' && (
-                <g transform="translate(0, 16.5)">
-                  {/* Water drop */}
-                  <path transform={`translate(${s.hookup === 'full' ? -5 : -2.75}, 0)`}
-                    d="M0,-2.5 L-1.8,0.8 A1.8,1.8 0 0 0 1.8,0.8 Z"
-                    fill="#4A8BAE" opacity="0.9"/>
-                  {/* Lightning bolt */}
-                  <path transform={`translate(${s.hookup === 'full' ? 0 : 2.75}, 0)`}
-                    d="M0.6,-2.3 L-0.8,0.2 L0.4,0.2 L-0.6,2.3"
-                    stroke="#C9A83C" strokeWidth="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  {/* Sewer ring — full hookup only */}
-                  {s.hookup === 'full' && <>
-                    <circle cx="5" cy="0" r="1.8" fill="none" stroke="#8A7A6A" strokeWidth="0.65"/>
-                    <circle cx="5" cy="0" r="0.65" fill="#8A7A6A"/>
-                  </>}
-                </g>
-              )}
             </g>
           );
         })}
@@ -1003,21 +986,9 @@ const SitePlan = ({ sel, setSel, sites }) => {
         <div className="l"><i className="open" /> Open</div>
         <div className="l"><i className="t" /> Taken</div>
         <div className="l"><i className="s" /> Selected</div>
-        <div className="l">
-          <span className="hookup-icons">
-            <svg viewBox="-2.5 -3 5 6.5" width="8" height="9"><path d="M0,-2.5 L-1.8,0.8 A1.8,1.8 0 0 0 1.8,0.8 Z" fill="#4A8BAE"/></svg>
-            <svg viewBox="-1.5 -3 3 6.5" width="6" height="9"><path d="M0.6,-2.3 L-0.8,0.2 L0.4,0.2 L-0.6,2.3" stroke="#C9A83C" strokeWidth="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            <svg viewBox="-2.5 -2.5 5 5" width="8" height="8"><circle cx="0" cy="0" r="1.8" fill="none" stroke="#8A7A6A" strokeWidth="0.65"/><circle cx="0" cy="0" r="0.65" fill="#8A7A6A"/></svg>
-          </span>
-          Full hookup
-        </div>
-        <div className="l">
-          <span className="hookup-icons">
-            <svg viewBox="-2.5 -3 5 6.5" width="8" height="9"><path d="M0,-2.5 L-1.8,0.8 A1.8,1.8 0 0 0 1.8,0.8 Z" fill="#4A8BAE"/></svg>
-            <svg viewBox="-1.5 -3 3 6.5" width="6" height="9"><path d="M0.6,-2.3 L-0.8,0.2 L0.4,0.2 L-0.6,2.3" stroke="#C9A83C" strokeWidth="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </span>
-          Water + electric
-        </div>
+        <div className="l"><i className="full" /> Full hookup (W/E/S)</div>
+        <div className="l"><i className="partial" /> Water + electric</div>
+        <div className="l"><i className="elec" /> Electric only</div>
       </div>
       <div className="siteplan-hint" aria-hidden="true">
         <span className="siteplan-hint-ic">⤢</span> Scroll to zoom · drag to pan
