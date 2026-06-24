@@ -938,6 +938,14 @@ const SitePlan = ({ sel, setSel, sites }) => {
           <rect x="604" y="124" width="128" height="58" fill="#D7B895" stroke="#11100E" strokeWidth="2" rx="2"/>
           <text x="668" y="202" fontFamily="JetBrains Mono" fontSize="8.5" letterSpacing="1.6" textAnchor="middle" fill="#11100E">SHOP / YARD</text>
         </g>
+        {/* Gas pump — above tan building */}
+        <g transform="translate(668, 82)">
+          <rect x="-10" y="-26" width="20" height="32" fill="#D7B895" stroke="#11100E" strokeWidth="1.5" rx="2"/>
+          <rect x="-7" y="-23" width="14" height="9" fill="#192B22" rx="1"/>
+          <path d="M10 -18 Q20 -18 20 -9" stroke="#11100E" strokeWidth="2" fill="none" strokeLinecap="round"/>
+          <rect x="17" y="-11" width="5" height="2.5" fill="#11100E" rx="0.75"/>
+          <text x="0" y="13" fontFamily="JetBrains Mono" fontSize="7" letterSpacing="1.2" textAnchor="middle" fill="#EDE7D7">24/7 GAS</text>
+        </g>
 
         {/* Tent area marker */}
         <g>
