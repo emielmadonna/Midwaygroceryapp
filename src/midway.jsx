@@ -11,6 +11,7 @@ import {
   normalizeDepartureDate,
 } from './lib/public-checkout.js';
 import { bookableMapSites as STATIC_RV_SITES, denormalizeMapSite } from './lib/rv-map-data.js';
+import { defaultStoreHours } from './lib/default-hours.js';
 
 // ─── Data ───────────────────────────────────────────────────────────────────
 const API_ROOT = ['3000', '3002', '5173'].includes(window.location.port)
@@ -47,15 +48,8 @@ const FALLBACK_SETTINGS = {
   instagramFeed: [],
   sections: [FALLBACK_INSTAGRAM_SECTION],
 };
-const FALLBACK_HOURS = [
-  { day: 'monday', open: '8:00 AM', close: '5:00 PM' },
-  { day: 'tuesday', closed: true },
-  { day: 'wednesday', closed: true },
-  { day: 'thursday', open: '7:00 AM', close: '7:00 PM' },
-  { day: 'friday', open: '7:00 AM', close: '7:00 PM' },
-  { day: 'saturday', open: '7:00 AM', close: '7:00 PM' },
-  { day: 'sunday', open: '8:00 AM', close: '5:00 PM' },
-];
+// Single source of truth: src/lib/default-hours.js (shared with the server harness).
+const FALLBACK_HOURS = defaultStoreHours();
 
 // First day of the 2026 season. Before this date the store shows "Opens Thu, Jun 19".
 const SEASON_OPEN_DATE = '2026-06-19';
@@ -1708,7 +1702,7 @@ function normalizeBootstrap(data = {}) {
   return {
     ...data,
     rvSites: Array.isArray(data.rvSites)
-      ? data.rvSites.map(s => ({ hookup: staticHookupById[s.id] ?? 'full', ...s }))
+      ? data.rvSites.map(s => ({ ...s, hookup: s.hookup || staticHookupById[s.id] || 'full' }))
       : emptyBootstrap.rvSites,
     settings: {
       ...FALLBACK_SETTINGS,

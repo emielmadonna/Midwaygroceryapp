@@ -1,5 +1,6 @@
 import { buildPublicBootstrap } from './public-bootstrap.js';
 import { createBookingStore } from './booking-store.js';
+import { DEFAULT_STORE_HOURS, defaultStoreHours } from './default-hours.js';
 import { bookableMapSites, denormalizeMapSite } from './rv-map-data.js';
 import { createFeatureFlagEvaluator } from './feature-flags.js';
 import {
@@ -100,7 +101,7 @@ export const SEEDED_RV_BOOKINGS = Object.freeze([
 export function createMidwayHarness({
   squareProducts = [],
   fuelPrices = [],
-  hours = [],
+  hours = defaultStoreHours(),
   bookingStore = null,
   supabase = null,
   env = process.env,
@@ -272,7 +273,7 @@ export function createMidwayHarness({
           })).map(site => site.id)
         : [];
       const persistedHours = await safeLoadStoreHours();
-      const hoursForBootstrap = persistedHours.length ? persistedHours : state.hours;
+      const hoursForBootstrap = mergeHoursWithDefaults(persistedHours.length ? persistedHours : state.hours);
       const persistedFuelPrices = flags.fuel ? await safeLoadFuelPrices() : [];
       const fuelForBootstrap = persistedFuelPrices.length
         ? persistedFuelPrices.map(normalizeFuelPriceRow).filter(Boolean)
@@ -661,5 +662,8 @@ function normalizeHoursInput(rows = []) {
 
 function mergeHoursWithDefaults(rows = []) {
   const byDay = new Map(rows.map(row => [row.day, row]));
-  return HOURS_DAY_ORDER.map(day => byDay.get(day) || { day, closed: true });
+  const defaultsByDay = new Map(DEFAULT_STORE_HOURS.map(row => [row.day, row]));
+  // Persisted rows win; any day without a persisted row falls back to the
+  // canonical schedule (never an invented "Closed").
+  return HOURS_DAY_ORDER.map(day => byDay.get(day) || defaultsByDay.get(day) || { day, closed: true });
 }
