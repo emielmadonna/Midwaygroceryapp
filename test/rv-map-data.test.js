@@ -86,17 +86,22 @@ test('RV site rates and hookup types match the published inventory plan', () => 
   const site15 = getRvMapSiteByNumber(15);
   const site16 = getRvMapSiteByNumber(16);
 
-  assert.equal(site03.nightlyPriceCents, 4500);
-  assert.equal(site03.hookup, 'full');
-  assert.ok(site03.amenities.includes('Septic'));
+  // Sites 03-10: WATER + ELECTRIC only (partial). $40, no septic, renders yellow.
+  assert.equal(site03.nightlyPriceCents, 4000);
+  assert.equal(site03.hookup, 'partial');
+  assert.ok(site03.amenities.includes('Water'));
+  assert.ok(site03.amenities.includes('Electricity'));
+  assert.equal(site03.amenities.includes('Septic'), false);
+  assert.equal(site03.amenities.includes('Full hookup'), false);
 
-  assert.equal(site11.nightlyPriceCents, 4000);
-  assert.equal(site11.hookup, 'partial');
-  assert.ok(site11.amenities.includes('Partial hookup'));
-  assert.ok(site11.amenities.includes('Electricity'));
-  assert.equal(site11.amenities.includes('Septic'), false);
+  // Sites 11-16: FULL HOOKUP water/electric/septic. $45, renders blue.
+  assert.equal(site11.nightlyPriceCents, 4500);
+  assert.equal(site11.hookup, 'full');
+  assert.ok(site11.amenities.includes('Full hookup'));
+  assert.ok(site11.amenities.includes('Septic'));
 
   assert.equal(site15.status, 'inactive');
+  assert.equal(site16.hookup, 'full');
   assert.equal(site16.nightlyPriceCents, 4500);
   assert.equal(tentMapSites[0].nightlyPriceCents, 2000);
 });

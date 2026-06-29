@@ -50,13 +50,23 @@ function createRvSite({
   height = DEFAULT_SITE_HEIGHT,
   rotation = 0,
   amp,
-  hookup = 'full',
+  // No default: hookup MUST be set explicitly per site so the map can never
+  // silently fall back to "full". 'full' = water/electric/septic (blue),
+  // 'partial' = water + electric only (yellow).
+  hookup,
   type,
   shade,
   amenities,
   customerNotes,
   adminNotes,
 }) {
+  // Fail loudly rather than ever silently painting the map the wrong colour.
+  if (hookup !== 'full' && hookup !== 'partial') {
+    throw new Error(
+      `RV site ${siteNumber}: hookup must be 'full' (water/electric/septic) or ` +
+      `'partial' (water + electric), got ${JSON.stringify(hookup)}.`,
+    );
+  }
   const isFullHookup = hookup === 'full';
 
   return Object.freeze({
@@ -120,6 +130,7 @@ function createTentSite({
 export const rvMapSites = Object.freeze([
   createRvSite({
     siteNumber: '03',
+    hookup: 'partial',
     x: 992,
     y: 244,
     rotation: -5,
@@ -127,17 +138,17 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'partial',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.BIG_RIG,
       RV_SITE_AMENITIES.WALK_TO_STORE,
     ],
-    customerNotes: 'Upper right-row full-hookup site close to the store approach.',
+    customerNotes: 'Upper right-row water + electric site close to the store approach.',
     adminNotes: 'Satellite trace places this as the first marked right-side pad; confirm final utility pedestal details.',
   }),
   createRvSite({
     siteNumber: '04',
+    hookup: 'partial',
     x: 992,
     y: 292,
     rotation: -5,
@@ -145,16 +156,16 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'partial',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.BIG_RIG,
     ],
-    customerNotes: 'Right-row full-hookup site with partial shade near the upper drive.',
+    customerNotes: 'Right-row water + electric site with partial shade near the upper drive.',
     adminNotes: 'Second marked right-side pad; verify driveway clearance against final survey.',
   }),
   createRvSite({
     siteNumber: '05',
+    hookup: 'partial',
     x: 992,
     y: 340,
     rotation: -5,
@@ -162,16 +173,16 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'sun',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.EASY_ENTRY,
     ],
-    customerNotes: 'Angled right-row full-hookup site with an easy approach from the loop.',
+    customerNotes: 'Angled right-row water + electric site with an easy approach from the loop.',
     adminNotes: 'Marked pad is angled in the reference; keep rotation unless updated survey says otherwise.',
   }),
   createRvSite({
     siteNumber: '06',
+    hookup: 'partial',
     x: 992,
     y: 388,
     rotation: -5,
@@ -179,16 +190,16 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'sun',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.PET_FRIENDLY,
     ],
-    customerNotes: 'Angled right-row full-hookup site with sunny exposure.',
+    customerNotes: 'Angled right-row water + electric site with sunny exposure.',
     adminNotes: 'Pairing location with site 5 appears tight; confirm vehicle length limit before publishing.',
   }),
   createRvSite({
     siteNumber: '07',
+    hookup: 'partial',
     x: 992,
     y: 456,
     rotation: -5,
@@ -196,9 +207,8 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'full',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.FOREST_EDGE,
       RV_SITE_AMENITIES.QUIET,
     ],
@@ -207,6 +217,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '08',
+    hookup: 'partial',
     x: 992,
     y: 508,
     rotation: -5,
@@ -214,9 +225,8 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'full',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.FOREST_EDGE,
       RV_SITE_AMENITIES.DEEP_SHADE,
     ],
@@ -225,6 +235,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '09',
+    hookup: 'partial',
     x: 992,
     y: 560,
     rotation: -5,
@@ -232,9 +243,8 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'partial',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.FOREST_EDGE,
       RV_SITE_AMENITIES.PET_FRIENDLY,
     ],
@@ -243,6 +253,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '10',
+    hookup: 'partial',
     x: 992,
     y: 612,
     rotation: -5,
@@ -250,9 +261,8 @@ export const rvMapSites = Object.freeze([
     type: 'back-in',
     shade: 'partial',
     amenities: [
-      RV_SITE_AMENITIES.FULL_HOOKUP,
       RV_SITE_AMENITIES.WATER,
-      RV_SITE_AMENITIES.SEPTIC,
+      RV_SITE_AMENITIES.ELECTRICITY,
       RV_SITE_AMENITIES.END_SITE,
       RV_SITE_AMENITIES.PICNIC_TABLE,
     ],
@@ -261,6 +271,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '11',
+    hookup: 'full',
     x: 206,
     y: 628,
     rotation: 5,
@@ -278,6 +289,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '12',
+    hookup: 'full',
     x: 206,
     y: 580,
     rotation: 5,
@@ -295,6 +307,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '13',
+    hookup: 'full',
     x: 206,
     y: 532,
     rotation: 5,
@@ -311,6 +324,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '14',
+    hookup: 'full',
     x: 206,
     y: 484,
     rotation: 5,
@@ -328,6 +342,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '15',
+    hookup: 'full',
     x: 206,
     y: 436,
     rotation: 5,
@@ -346,6 +361,7 @@ export const rvMapSites = Object.freeze([
   }),
   createRvSite({
     siteNumber: '16',
+    hookup: 'full',
     x: 206,
     y: 388,
     rotation: 5,
