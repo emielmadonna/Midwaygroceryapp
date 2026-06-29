@@ -29,6 +29,14 @@
       "dest": "/manage.html"
     },
     {
+      "src": "/rv-park",
+      "dest": "/rv-park.html"
+    },
+    {
+      "src": "/tent-camping",
+      "dest": "/tent-camping.html"
+    },
+    {
       "handle": "filesystem"
     },
     {

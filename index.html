@@ -24,10 +24,20 @@
 {
   "@context": "https://schema.org",
   "@type": ["GasStation", "Campground", "LocalBusiness"],
+  "@id": "https://www.midwayplain.com/#business",
   "name": "Midway Gas & Grocery",
+  "alternateName": "Midway RV Park & Campground",
+  "description": "Midway Gas & Grocery on Chiwawa Loop Road in Plain, Washington — 24/7 fuel and diesel, espresso and soft serve, real groceries, beer & wine, plus full-hookup RV sites and tent camping near Leavenworth and Lake Wenatchee.",
   "url": "https://www.midwayplain.com/",
-  "image": "https://www.midwayplain.com/images/exterior-detailed.jpg",
+  "image": [
+    "https://www.midwayplain.com/images/exterior-detailed.jpg",
+    "https://www.midwayplain.com/images/store-dusk.jpg",
+    "https://www.midwayplain.com/images/exterior-wide.jpg"
+  ],
   "telephone": "+15095961076",
+  "priceRange": "$$",
+  "currenciesAccepted": "USD",
+  "paymentAccepted": "Cash, Credit Card, Debit Card",
   "address": {
     "@type": "PostalAddress",
     "streetAddress": "14193 Chiwawa Loop RD",
@@ -36,6 +46,30 @@
     "postalCode": "98826",
     "addressCountry": "US"
   },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 47.8186347,
+    "longitude": -120.7109064
+  },
+  "hasMap": "https://www.google.com/maps/search/?api=1&query=14193%20Chiwawa%20Loop%20Road%2C%20Leavenworth%2C%20WA%2098826",
+  "areaServed": [
+    { "@type": "Place", "name": "Plain, Washington" },
+    { "@type": "Place", "name": "Leavenworth, Washington" },
+    { "@type": "Place", "name": "Lake Wenatchee, Washington" },
+    { "@type": "Place", "name": "Chiwawa River Valley" }
+  ],
+  "amenityFeature": [
+    { "@type": "LocationFeatureSpecification", "name": "Full RV hookups", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Tent camping sites", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Fire pits", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Pet friendly", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Wi-Fi", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Restrooms (portable toilets)", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "24/7 fuel & diesel", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "On-site coffee & espresso", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Beer & wine", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Groceries & convenience", "value": true }
+  ],
   "sameAs": [
     "https://www.instagram.com/midwaygrocer/"
   ]

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+
+  @page {
+    size: Letter;
+    margin: 16mm 0 16mm 0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  :root {
+    --ink: #20201E;
+    --ink-2: #4A4843;
+    --mute: #7C7A72;
+    --paper: #FFFFFF;
+    --cream: #FBF5EA;
+    --cream-line: #ECE2CF;
+    --red: #D8432F;
+    --yellow: #E0A50B;
+    --blue: #2F6FE0;
+    --rule: #E7E3DA;
+  }
+
+  html { font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif; color: var(--ink); font-size: 11pt; line-height: 1.55; }
+  .serif { font-family: 'Fraunces', Georgia, serif; }
+
+  .page { padding: 0 17mm; }
+  .page + .page { page-break-before: always; }
+
+  /* ── Ribbon motif ── */
+  .ribbon { display: flex; height: 7px; width: 64px; border-radius: 4px; overflow: hidden; }
+  .ribbon i { flex: 1; }
+  .ribbon i:nth-child(1){ background: var(--red); }
+  .ribbon i:nth-child(2){ background: var(--yellow); }
+  .ribbon i:nth-child(3){ background: var(--blue); }
+
+  /* ── Cover ── */
+  .cover { padding-top: 8mm; }
+  .eyebrow { font-size: 8.5pt; letter-spacing: 0.28em; text-transform: uppercase; color: var(--mute); font-weight: 600; }
+  .cover h1 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 40pt; line-height: 1.02; letter-spacing: -0.01em; margin: 16px 0 0; }
+  .cover h1 em { font-style: italic; color: var(--red); }
+  .cover .sub { font-size: 13.5pt; color: var(--ink-2); margin-top: 14px; max-width: 30em; line-height: 1.45; }
+  .cover .meta { font-size: 9pt; color: var(--mute); margin-top: 22px; letter-spacing: 0.04em; }
+
+  .bigidea { margin-top: 26px; background: var(--cream); border: 1px solid var(--cream-line); border-radius: 12px; padding: 20px 22px; }
+  .bigidea .lbl { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 14pt; color: var(--red); margin-bottom: 6px; }
+  .bigidea p { font-size: 11pt; color: var(--ink-2); line-height: 1.55; }
+  .bigidea p + p { margin-top: 9px; }
+  .bigidea strong { color: var(--ink); }
+
+  /* ── Priority box ── */
+  .priority { margin-top: 18px; border: 1.5px solid var(--ink); border-radius: 12px; padding: 18px 22px 20px; }
+  .priority h3 { font-family: 'Fraunces', Georgia, serif; font-size: 14pt; font-weight: 600; margin-bottom: 4px; }
+  .priority .note { font-size: 9.5pt; color: var(--mute); margin-bottom: 12px; }
+  .plist { list-style: none; counter-reset: p; }
+  .plist li { counter-increment: p; position: relative; padding: 7px 0 7px 34px; font-size: 10.5pt; border-top: 1px solid var(--rule); }
+  .plist li:first-child { border-top: 0; }
+  .plist li::before { content: counter(p); position: absolute; left: 0; top: 6px; width: 22px; height: 22px; background: var(--red); color: #fff;
+    border-radius: 50%; font-family: 'Fraunces', serif; font-weight: 600; font-size: 11pt; text-align: center; line-height: 22px; }
+  .plist li b { font-weight: 600; }
+
+  /* ── Section headers ── */
+  .sec { margin-top: 30px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 9px; margin-bottom: 14px; }
+  .sec-num { font-family: 'Fraunces', serif; font-weight: 600; font-size: 13pt; color: var(--red); }
+  .sec-head h2 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 19pt; letter-spacing: -0.01em; line-height: 1.05; }
+  .sec > p { font-size: 10.7pt; color: var(--ink-2); margin: 9px 0; max-width: 42em; }
+  .sec p .hl { background: #FCEFCB; padding: 0 3px; border-radius: 3px; }
+
+  .why { font-size: 9.5pt; color: var(--mute); font-style: italic; border-left: 2px solid var(--yellow); padding-left: 11px; margin: 10px 0; }
+
+  /* ── Checklists ── */
+  .check { list-style: none; margin: 10px 0 4px; }
+  .check li { position: relative; padding: 5px 0 5px 26px; font-size: 10.5pt; line-height: 1.45; }
+  .check li::before { content: ''; position: absolute; left: 0; top: 5px; width: 14px; height: 14px; border: 1.5px solid var(--mute); border-radius: 3.5px; }
+  .check li b { font-weight: 600; }
+  .check li .sm { color: var(--mute); font-size: 9.5pt; }
+
+  .tag { display: inline-block; background: #FBE5E1; color: var(--red); font-size: 8pt; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 20px; vertical-align: middle; margin-left: 8px; }
+
+  /* ── Directory grid ── */
+  .dirs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin: 10px 0; }
+  .dirs .d { position: relative; padding: 5px 0 5px 26px; font-size: 10.5pt; border-bottom: 1px solid var(--rule); }
+  .dirs .d::before { content: ''; position: absolute; left: 0; top: 6px; width: 14px; height: 14px; border: 1.5px solid var(--mute); border-radius: 3.5px; }
+  .dirs .d b { font-weight: 600; }
+  .dirs .d span { color: var(--mute); font-size: 9pt; }
+
+  /* ── Email box ── */
+  .email { margin-top: 12px; background: #FAFAF8; border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+  .email .top { background: var(--ink); color: #fff; font-size: 9pt; letter-spacing: 0.06em; padding: 9px 18px; font-weight: 500; }
+  .email .body { padding: 16px 20px; font-size: 10pt; line-height: 1.6; color: var(--ink-2); }
+  .email .body .sl { color: var(--mute); font-size: 9pt; }
+  .email .body p { margin: 8px 0; }
+  .email .body .sig { color: var(--ink); font-weight: 500; }
+
+  /* ── NAP box ── */
+  .nap { background: var(--cream); border: 1px solid var(--cream-line); border-radius: 10px; padding: 13px 18px; margin: 11px 0; font-size: 10.5pt; line-height: 1.7; }
+  .nap b { font-family: 'Fraunces', serif; }
+
+  /* ── done list ── */
+  .done li { position: relative; padding: 5px 0 5px 26px; font-size: 10.5pt; list-style: none; line-height: 1.45; }
+  .done li::before { content: '\2713'; position: absolute; left: 0; top: 4px; width: 15px; height: 15px; background: #2E8B57; color: #fff;
+    border-radius: 50%; font-size: 9pt; text-align: center; line-height: 15px; font-weight: 700; }
+  .done { margin: 10px 0; }
+  .done li b { font-weight: 600; }
+
+  .foot { margin-top: 30px; border-top: 1px solid var(--rule); padding-top: 14px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .foot .b { font-family: 'Fraunces', serif; font-weight: 600; font-size: 12pt; }
+  .foot .c { font-size: 9.5pt; color: var(--mute); line-height: 1.5; }
+  .foot .r { text-align: right; }
+
+  h2.q { font-family: 'Fraunces', serif; }
+  .lead-in { font-family:'Fraunces',serif; font-style: italic; color: var(--red); font-size: 12pt; }
+</style>
+</head>
+<body>
+
+<!-- ══════════ PAGE 1 — COVER + BIG IDEA + PRIORITY ══════════ -->
+<section class="page cover">
+  <div class="ribbon"><i></i><i></i><i></i></div>
+  <p class="eyebrow" style="margin-top:14px;">Midway Gas &amp; Grocery &nbsp;·&nbsp; Plain, Washington</p>
+  <h1 class="serif">Getting found online for <em>RV &amp; tent</em> camping.</h1>
+  <p class="sub">A plain-English plan to rank near Leavenworth &amp; Lake Wenatchee — what to do, in what order, and why it works.</p>
+  <p class="meta">PREPARED JUNE 2026 &nbsp;·&nbsp; midwayplain.com</p>
+
+  <div class="bigidea">
+    <div class="lbl serif">The one thing to understand first</div>
+    <p>When someone searches <strong>“RV park near Leavenworth”</strong> or <strong>“camping near Lake Wenatchee,”</strong> Google shows a little <strong>map with 3 pins</strong> at the top. That map is where most campers click — and it is <strong>not</strong> controlled by your website.</p>
+    <p>It’s controlled by your <strong>Google Business Profile, your reviews, and being listed on the right camping sites.</strong> So the biggest wins are things you do <em>off</em> the website. Your website (now improved) wins the normal results underneath the map and turns visitors into bookings.</p>
+    <p><strong>Translation:</strong> do the Google Business Profile and reviews first. That’s where the ranking lives.</p>
+  </div>
+
+  <div class="priority">
+    <h3 class="serif">If you only do five things</h3>
+    <p class="note">In order. Each one builds on the last.</p>
+    <ol class="plist">
+      <li><b>Set up your Google Business Profile</b> — add “Campground” &amp; “RV park,” photos, hours.</li>
+      <li><b>Start collecting Google reviews</b> — a QR code by the register. This is the #1 ranking booster.</li>
+      <li><b>Get listed on the camping sites</b> — The Dyrt, Campendium, Hipcamp, Good Sam.</li>
+      <li><b>Pitch a story to the Echo</b> — a local news link is gold (ready-to-send email inside).</li>
+      <li><b>Turn on visitor tracking</b> — so we can see what’s working. (We’ll set this up for you.)</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ══════════ PAGE 2 — GBP + REVIEWS ══════════ -->
+<section class="page">
+  <div class="sec" style="margin-top:4px;">
+    <div class="sec-head"><span class="sec-num serif">1</span><h2 class="serif">Your Google Business Profile</h2></div>
+    <p>This is the free listing that shows your pin, hours, photos and reviews on Google and Google Maps. It is the <span class="hl">single most important thing</span> for getting found. Set it up at <b>business.google.com</b>.</p>
+    <p class="why">Because the camping operates under the “Midway” name (no separate sign), you use <b>one</b> listing with extra categories added — not a second listing. A duplicate listing can get your business suspended.</p>
+    <ul class="check">
+      <li><b>Claim &amp; verify</b> the listing if you haven’t already.</li>
+      <li><b>Add the camping categories.</b> Keep your main category as the store/gas station, then <b>add “Campground” and “RV park”</b> as extra categories. <span class="sm">This is what makes you show up for camping searches.</span></li>
+      <li><b>Upload 10+ real photos</b> — RV sites with hookups, tent spots, the fire pits, the store, the view. Add a few new ones each month. <span class="sm">Fresh photos help.</span></li>
+      <li><b>Set your hours</b> and note that fuel is 24/7. <span class="sm">Google uses these hours in search, so keep them current here.</span></li>
+      <li><b>Fill the description</b> with “Plain, WA,” “near Leavenworth,” “Lake Wenatchee,” “Chiwawa Loop Road.”</li>
+      <li><b>Turn on attributes</b> — pets allowed, Wi-Fi, RV hookups, restrooms.</li>
+      <li><b>Post seasonally</b> — “RV &amp; tent sites open for summer.” Free, and it helps.</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head"><span class="sec-num serif">2</span><h2 class="serif">Reviews — your secret weapon <span class="tag">biggest lever</span></h2></div>
+    <p>More recent, positive Google reviews means a <span class="hl">higher spot on the map</span> and more clicks. Even 15–25 reviews will beat an empty competitor. This is the highest-payoff habit you can build.</p>
+    <ul class="check">
+      <li><b>Get your review link</b> from your Business Profile (“Ask for reviews”).</li>
+      <li><b>Print a small QR-code card</b> for the register and the campsite check-in: <span class="sm">“Camped with us? Leave a quick review →”</span></li>
+      <li><b>Just ask.</b> Every happy camper at checkout. The asking is what works.</li>
+      <li><b>Reply to every review</b> — good and bad. Google rewards it and it looks great to future guests.</li>
+      <li><b>Collect reviews on camping sites too</b> (next page) — The Dyrt, Campendium, Hipcamp.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════ PAGE 3 — DIRECTORIES + THE ECHO ══════════ -->
+<section class="page">
+  <div class="sec" style="margin-top:4px;">
+    <div class="sec-head"><span class="sec-num serif">3</span><h2 class="serif">Get listed where campers look</h2></div>
+    <p>RVers and tent campers search these apps and sites directly. Each listing helps you in three ways: it’s a link back to your site, it confirms your details to Google, and it’s a place people <span class="hl">discover and book you</span>.</p>
+    <div class="nap">
+      One rule: write your details <b>exactly the same way every time</b> — copy/paste this:<br>
+      <b style="font-weight:600;">Midway Gas &amp; Grocery</b> &nbsp;·&nbsp; 14193 Chiwawa Loop RD, Leavenworth, WA 98826 &nbsp;·&nbsp; (509) 596-1076 &nbsp;·&nbsp; midwayplain.com
+    </div>
+    <p style="font-weight:600; margin-bottom:2px;">The general ones:</p>
+    <div class="dirs">
+      <div class="d"><b>Bing Places</b> <span>— Microsoft’s map</span></div>
+      <div class="d"><b>Apple Maps</b> <span>— Business Connect</span></div>
+      <div class="d"><b>Yelp</b></div>
+      <div class="d"><b>Facebook Page</b></div>
+    </div>
+    <p style="font-weight:600; margin:10px 0 2px;">The camping ones <span style="font-weight:400; color:var(--mute); font-size:9.5pt;">(most valuable — do these):</span></p>
+    <div class="dirs">
+      <div class="d"><b>The Dyrt</b> <span>— huge for tent + RV</span></div>
+      <div class="d"><b>Campendium</b></div>
+      <div class="d"><b>Hipcamp</b> <span>— can bring bookings</span></div>
+      <div class="d"><b>Good Sam</b> <span>— RV-focused</span></div>
+      <div class="d"><b>AllStays</b></div>
+      <div class="d"><b>FreeRoam</b></div>
+      <div class="d"><b>RV LIFE / RV Parky</b></div>
+      <div class="d"><b>RoverPass</b> <span>— listing + booking</span></div>
+    </div>
+    <p class="why">Many of these may already have a “stub” listing for you — claim it rather than making a new one, and fix the details to match the line above.</p>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head"><span class="sec-num serif">4</span><h2 class="serif">The Echo — your local-news angle</h2></div>
+    <p>A link from your local paper is one of the strongest signals you can get, and competitors can’t copy it. The trick: pitch a <span class="hl">story</span>, not an ad — and ask that the online version <b>link to midwayplain.com</b>. Send this from your own email:</p>
+    <div class="email">
+      <div class="top">✉ &nbsp; To: The Echo &nbsp;·&nbsp; Subject: Story idea — Midway adds RV &amp; tent camping on Chiwawa Loop Road</div>
+      <div class="body">
+        <p>Hi [Editor name],</p>
+        <p>I’m [your name] from Midway Gas &amp; Grocery out on Chiwawa Loop Road in Plain. Alongside the store and 24/7 fuel, we’ve opened up full-hookup RV sites and tent camping for the summer — a little basecamp for folks heading to Leavenworth and Lake Wenatchee.</p>
+        <p>I thought it might make a nice local piece — a working country store turning into a place to stay the night, what we’re seeing from travelers this season, and what’s new for locals. Happy to host a photographer; the sites and the valley look great this time of year.</p>
+        <p>If it’s a fit, could the online version link back to our site (midwayplain.com) so readers can find us? Thanks either way —</p>
+        <p class="sig">[Name] · Midway Gas &amp; Grocery · (509) 596-1076 · midwayplain.com</p>
+      </div>
+    </div>
+    <p class="why">Do this seasonally — opening weekend, a fall-colors piece, an event around the fire. Each story is another local link. Also ask if the Echo has a free business directory and get listed there too.</p>
+  </div>
+</section>
+
+<!-- ══════════ PAGE 4 — KEEP IT UP + WHAT WE DID ══════════ -->
+<section class="page">
+  <div class="sec" style="margin-top:4px;">
+    <div class="sec-head"><span class="sec-num serif">5</span><h2 class="serif">Keep it up — about 30 minutes a month</h2></div>
+    <p>SEO isn’t one-and-done. A little upkeep compounds. Once a month:</p>
+    <ul class="check">
+      <li><b>Add a few fresh photos</b> to your Google Business Profile and post a seasonal update.</li>
+      <li><b>Ask that week’s campers for reviews</b>, and reply to any new ones.</li>
+      <li><b>Send one local link request</b> per season — the Echo, a Leavenworth tourism site, a neighbor business.</li>
+      <li><b>Glance at your visitor tracking</b> (once we set it up) to see which pages campers land on.</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head"><span class="sec-num serif">✓</span><h2 class="serif">What we already did on your website</h2></div>
+    <p>So the off-site work above has a strong home to point people to, these are already done and ready to go live:</p>
+    <ul class="done">
+      <li><b>Two new pages built just for camping</b> — one for the RV park, one for tent camping — each written to match how people actually search (“RV park near Leavenworth,” “tent camping near Lake Wenatchee”).</li>
+      <li><b>Told Google about your business in detail</b> — location, the area you serve, and your amenities (full hookups, fire pits, pets, Wi-Fi, restrooms, 24/7 fuel, the store).</li>
+      <li><b>Added a site map &amp; search rules</b> so Google can find and list every page.</li>
+      <li><b>Linked it all together</b> and fixed image labels so search engines understand your photos.</li>
+      <li><b>Fixed the colored stripe</b> on the left edge so it fills the screen properly on phones.</li>
+    </ul>
+    <p class="why">Two small things left on our side: turn on visitor tracking, and publish these changes live. Then we tell Google to take a fresh look.</p>
+  </div>
+
+  <div class="foot">
+    <div>
+      <div class="ribbon" style="margin-bottom:8px;"><i></i><i></i><i></i></div>
+      <div class="b serif">Midway Gas &amp; Grocery</div>
+      <div class="c">14193 Chiwawa Loop RD, Leavenworth, WA 98826</div>
+    </div>
+    <div class="r c">
+      (509) 596-1076<br>midwayplain.com<br>@midwaygrocer
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

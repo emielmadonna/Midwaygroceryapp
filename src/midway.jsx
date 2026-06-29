@@ -610,7 +610,7 @@ const OrderAhead = ({ products = [], onCheckout, onPay }) => {
               <div className="order-card" key={id}>
                 <div className="order-card-ph">
                   {p.imageUrl
-                    ? <img className="order-card-img" src={p.imageUrl} alt="" loading="lazy" onError={e => { e.currentTarget.remove(); }} />
+                    ? <img className="order-card-img" src={p.imageUrl} alt={p.name || p.category || 'Midway store item'} loading="lazy" onError={e => { e.currentTarget.remove(); }} />
                     : <span className="order-card-ph-label">{p.category || 'Store'}</span>}
                   {qty > 0 && <span className="order-qty">{qty}</span>}
                 </div>
@@ -1358,6 +1358,9 @@ const Stay = ({ sites, fuelPrices = [], phone = '', onCheckout, onPay, onDriverL
       <div className="head">
         <h2>Reserve your <em>site.</em></h2>
         <p>Full-hookup RV pads and walk-in tent areas right behind Midway. Pick a pad on the live map, choose your dates, and pay upfront with Square. Full hookups include water, septic, and electricity; tent areas T01–T10 sit on the center island, steps from coffee, fuel, ice, and firewood.</p>
+        <p style={{ marginTop: 12, fontSize: 15, color: 'var(--ink-2)' }}>
+          More about our <a href="/rv-park" style={{ color: 'var(--ink)', textDecoration: 'underline' }}>RV park near Leavenworth</a> and <a href="/tent-camping" style={{ color: 'var(--ink)', textDecoration: 'underline' }}>tent camping near Lake Wenatchee</a>.
+        </p>
         <a href="/manage.html" style={{ display: 'inline-block', marginTop: 20, padding: '14px 28px', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--ink)', borderRadius: 999 }}>Manage existing booking →</a>
       </div>
 
@@ -1702,7 +1705,10 @@ function normalizeBootstrap(data = {}) {
   return {
     ...data,
     rvSites: Array.isArray(data.rvSites)
-      ? data.rvSites.map(s => ({ ...s, hookup: s.hookup || staticHookupById[s.id] || 'full' }))
+      // Hookup type is a fixed, physical attribute. rv-map-data.js is the SINGLE
+      // SOURCE OF TRUTH for it — the static value always wins so the API/DB can
+      // never repaint the map with a blank or stale hookup (it kept shipping '').
+      ? data.rvSites.map(s => ({ ...s, hookup: staticHookupById[s.id] || s.hookup || 'full' }))
       : emptyBootstrap.rvSites,
     settings: {
       ...FALLBACK_SETTINGS,

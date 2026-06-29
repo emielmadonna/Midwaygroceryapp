@@ -8,6 +8,7 @@ import {
   quoteMultiSiteBooking,
   toPublicSite,
 } from './rv-booking.js';
+import { getRvMapSiteByNumber } from './rv-map-data.js';
 
 const BLOCKING_BOOKING_STATUSES = ['hold', 'paid', 'confirmed', 'blocked'];
 
@@ -1652,6 +1653,10 @@ function fromSupabaseSite(row, amenities = []) {
     mapHeight: row.map_height,
     rotation: row.rotation ?? 0,
     amp: row.amp,
+    // Hookup type comes from rv-map-data.js (single source of truth), not the
+    // rv_sites table — the DB has no hookup column and was emitting '' for every
+    // site, which painted the whole map "electric only".
+    hookup: getRvMapSiteByNumber(row.site_number)?.hookup ?? row.hookup ?? 'full',
     type: row.site_type,
     shade: row.shade,
     squareCatalogObjectId: row.square_catalog_object_id,

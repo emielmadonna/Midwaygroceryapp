@@ -1,0 +1,12 @@
+# Midway Gas & Grocery — https://www.midwayplain.com
+User-agent: *
+Allow: /
+
+# Keep admin / management surfaces and the API out of search
+Disallow: /admin
+Disallow: /admin.html
+Disallow: /manage
+Disallow: /manage.html
+Disallow: /api/
+
+Sitemap: https://www.midwayplain.com/sitemap.xml

@@ -1721,10 +1721,13 @@ body.density-compact .section .head { margin-bottom: 40px; }
 body::before {
   content: '';
   position: fixed;
+  /* Pin to top AND bottom of the visual viewport instead of using a vh/dvh
+     height. On mobile, 100vh/100dvh don't match the painted area as the
+     browser toolbar shows/hides, leaving a gap at the bottom; top:0;bottom:0
+     stretches the ribbon to the true viewport bounds and re-fits live. */
   top: 0;
+  bottom: 0;
   left: 0;
-  height: 100vh;
-  height: 100dvh;
   width: 26px;
   z-index: 100;
   background: linear-gradient(
