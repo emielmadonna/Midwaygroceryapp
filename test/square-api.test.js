@@ -767,3 +767,29 @@ test('refund calls Square Refunds API in production mode', async () => {
   assert.equal(refund.mode, 'square');
   assert.equal(refund.refundId, 'refund-123');
 });
+
+test('buildSquareItemObject builds a tracked, priced item with one variation', async () => {
+  const { buildSquareItemObject } = await import('../src/lib/square-api.js');
+  const object = buildSquareItemObject({
+    name: '  Snickers King Size ',
+    description: 'Candy bar',
+    sku: '1002',
+    upc: '040000424307',
+    priceCents: 299,
+    categoryId: 'CAT_1',
+  });
+  assert.equal(object.type, 'ITEM');
+  assert.equal(object.item_data.name, 'Snickers King Size');
+  assert.deepEqual(object.item_data.categories, [{ id: 'CAT_1' }]);
+  const variation = object.item_data.variations[0].item_variation_data;
+  assert.equal(variation.sku, '1002');
+  assert.equal(variation.upc, '040000424307');
+  assert.equal(variation.track_inventory, true);
+  assert.equal(variation.pricing_type, 'FIXED_PRICING');
+  assert.deepEqual(variation.price_money, { amount: 299, currency: 'USD' });
+
+  const noPrice = buildSquareItemObject({ name: 'Mystery item' });
+  assert.equal(noPrice.item_data.variations[0].item_variation_data.pricing_type, 'VARIABLE_PRICING');
+  assert.equal('categories' in noPrice.item_data, false);
+  assert.throws(() => buildSquareItemObject({ name: '   ' }), /item name/i);
+});

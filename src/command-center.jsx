@@ -332,6 +332,18 @@ function App() {
             label: `Reviewing ${streamEvent.name}`,
             status: 'active',
           }));
+        } else if (streamEvent.type === 'attachment_progress') {
+          setLiveActivity(current => upsertActivity(current, {
+            id: `attachment-${streamEvent.name}`,
+            label: streamEvent.label || `Reading ${streamEvent.name}`,
+            status: 'active',
+          }));
+        } else if (streamEvent.type === 'attachment_completed') {
+          setLiveActivity(current => completeActivity(upsertActivity(current, {
+            id: `attachment-${streamEvent.name}`,
+            label: streamEvent.totalPages ? `Read all ${streamEvent.totalPages} pages of ${streamEvent.name}` : `Read ${streamEvent.name}`,
+            status: 'active',
+          }), `attachment-${streamEvent.name}`));
         } else if (streamEvent.type === 'turn_started' || streamEvent.type === 'thinking') {
           setLiveActivity(current => upsertActivity(current, {
             id: 'thinking',
@@ -341,7 +353,7 @@ function App() {
         } else if (streamEvent.type === 'tool_started') {
           setLiveActivity(current => upsertActivity(completeActivity(current, 'thinking'), {
             id: streamEvent.toolCallId || streamEvent.toolName,
-            label: friendlyToolActivity(streamEvent.toolName),
+            label: friendlyToolActivity(streamEvent.toolName, streamEvent),
             status: 'active',
           }));
         } else if (streamEvent.type === 'tool_completed' || streamEvent.type === 'tool_denied') {
@@ -1322,7 +1334,7 @@ function upsertActivity(items, next) {
   return items.map((item, itemIndex) => itemIndex === index ? { ...item, ...next } : item);
 }
 function completeActivity(items, id, status = 'done') { return items.map(item => item.id === id ? { ...item, status } : item); }
-function friendlyToolActivity(toolName = '') {
+function friendlyToolActivity(toolName = '', detail = {}) {
   const labels = {
     get_command_center_overview: 'Checking today’s command center',
     admin_dashboard_today: 'Checking today’s store activity',
@@ -1367,8 +1379,34 @@ function friendlyToolActivity(toolName = '') {
     qbo_get_pl_summary: 'Reviewing the profit and loss summary',
     qbo_create_invoice: 'Preparing the QuickBooks invoice',
     qbo_record_payment: 'Recording the QuickBooks payment',
+    create_square_item: 'Creating the new register item',
+    update_square_item: 'Updating the register item',
+    set_square_item_stock: 'Setting the on-hand count in Square',
+    delete_square_item: 'Removing the item from the register',
+    call_square_read_api: 'Looking it up in Square',
+    call_square_api: 'Working in Square',
+    map_item_to_vendor: 'Saving the vendor mapping',
+    unmap_item_from_vendor: 'Removing the vendor mapping',
+    propose_vendor_mappings: 'Matching items to the vendor catalog',
+    apply_vendor_mappings: 'Saving the approved vendor mappings',
+    set_inventory_rule: 'Saving the stock rule',
+    call_vendor_read_tool: 'Checking the vendor',
   };
-  return labels[toolName] || `Checking ${String(toolName).replaceAll('_', ' ')}`;
+  const base = labels[toolName] || `Checking ${String(toolName).replaceAll('_', ' ')}`;
+  const connector = detail.connector && !/^[0-9a-f-]{20,}$/i.test(detail.connector) ? detail.connector : null;
+  if (detail.innerTool) {
+    const server = connector || (String(detail.innerTool).startsWith('harbor_') ? 'Harbor' : 'the vendor');
+    const doing = String(detail.innerTool).replace(/^harbor_/, '').replaceAll('_', ' ');
+    return `${server} · ${doing}`;
+  }
+  if (detail.apiPath) {
+    const section = String(detail.apiPath).replace(/^\/v2\//, '').split('/')[0].replaceAll('-', ' ');
+    return section ? `Square · ${section}` : base;
+  }
+  if (detail.subject && ['create_square_item', 'update_square_item'].includes(toolName)) {
+    return `${base}: ${detail.subject}`;
+  }
+  return base;
 }
 function loadExternalScript(src) { return new Promise((resolve, reject) => { const existing = document.querySelector(`script[src="${src}"]`); if (existing) { if (window.Square) resolve(); else existing.addEventListener('load', resolve, { once: true }); return; } const script = document.createElement('script'); script.src = src; script.async = true; script.onload = resolve; script.onerror = () => reject(new Error('Secure payment library unavailable.')); document.head.appendChild(script); }); }
 

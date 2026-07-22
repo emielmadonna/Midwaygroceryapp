@@ -274,6 +274,86 @@ export async function batchCreateSquarePhysicalCounts({
   return { counts: result.counts ?? [], changes: result.changes ?? [] };
 }
 
+export async function searchSquareCatalogObjects({
+  objectTypes = ['ITEM'],
+  exactAttribute = null,
+  prefixAttribute = null,
+  limit = 100,
+  ...options
+} = {}) {
+  const body = {
+    object_types: objectTypes,
+    limit: Math.max(1, Math.min(1000, Number(limit) || 100)),
+    include_deleted_objects: false,
+  };
+  if (exactAttribute) {
+    body.query = { exact_query: { attribute_name: exactAttribute.name, attribute_value: exactAttribute.value } };
+  } else if (prefixAttribute) {
+    body.query = { prefix_query: { attribute_name: prefixAttribute.name, attribute_prefix: prefixAttribute.value } };
+  }
+  const result = await squareRequest('/v2/catalog/search', { ...options, method: 'POST', body });
+  return result.objects ?? [];
+}
+
+export async function retrieveSquareCatalogObject({ objectId, includeRelated = true, ...options } = {}) {
+  const params = includeRelated ? '?include_related_objects=true' : '';
+  const result = await squareRequest(`/v2/catalog/object/${encodeURIComponent(objectId)}${params}`, options);
+  return { object: result.object ?? null, relatedObjects: result.related_objects ?? [] };
+}
+
+export async function upsertSquareCatalogObject({ object, idempotencyKey = crypto.randomUUID(), ...options } = {}) {
+  const result = await squareRequest('/v2/catalog/object', {
+    ...options,
+    method: 'POST',
+    body: { idempotency_key: String(idempotencyKey).slice(0, 45), object },
+  });
+  return { object: result.catalog_object ?? null, idMappings: result.id_mappings ?? [] };
+}
+
+export async function deleteSquareCatalogObject({ objectId, ...options } = {}) {
+  const result = await squareRequest(`/v2/catalog/object/${encodeURIComponent(objectId)}`, { ...options, method: 'DELETE' });
+  return { deletedObjectIds: result.deleted_object_ids ?? [] };
+}
+
+// Pure builder for a brand-new Square ITEM object with one sellable variation,
+// so the payload shape stays testable without network calls.
+export function buildSquareItemObject({
+  name,
+  description = '',
+  sku = '',
+  upc = '',
+  priceCents = null,
+  currency = 'USD',
+  categoryId = null,
+  variationName = 'Regular',
+} = {}) {
+  const itemName = String(name || '').trim();
+  if (!itemName) throw new Error('An item name is required to create a Square item.');
+  const variationData = {
+    name: String(variationName || 'Regular').trim() || 'Regular',
+    track_inventory: true,
+    ...(Number.isFinite(Number(priceCents)) && priceCents !== null
+      ? { pricing_type: 'FIXED_PRICING', price_money: { amount: Math.max(0, Math.round(Number(priceCents))), currency } }
+      : { pricing_type: 'VARIABLE_PRICING' }),
+  };
+  if (String(sku || '').trim()) variationData.sku = String(sku).trim();
+  if (String(upc || '').trim()) variationData.upc = String(upc).trim();
+  return {
+    type: 'ITEM',
+    id: '#new-item',
+    item_data: {
+      name: itemName,
+      ...(String(description || '').trim() ? { description: String(description).trim() } : {}),
+      ...(categoryId ? { categories: [{ id: categoryId }] } : {}),
+      variations: [{
+        type: 'ITEM_VARIATION',
+        id: '#new-variation',
+        item_variation_data: variationData,
+      }],
+    },
+  };
+}
+
 export function normalizeSquareCatalogItemsForInventory(objects = []) {
   const rows = [];
   for (const object of objects ?? []) {

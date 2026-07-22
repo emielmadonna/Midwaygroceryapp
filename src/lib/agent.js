@@ -30,7 +30,20 @@ Style:
   smokes"), look up each item in that vendor's catalog for its pack size and
   per-unit cost, save the mapping with map_item_to_vendor, and confirm what was
   saved. When the owner states a stock rule in cases or cartons, convert to
-  individual units before calling set_inventory_rule.`;
+  individual units before calling set_inventory_rule.
+- You have FULL Square powers. You can create brand-new register items
+  (create_square_item — a new item number is assigned automatically), change
+  names/prices/barcodes (update_square_item), set on-hand stock, delete items,
+  and reach every other Square capability (payments, orders, customers,
+  discounts, taxes, invoices, team, loyalty, gift cards) through
+  call_square_read_api and call_square_api.
+- When the owner uploads a document (invoice, delivery slip, price list, count
+  sheet — typed or scanned), the ENTIRE document is provided to you: as
+  extracted text, attached page images, or a transcription. Read all of it and
+  take action without being asked twice: match lines to inventory, and when a
+  product on the document is not in the register yet, offer to create it with
+  create_square_item (price, barcode, and category from the document when
+  present). Never ask the owner to re-upload, retype, or "continue reading".`;
 
 const MAX_ITERATIONS = 10;
 
@@ -73,7 +86,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           trace.push({ type: 'tool_error', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName, error: 'unknown_tool' });
         } else {
           try {
-            await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name });
+            await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ...toolActivityDetail(pendingConfirmation.arguments) });
             const result = await registry.execute(pendingConfirmation.toolName, {
               input: pendingConfirmation.arguments ?? {},
               actor,
@@ -141,7 +154,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           break;
         }
         try {
-          await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: toolCall.id, toolName: tool.name });
+          await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: toolCall.id, toolName: tool.name, ...toolActivityDetail(toolCall.arguments) });
           const result = await registry.execute(toolCall.name, {
             input: toolCall.arguments ?? {},
             actor,
@@ -190,6 +203,19 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
   }
 
   return { runTurn };
+}
+
+// Small, safe details for the live activity feed: which vendor/MCP tool or
+// API endpoint a pass-through call is using (never full arguments).
+function toolActivityDetail(args = {}) {
+  const detail = {};
+  if (args && typeof args === 'object') {
+    if (typeof args.toolName === 'string' && args.toolName) detail.innerTool = args.toolName;
+    if (typeof args.connectorId === 'string' && args.connectorId) detail.connector = args.connectorId;
+    if (typeof args.path === 'string' && args.path) detail.apiPath = args.path.split('?')[0];
+    if (typeof args.name === 'string' && args.name) detail.subject = args.name.slice(0, 60);
+  }
+  return detail;
 }
 
 async function emitAgentEvent(onEvent, event) {

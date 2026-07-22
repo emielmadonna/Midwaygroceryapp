@@ -3,11 +3,17 @@ import crypto from 'node:crypto';
 import {
   batchCreateSquarePhysicalCounts,
   batchRetrieveSquareInventoryCounts,
+  buildSquareItemObject,
+  deleteSquareCatalogObject,
   listSquareCatalogItems,
   listSquareCatalogPage,
   listSquarePayments,
   normalizeSquareCatalogItemsForInventory,
+  retrieveSquareCatalogObject,
+  searchSquareCatalogObjects,
   searchSquareOrders,
+  squareRequest,
+  upsertSquareCatalogObject,
 } from './square-api.js';
 import { createVendorMcpClient } from './vendor-mcp.js';
 import { isBookingCatalogProduct } from './public-bootstrap.js';
@@ -385,6 +391,239 @@ export function createCommandCenterService({
       throw serviceError('SQUARE_INVENTORY_NOT_CONNECTED', 'Connect a valid Square account, location, and environment before loading live inventory.', 409);
     }
     return config;
+  }
+
+  // Pick the next free numeric item number (SKU) so the owner never has to
+  // invent one: highest existing numeric SKU + 1, starting at 1001.
+  async function nextItemNumber() {
+    const catalog = await store.listStoreInventory?.({ activeOnly: false }) ?? [];
+    let highest = 1000;
+    for (const item of catalog) {
+      const numeric = /^\d{1,9}$/.test(String(item.sku || '').trim()) ? Number(item.sku) : null;
+      if (numeric !== null && numeric > highest) highest = numeric;
+    }
+    return String(highest + 1);
+  }
+
+  async function resolveSquareCategoryId(categoryName, config) {
+    const wanted = String(categoryName || '').trim();
+    if (!wanted) return null;
+    const matches = await searchSquareCatalogObjects({
+      objectTypes: ['CATEGORY'],
+      exactAttribute: { name: 'name', value: wanted },
+      env: config,
+      fetchImpl,
+    });
+    const existing = matches.find(object => (object.category_data?.name || '').toLowerCase() === wanted.toLowerCase());
+    if (existing) return existing.id;
+    const created = await upsertSquareCatalogObject({
+      object: { type: 'CATEGORY', id: '#new-category', category_data: { name: wanted } },
+      env: config,
+      fetchImpl,
+    });
+    return created.object?.id ?? null;
+  }
+
+  // Pull one item back into the local inventory tables right away, so a
+  // just-created item shows up without waiting for the next full sync.
+  async function absorbCatalogObject(object) {
+    if (!object) return [];
+    const normalized = normalizeSquareCatalogItemsForInventory([object]);
+    if (normalized.length) await store.upsertStoreInventory?.(normalized);
+    return normalized;
+  }
+
+  async function createCatalogItem({
+    name,
+    description = '',
+    priceCents = null,
+    sku = '',
+    upc = '',
+    categoryName = '',
+    initialQuantity = null,
+    actor = null,
+  } = {}) {
+    const config = await requireSquareInventoryConfig();
+    const locationId = config.locationId || config.externalLocationId;
+    const resolvedSku = String(sku || '').trim() || await nextItemNumber();
+    const categoryId = await resolveSquareCategoryId(categoryName, config);
+    const { object } = await upsertSquareCatalogObject({
+      object: buildSquareItemObject({ name, description, sku: resolvedSku, upc, priceCents, categoryId }),
+      env: config,
+      fetchImpl,
+    });
+    if (!object) throw serviceError('SQUARE_ITEM_CREATE_FAILED', 'Square did not return the created item. Try again.', 502);
+    const rows = await absorbCatalogObject(object);
+    const variationId = rows[0]?.squareVariationId
+      ?? object.item_data?.variations?.[0]?.id
+      ?? null;
+    let quantity = null;
+    if (variationId && Number.isFinite(Number(initialQuantity))) {
+      quantity = Math.max(0, Math.round(Number(initialQuantity)));
+      await batchCreateSquarePhysicalCounts({
+        counts: [{ catalogObjectId: variationId, quantity }],
+        locationId,
+        env: config,
+        fetchImpl,
+      });
+      await upsertBalances([{
+        squareVariationId: variationId,
+        locationId,
+        quantity,
+        lastCountedAt: now().toISOString(),
+        source: 'assistant',
+      }]);
+    }
+    await store.recordAuditLog?.({
+      action: 'command_center.square_item_create',
+      actor: actor || { id: 'command-center', role: 'system' },
+      targetType: 'square_catalog_item',
+      targetId: object.id,
+      metadata: { name, sku: resolvedSku, priceCents, categoryName: categoryName || null, initialQuantity: quantity },
+    });
+    return {
+      squareItemId: object.id,
+      squareVariationId: variationId,
+      name: rows[0]?.name ?? name,
+      sku: resolvedSku,
+      priceCents: rows[0]?.priceCents ?? priceCents,
+      category: rows[0]?.category ?? (categoryName || null),
+      quantity,
+    };
+  }
+
+  async function updateCatalogItem({
+    squareVariationId,
+    name,
+    description,
+    priceCents,
+    sku,
+    upc,
+    categoryName,
+    actor = null,
+  } = {}) {
+    const variationRef = String(squareVariationId || '').trim();
+    if (!variationRef) throw serviceError('INVENTORY_ITEM_REQUIRED', 'Choose which item to update (from list_inventory).', 400);
+    const config = await requireSquareInventoryConfig();
+    const { object: variation, relatedObjects } = await retrieveSquareCatalogObject({ objectId: variationRef, env: config, fetchImpl });
+    let item = relatedObjects.find(related => related.type === 'ITEM');
+    let variationObject = variation;
+    if (!item && variation?.type === 'ITEM') {
+      // The owner handed us an item id instead of a variation id — accept it.
+      item = variation;
+      variationObject = null;
+    }
+    if (!item) throw serviceError('SQUARE_ITEM_NOT_FOUND', 'That item could not be found in Square.', 404);
+    const itemData = item.item_data ?? {};
+    if (name !== undefined && String(name).trim()) itemData.name = String(name).trim();
+    if (description !== undefined) itemData.description = String(description ?? '').trim();
+    if (categoryName !== undefined && String(categoryName || '').trim()) {
+      const categoryId = await resolveSquareCategoryId(categoryName, config);
+      if (categoryId) itemData.categories = [{ id: categoryId }];
+    }
+    const variations = itemData.variations ?? [];
+    const target = variationObject
+      ? variations.find(entry => entry.id === variationObject.id) ?? variations[0]
+      : variations[0];
+    if (target) {
+      const data = target.item_variation_data ?? {};
+      if (priceCents !== undefined && Number.isFinite(Number(priceCents))) {
+        data.pricing_type = 'FIXED_PRICING';
+        data.price_money = { amount: Math.max(0, Math.round(Number(priceCents))), currency: data.price_money?.currency || 'USD' };
+      }
+      if (sku !== undefined) data.sku = String(sku ?? '').trim();
+      if (upc !== undefined) data.upc = String(upc ?? '').trim();
+      target.item_variation_data = data;
+    }
+    item.item_data = itemData;
+    const { object: saved } = await upsertSquareCatalogObject({ object: item, env: config, fetchImpl });
+    if (!saved) throw serviceError('SQUARE_ITEM_UPDATE_FAILED', 'Square did not accept the item update. Try again.', 502);
+    const rows = await absorbCatalogObject(saved);
+    await store.recordAuditLog?.({
+      action: 'command_center.square_item_update',
+      actor: actor || { id: 'command-center', role: 'system' },
+      targetType: 'square_catalog_item',
+      targetId: saved.id,
+      metadata: definedOnly({ name, description, priceCents, sku, upc, categoryName }),
+    });
+    const updatedRow = rows.find(row => row.squareVariationId === (target?.id ?? variationRef)) ?? rows[0] ?? {};
+    return {
+      squareItemId: saved.id,
+      squareVariationId: updatedRow.squareVariationId ?? target?.id ?? variationRef,
+      name: updatedRow.name ?? itemData.name,
+      sku: updatedRow.sku ?? null,
+      priceCents: updatedRow.priceCents ?? null,
+      category: updatedRow.category ?? null,
+    };
+  }
+
+  async function setItemStock({ squareVariationId, quantity, actor = null } = {}) {
+    const variationRef = String(squareVariationId || '').trim();
+    if (!variationRef) throw serviceError('INVENTORY_ITEM_REQUIRED', 'Choose which item to set stock for (from list_inventory).', 400);
+    const rounded = Math.max(0, Math.round(Number(quantity)));
+    if (!Number.isFinite(rounded)) throw serviceError('QUANTITY_REQUIRED', 'Provide the on-hand quantity in individual units.', 400);
+    const config = await requireSquareInventoryConfig();
+    const locationId = config.locationId || config.externalLocationId;
+    await batchCreateSquarePhysicalCounts({
+      counts: [{ catalogObjectId: variationRef, quantity: rounded }],
+      locationId,
+      env: config,
+      fetchImpl,
+    });
+    await upsertBalances([{
+      squareVariationId: variationRef,
+      locationId,
+      quantity: rounded,
+      lastCountedAt: now().toISOString(),
+      source: 'assistant',
+    }]);
+    await store.recordAuditLog?.({
+      action: 'command_center.square_stock_set',
+      actor: actor || { id: 'command-center', role: 'system' },
+      targetType: 'square_catalog_item',
+      targetId: variationRef,
+      metadata: { quantity: rounded },
+    });
+    return { squareVariationId: variationRef, quantity: rounded };
+  }
+
+  async function deleteCatalogItem({ squareItemId, actor = null } = {}) {
+    const objectId = String(squareItemId || '').trim();
+    if (!objectId) throw serviceError('INVENTORY_ITEM_REQUIRED', 'Choose which item to remove (use its Square item id).', 400);
+    const config = await requireSquareInventoryConfig();
+    const { deletedObjectIds } = await deleteSquareCatalogObject({ objectId, env: config, fetchImpl });
+    await store.recordAuditLog?.({
+      action: 'command_center.square_item_delete',
+      actor: actor || { id: 'command-center', role: 'system' },
+      targetType: 'square_catalog_item',
+      targetId: objectId,
+      metadata: { deletedObjectIds },
+    });
+    return { deletedObjectIds };
+  }
+
+  // Full Square API pass-through so the assistant can reach every Square
+  // capability (orders, payments, customers, discounts, taxes, team, ...).
+  // readOnly restricts to GET; anything else is gated by tool approval.
+  async function callSquareApi({ method = 'GET', path, body = null, readOnly = false } = {}) {
+    const cleanMethod = String(method || 'GET').toUpperCase();
+    const cleanPath = String(path || '').trim();
+    if (!/^\/v2\/[a-z0-9\-_/.%?=&+]*$/i.test(cleanPath)) {
+      throw serviceError('SQUARE_PATH_INVALID', 'The Square API path must start with /v2/.', 400);
+    }
+    if (readOnly && cleanMethod !== 'GET') {
+      throw serviceError('SQUARE_READ_ONLY', 'Only GET requests are allowed here. Use the approval-gated Square tool for changes.', 400);
+    }
+    if (!['GET', 'POST', 'PUT', 'DELETE'].includes(cleanMethod)) {
+      throw serviceError('SQUARE_METHOD_INVALID', 'Use GET, POST, PUT, or DELETE for Square API calls.', 400);
+    }
+    const config = await requireSquareInventoryConfig();
+    return squareRequest(cleanPath, {
+      method: cleanMethod,
+      ...(body && cleanMethod !== 'GET' ? { body } : {}),
+      env: config,
+      fetchImpl,
+    });
   }
 
   async function getOverviewInventory({ refreshSquare }) {
@@ -1246,6 +1485,11 @@ export function createCommandCenterService({
     stepSquareSyncJob,
     getSquareSyncJob,
     listInventory,
+    createCatalogItem,
+    updateCatalogItem,
+    setItemStock,
+    deleteCatalogItem,
+    callSquareApi,
     updateInventoryRule,
     mapVendorProduct,
     unmapVendorProduct,

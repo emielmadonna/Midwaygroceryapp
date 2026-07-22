@@ -62,6 +62,117 @@ export function registerCommandCenterTools(registry, { commandCenter } = {}) {
   });
 
   registry.register({
+    name: 'create_square_item',
+    description: 'Create a brand-new sellable item in the live Square register, with a new item number (SKU) assigned automatically when none is given. Use this when a delivery, invoice, or the owner mentions a product the store does not carry yet. Provide the price in cents and the starting on-hand quantity in individual sellable units when known.',
+    requiredScope: 'owner',
+    sideEffect: 'destructive',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name'],
+      properties: {
+        name: { type: 'string', minLength: 1, description: 'The product name as it should appear on the register.' },
+        description: { type: 'string' },
+        priceCents: { type: ['integer', 'null'], minimum: 0, description: 'Selling price per individual unit in cents. Omit only if the price is genuinely unknown.' },
+        sku: { type: 'string', description: 'Item number. Leave blank to auto-assign the next free number.' },
+        upc: { type: 'string', description: 'The barcode (UPC/GTIN) if known, e.g. from an invoice or the vendor catalog.' },
+        categoryName: { type: 'string', description: 'Register category, e.g. Snacks, Beverages, Tobacco. Created automatically if it does not exist yet.' },
+        initialQuantity: { type: ['integer', 'null'], minimum: 0, description: 'Starting on-hand stock in individual sellable units.' },
+      },
+    },
+    handler: ({ input, actor }) => commandCenter.createCatalogItem({ ...input, actor }),
+  });
+
+  registry.register({
+    name: 'update_square_item',
+    description: 'Change a live Square register item: name, description, price, item number (SKU), barcode (UPC), or category. Only the fields provided are changed.',
+    requiredScope: 'owner',
+    sideEffect: 'destructive',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['squareVariationId'],
+      properties: {
+        squareVariationId: { type: 'string', minLength: 1, description: 'The Square variation id of the item, from list_inventory.' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        priceCents: { type: 'integer', minimum: 0, description: 'New selling price per individual unit in cents.' },
+        sku: { type: 'string' },
+        upc: { type: 'string' },
+        categoryName: { type: 'string' },
+      },
+    },
+    handler: ({ input, actor }) => commandCenter.updateCatalogItem({ ...input, actor }),
+  });
+
+  registry.register({
+    name: 'set_square_item_stock',
+    description: 'Set the current on-hand quantity of one item directly in Square (a physical count), in individual sellable units. For counting many items at once, prefer create_inventory_reconciliation so the owner can review first.',
+    requiredScope: 'owner',
+    sideEffect: 'destructive',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['squareVariationId', 'quantity'],
+      properties: {
+        squareVariationId: { type: 'string', minLength: 1, description: 'The Square variation id of the item, from list_inventory.' },
+        quantity: { type: 'integer', minimum: 0, description: 'On-hand quantity in individual sellable units.' },
+      },
+    },
+    handler: ({ input, actor }) => commandCenter.setItemStock({ ...input, actor }),
+  });
+
+  registry.register({
+    name: 'delete_square_item',
+    description: 'Permanently remove an item (and all its variations) from the live Square register. This cannot be undone — restate the exact item first and wait for approval.',
+    requiredScope: 'owner',
+    sideEffect: 'destructive',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['squareItemId'],
+      properties: {
+        squareItemId: { type: 'string', minLength: 1, description: 'The Square ITEM id (squareItemId from list_inventory), not the variation id.' },
+      },
+    },
+    handler: ({ input, actor }) => commandCenter.deleteCatalogItem({ ...input, actor }),
+  });
+
+  registry.register({
+    name: 'call_square_read_api',
+    description: 'Look up anything in the connected Square account with a GET request to any Square API v2 endpoint — payments, orders, customers, invoices, discounts, taxes, team members, locations, loyalty, gift cards, and more. Example paths: /v2/payments, /v2/customers, /v2/catalog/list, /v2/team-members. Never guess ids — list first.',
+    requiredScope: 'owner',
+    sideEffect: 'read',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path'],
+      properties: {
+        path: { type: 'string', minLength: 4, description: 'The Square API path starting with /v2/, including any query string.' },
+      },
+    },
+    handler: ({ input }) => commandCenter.callSquareApi({ method: 'GET', path: input.path, readOnly: true }),
+  });
+
+  registry.register({
+    name: 'call_square_api',
+    description: 'Call any Square API v2 endpoint that changes something (POST/PUT/DELETE) — create discounts, taxes, customers, orders, invoices, gift cards, and every other Square capability. Always requires explicit owner approval. For plain lookups use call_square_read_api instead.',
+    requiredScope: 'owner',
+    sideEffect: 'destructive',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['method', 'path'],
+      properties: {
+        method: { type: 'string', enum: ['POST', 'PUT', 'DELETE'], description: 'The HTTP method.' },
+        path: { type: 'string', minLength: 4, description: 'The Square API path starting with /v2/.' },
+        body: { type: 'object', additionalProperties: true, properties: {}, description: 'The JSON request body, following Square API v2 conventions (snake_case fields, money as {amount, currency}, include idempotency_key where the endpoint requires one).' },
+      },
+    },
+    handler: ({ input }) => commandCenter.callSquareApi(input),
+  });
+
+  registry.register({
     name: 'list_vendors',
     description: 'List every store vendor and how orders are currently placed.',
     requiredScope: 'read',

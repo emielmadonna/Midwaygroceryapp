@@ -1089,10 +1089,32 @@ export function createApiRouter({
         }
       }
 
-      const parsedAttachments = await parseAgentAttachments(resolvedAttachments, { commandCenter });
-      for (const attachment of parsedAttachments.metadata) {
-        await onEvent?.({ type: 'attachment_started', name: attachment.name, fileType: attachment.type });
+      for (const attachment of resolvedAttachments || []) {
+        await onEvent?.({ type: 'attachment_started', name: String(attachment?.name || 'attachment').slice(0, 180), fileType: attachment?.type || '' });
       }
+      // Scanned pages that cannot all fit in one model request are transcribed
+      // page-range by page-range with the same OpenAI connection.
+      const transcribeChunk = async ({ dataUrl, fileName, firstPage, lastPage, totalPages }) => {
+        try {
+          const turn = await aiProvider.runTurn({
+            messages: [
+              { role: 'system', content: 'You transcribe scanned documents. Output the complete text of the attached pages verbatim, in reading order, preserving numbers, item names, quantities, and prices exactly. Render tables as plain aligned text. Output only the transcription — no commentary.' },
+              {
+                role: 'user',
+                content: [
+                  { type: 'input_text', text: `Transcribe pages ${firstPage}-${lastPage} (of ${totalPages}) of ${fileName}.` },
+                  { type: 'input_file', filename: fileName, file_data: dataUrl, detail: 'high' },
+                ],
+              },
+            ],
+            tools: [],
+          });
+          return String(turn?.message?.content || '').trim();
+        } catch {
+          return '';
+        }
+      };
+      const parsedAttachments = await parseAgentAttachments(resolvedAttachments, { commandCenter, onEvent, transcribeChunk });
       if ((userMessage && userMessage.trim()) || parsedAttachments.content.length) {
         const text = userMessage.trim() || 'Please review the attached file and tell me what needs attention.';
         const content = parsedAttachments.content.length
@@ -2871,13 +2893,21 @@ function toAgentMessage(persisted) {
   return message;
 }
 
-async function parseAgentAttachments(attachments = [], { commandCenter } = {}) {
+const AGENT_ATTACHMENT_CHUNK_BUDGET = 24 * 1024 * 1024;
+
+function dataUrlByteSize(dataUrl = '') {
+  const base64 = String(dataUrl).split(',')[1] || '';
+  return Math.floor(base64.length * 0.75);
+}
+
+async function parseAgentAttachments(attachments = [], { commandCenter, onEvent = null, transcribeChunk = null } = {}) {
   if (!Array.isArray(attachments)) throw badRequest('attachments must be an array.', 'AGENT_ATTACHMENTS_INVALID');
   if (attachments.length > 3) throw badRequest('Attach up to three files at a time.', 'AGENT_ATTACHMENTS_LIMIT');
   const allowedTypes = commandCenterContentTypes();
   let totalBytes = 0;
   const content = [];
   const metadata = [];
+  const emitProgress = async event => { if (typeof onEvent === 'function') await onEvent(event); };
   for (const attachment of attachments) {
     const fileName = String(attachment?.name || 'attachment').slice(0, 180);
     const contentType = String(attachment?.type || '').toLowerCase();
@@ -2887,13 +2917,61 @@ async function parseAgentAttachments(attachments = [], { commandCenter } = {}) {
     if (!dataUrl && attachment?.uploadId && commandCenter?.readUploadContent) {
       // Large files skip the request body: the browser puts them straight in
       // storage and we pull the bytes back here.
+      await emitProgress({ type: 'attachment_progress', name: fileName, label: `Opening ${fileName}` });
       const stored = await commandCenter.readUploadContent(attachment.uploadId, { pageStart: attachment?.pageStart || null });
       dataUrl = stored.dataUrl;
       if (stored.fullText) {
         content.push({ type: 'input_text', text: `Full text of ${fileName} (all ${stored.totalPages || ''} pages), extracted so you have the complete document:\n\n${stored.fullText}` });
+        await emitProgress({ type: 'attachment_progress', name: fileName, label: `Read all ${stored.totalPages || ''} pages of ${fileName}`.replace('  ', ' ') });
+      }
+      if (stored.lastPage) pageInfo = { lastPageRead: stored.lastPage, totalPages: stored.totalPages };
+
+      // Scanned document (no text layer) that only partially fit: pull EVERY
+      // remaining page range in this same turn — the owner never has to ask
+      // to "keep reading".
+      if (!stored.fullText && stored.lastPage && stored.totalPages && stored.lastPage < stored.totalPages) {
+        const chunks = [{ ...stored, firstPage: attachment?.pageStart || 1 }];
+        let cursor = stored.lastPage;
+        let guard = 0;
+        while (cursor < stored.totalPages && guard < 60) {
+          guard += 1;
+          await emitProgress({ type: 'attachment_progress', name: fileName, label: `Reading page ${cursor + 1} of ${stored.totalPages} in ${fileName}`, page: cursor + 1, totalPages: stored.totalPages });
+          const next = await commandCenter.readUploadContent(attachment.uploadId, { pageStart: cursor + 1 });
+          if (!next.lastPage || next.lastPage <= cursor) break;
+          chunks.push({ ...next, firstPage: cursor + 1 });
+          cursor = next.lastPage;
+        }
+        const chunkBytes = chunks.reduce((sum, chunk) => sum + dataUrlByteSize(chunk.dataUrl), 0);
+        if (totalBytes + chunkBytes <= AGENT_ATTACHMENT_CHUNK_BUDGET) {
+          // Everything fits: hand the model every page range directly.
+          content.push({ type: 'input_text', text: `${fileName} is a ${stored.totalPages}-page scanned document with no text layer. Every page is attached below in order, split into parts — read ALL parts before answering, and never ask the owner to continue reading.` });
+          for (const chunk of chunks) {
+            content.push({ type: 'input_file', filename: `${fileName} — pages ${chunk.firstPage}-${chunk.lastPage} of ${stored.totalPages}`, file_data: chunk.dataUrl, detail: 'high' });
+          }
+          totalBytes += chunkBytes;
+        } else if (typeof transcribeChunk === 'function') {
+          // Too big to attach whole: transcribe each page range with the
+          // vision model and hand the assistant the complete text instead.
+          const transcripts = [];
+          for (const chunk of chunks) {
+            const lastPage = chunk.lastPage ?? stored.totalPages;
+            await emitProgress({ type: 'attachment_progress', name: fileName, label: `Transcribing pages ${chunk.firstPage}–${lastPage} of ${stored.totalPages} in ${fileName}`, page: lastPage, totalPages: stored.totalPages });
+            const text = await transcribeChunk({ dataUrl: chunk.dataUrl, fileName, firstPage: chunk.firstPage, lastPage, totalPages: stored.totalPages });
+            if (text) transcripts.push(`--- Pages ${chunk.firstPage}-${lastPage} of ${stored.totalPages} ---\n${text}`);
+          }
+          if (transcripts.length) {
+            content.push({ type: 'input_text', text: `Complete transcription of ${fileName} (all ${stored.totalPages} pages, from a scanned document):\n\n${transcripts.join('\n\n')}` });
+          } else {
+            content.push({ type: 'input_text', text: `${fileName} is a ${stored.totalPages}-page scan that was too large to attach in full and could not be transcribed. Tell the owner honestly that you could not read it and suggest splitting the file.` });
+          }
+        } else {
+          content.push({ type: 'input_text', text: `${fileName} is a ${stored.totalPages}-page scan; only pages up to ${stored.lastPage} could be attached this turn. Tell the owner honestly which pages you could read.` });
+        }
+        metadata.push({ name: fileName, type: contentType, sizeBytes: chunkBytes, uploadId: attachment?.uploadId || null, lastPageRead: cursor, totalPages: stored.totalPages });
+        await emitProgress({ type: 'attachment_completed', name: fileName, totalPages: stored.totalPages });
+        continue;
       }
       if (stored.note) content.push({ type: 'input_text', text: stored.note });
-      if (stored.lastPage) pageInfo = { lastPageRead: stored.lastPage, totalPages: stored.totalPages };
     }
     const match = dataUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=]+)$/i);
     if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'AGENT_ATTACHMENT_DATA');

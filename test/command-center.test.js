@@ -485,3 +485,94 @@ test('sales history sync is idempotent and produces item-level analytics', async
   assert.equal(analytics.summary.netSalesCents, 600);
   assert.equal(analytics.topItems[0].name, 'Coffee');
 });
+
+test('create_square_item assigns the next item number, creates the category, and sets stock', async () => {
+  const upserts = [];
+  let countedBody = null;
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async (url, options = {}) => {
+      if (url.endsWith('/v2/catalog/search')) {
+        return new Response(JSON.stringify({ objects: [] }), { status: 200 });
+      }
+      if (url.endsWith('/v2/catalog/object')) {
+        const body = JSON.parse(options.body);
+        upserts.push(body.object.type);
+        if (body.object.type === 'CATEGORY') {
+          return new Response(JSON.stringify({ catalog_object: { id: 'CAT_SNACKS', type: 'CATEGORY', category_data: { name: 'Snacks' } } }), { status: 200 });
+        }
+        assert.equal(body.object.item_data.categories[0].id, 'CAT_SNACKS');
+        assert.equal(body.object.item_data.variations[0].item_variation_data.sku, '1001', 'no numeric SKUs exist yet, so the first assigned item number is 1001');
+        return new Response(JSON.stringify({ catalog_object: {
+          id: 'ITEM_NEW',
+          updated_at: '2026-07-22T12:00:00Z',
+          item_data: {
+            name: body.object.item_data.name,
+            categories: [{ id: 'CAT_SNACKS', name: 'Snacks' }],
+            variations: [{ id: 'VAR_NEW', item_variation_data: { ...body.object.item_data.variations[0].item_variation_data } }],
+          },
+        } }), { status: 200 });
+      }
+      assert.match(url, /inventory\/changes\/batch-create/);
+      countedBody = JSON.parse(options.body);
+      return new Response(JSON.stringify({ counts: [] }), { status: 200 });
+    },
+    now: () => new Date('2026-07-22T12:00:00Z'),
+  });
+
+  const created = await service.createCatalogItem({
+    name: 'Snickers King Size',
+    priceCents: 299,
+    upc: '040000424307',
+    categoryName: 'Snacks',
+    initialQuantity: 24,
+    actor: { email: 'owner@midway.test' },
+  });
+
+  assert.equal(created.sku, '1001');
+  assert.equal(created.squareItemId, 'ITEM_NEW');
+  assert.equal(created.squareVariationId, 'VAR_NEW');
+  assert.equal(created.quantity, 24);
+  assert.deepEqual(upserts, ['CATEGORY', 'ITEM']);
+  assert.equal(countedBody.changes[0].physical_count.catalog_object_id, 'VAR_NEW');
+  assert.equal(countedBody.changes[0].physical_count.quantity, '24');
+
+  const inventory = await service.listInventory({ search: 'Snickers' });
+  assert.equal(inventory.length, 1, 'the new item must appear in local inventory immediately');
+  assert.equal(inventory[0].quantity, 24);
+});
+
+test('set_square_item_stock records a physical count and updates the local balance', async () => {
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async (url, options = {}) => {
+      assert.match(url, /inventory\/changes\/batch-create/);
+      const body = JSON.parse(options.body);
+      assert.equal(body.changes[0].physical_count.quantity, '12');
+      return new Response(JSON.stringify({ counts: [] }), { status: 200 });
+    },
+    now: () => new Date('2026-07-22T12:00:00Z'),
+  });
+  const result = await service.setItemStock({ squareVariationId: 'VAR_COFFEE', quantity: 12 });
+  assert.equal(result.quantity, 12);
+  const inventory = await service.listInventory({ search: 'Coffee' });
+  assert.equal(inventory[0].quantity, 12);
+});
+
+test('square API pass-through guards paths and read-only mode', async () => {
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async url => {
+      assert.match(url, /\/v2\/payments\?limit=5$/);
+      return new Response(JSON.stringify({ payments: [] }), { status: 200 });
+    },
+  });
+  const data = await service.callSquareApi({ method: 'GET', path: '/v2/payments?limit=5', readOnly: true });
+  assert.deepEqual(data.payments, []);
+  await assert.rejects(service.callSquareApi({ method: 'POST', path: '/v2/customers', readOnly: true }), error => error.code === 'SQUARE_READ_ONLY');
+  await assert.rejects(service.callSquareApi({ method: 'GET', path: 'https://evil.example/v2/x' }), error => error.code === 'SQUARE_PATH_INVALID');
+  await assert.rejects(service.callSquareApi({ method: 'PATCH', path: '/v2/payments' }), error => error.code === 'SQUARE_METHOD_INVALID');
+});
