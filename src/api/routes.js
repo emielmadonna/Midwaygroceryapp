@@ -41,6 +41,9 @@ import {
 } from '../lib/slack-api.js';
 import { buildXeroAuthUrl, xeroProviderConfigFromEnv } from '../lib/xero-api.js';
 import { createXeroService } from '../lib/xero-service.js';
+import { buildQuickBooksAuthUrl, quickbooksProviderConfigFromEnv } from '../lib/quickbooks-api.js';
+import { createQuickBooksService } from '../lib/quickbooks-service.js';
+import { registerQuickBooksTools } from '../lib/quickbooks-tools.js';
 
 export function createApiRouter({
   store = null,
@@ -128,6 +131,8 @@ export function createApiRouter({
   registerCommandCenterTools(toolRegistry, { commandCenter });
   const xeroService = createXeroService({ store: resolvedStore, env, fetchImpl });
   registerXeroTools(toolRegistry, { xeroService, env });
+  const quickbooksService = createQuickBooksService({ store: resolvedStore, env, fetchImpl });
+  registerQuickBooksTools(toolRegistry, { quickbooksService, env });
   const mcpServer = createMcpServer({ registry: toolRegistry, store: resolvedStore });
   const aiProvider = {
     name: 'openai',
@@ -1502,6 +1507,96 @@ export function createApiRouter({
       res.json({ ok: true, data: {} });
     } catch (error) {
       sendApiError(res, error, error.code || 'XERO_DISCONNECT_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/quickbooks/oauth/start', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = quickbooksProviderConfigFromEnv(env);
+      if (!config.clientId || !config.clientSecret) {
+        throw badRequest('QuickBooks app is not configured. Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in env.');
+      }
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'quickbooks');
+      const state = crypto.randomBytes(16).toString('hex');
+      const authorizationUrl = buildQuickBooksAuthUrl({
+        clientId: config.clientId,
+        scopes: config.scopes,
+        redirectUri,
+        state,
+      });
+      res.json({ ok: true, data: { authorizationUrl, redirectUri, state } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'QUICKBOOKS_OAUTH_START_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/quickbooks/oauth/callback', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const config = quickbooksProviderConfigFromEnv(env);
+      const code = req.body?.code;
+      const realmId = req.body?.realmId;
+      const redirectUri = req.body?.redirectUri || config.redirectUri || providerRedirectUriFromRequest(req, 'quickbooks');
+      if (!code) throw badRequest('Authorization code is required.');
+      if (!realmId) throw badRequest('QuickBooks company id (realmId) is required.');
+      const data = await quickbooksService.completeAuth({
+        code,
+        realmId,
+        redirectUri,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.quickbooks.connect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'quickbooks',
+        metadata: { realmId, companyName: data.companyName },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'QUICKBOOKS_OAUTH_CALLBACK_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/providers/quickbooks/status', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      const data = await quickbooksService.getStatus();
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'QUICKBOOKS_STATUS_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/providers/quickbooks', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      await resolvedStore.upsertProviderConnection?.({
+        tenantId: resolvedStore.tenantId,
+        locationId: resolvedStore.locationId,
+        providerKey: 'quickbooks',
+        status: 'not_connected',
+        accessToken: null,
+        refreshToken: null,
+        externalAccountId: null,
+        publicConfig: {},
+        updatedBy: req.adminUser?.email || 'admin',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.quickbooks.disconnect',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'quickbooks',
+      });
+      res.json({ ok: true, data: {} });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'QUICKBOOKS_DISCONNECT_FAILED', error.statusCode || 400);
     }
   });
 
