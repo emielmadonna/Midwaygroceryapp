@@ -251,6 +251,23 @@ ALTER TABLE provider_connections
   ADD CONSTRAINT provider_connections_provider_kind_check
   CHECK (provider_kind IN ('payment', 'accounting', 'messaging', 'social', 'maps', 'ai'));
 
+-- 2026-07-22: stepped Square sync jobs. Each API request performs one bounded
+-- chunk of catalog/inventory work and persists its cursor here, so the sync
+-- survives serverless time limits and the UI can show live progress.
+CREATE TABLE IF NOT EXISTS square_sync_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+  phase TEXT NOT NULL DEFAULT 'catalog',
+  cursor TEXT,
+  items_done INTEGER NOT NULL DEFAULT 0,
+  items_total INTEGER,
+  error_message TEXT,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS square_sync_jobs_status_idx ON square_sync_jobs (status, started_at DESC);
+
 -- 2026-07-22: allow direct-to-storage uploads up to 60 MB.
 ALTER TABLE command_center_uploads DROP CONSTRAINT IF EXISTS command_center_uploads_size_bytes_check;
 ALTER TABLE command_center_uploads

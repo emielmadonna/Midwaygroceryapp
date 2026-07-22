@@ -331,6 +331,140 @@ test('inventory reconciliation reviews a count before applying it to Square', as
   assert.equal(requests[0].body.changes[0].physical_count.quantity, '4');
 });
 
+function makeMergingStore() {
+  // Mirrors the real booking store: upserts merge by variation id instead of
+  // replacing the list, which the stepped sync relies on between pages.
+  const inventory = [];
+  const auditLog = [];
+  return {
+    inventory,
+    auditLog,
+    async listStoreInventory() { return inventory.map(item => ({ ...item })); },
+    async upsertStoreInventory(rows) {
+      for (const row of rows) {
+        const existing = inventory.find(item => item.squareVariationId === row.squareVariationId);
+        if (existing) Object.assign(existing, row);
+        else inventory.push({ ...row });
+      }
+      return rows;
+    },
+    async adminDashboard() { return { arrivals: [] }; },
+    async listFuelInventory() { return []; },
+    async listFuelPrices() { return []; },
+    async recordAuditLog(entry) { auditLog.push(entry); },
+  };
+}
+
+function squareCatalogObject(itemId, variationId, name) {
+  return { id: itemId, updated_at: '2026-07-16T12:00:00Z', item_data: { name, variations: [{ id: variationId, item_variation_data: { sku: variationId, price_money: { amount: 500, currency: 'USD' } } }] } };
+}
+
+function makePagedSquareFetch() {
+  // Two catalog pages, then inventory counts of 4 for whatever ids are asked.
+  const catalogCursors = [];
+  const countBatches = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url.includes('/v2/catalog/list')) {
+      const cursor = new URL(url).searchParams.get('cursor');
+      catalogCursors.push(cursor);
+      if (!cursor) {
+        return new Response(JSON.stringify({ objects: [squareCatalogObject('ITEM_A', 'VAR_A', 'Cold Brew')], cursor: 'PAGE-2' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ objects: [squareCatalogObject('ITEM_B', 'VAR_B', 'Trail Mix')] }), { status: 200 });
+    }
+    assert.match(url, /inventory\/counts\/batch-retrieve/);
+    const ids = JSON.parse(options.body).catalog_object_ids;
+    countBatches.push(ids);
+    return new Response(JSON.stringify({ counts: ids.map(id => ({ catalog_object_id: id, location_id: 'MIDWAY', state: 'IN_STOCK', quantity: '4', calculated_at: '2026-07-16T12:01:00Z' })) }), { status: 200 });
+  };
+  return { fetchImpl, catalogCursors, countBatches };
+}
+
+test('square sync job steps through catalog pages and inventory counts with progress', async () => {
+  const store = makeMergingStore();
+  const { fetchImpl, catalogCursors, countBatches } = makePagedSquareFetch();
+  const service = createCommandCenterService({
+    store,
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl,
+    now: () => new Date('2026-07-16T12:00:00Z'),
+  });
+
+  const started = await service.startSquareSyncJob({ actor: { email: 'owner@midway.test' } });
+  assert.equal(started.status, 'running');
+  assert.equal(started.phase, 'catalog');
+  assert.equal(started.itemsDone, 0);
+  assert.equal(started.itemsTotal, null);
+
+  const progress = [];
+  let job = started;
+  for (let step = 0; step < 10 && job.status === 'running'; step += 1) {
+    job = await service.stepSquareSyncJob(started.id);
+    progress.push({ phase: job.phase, itemsDone: job.itemsDone });
+  }
+
+  assert.deepEqual(progress, [
+    { phase: 'catalog', itemsDone: 1 },
+    { phase: 'inventory', itemsDone: 2 },
+    { phase: 'completed', itemsDone: 4 },
+  ], 'progress must accumulate while phases advance catalog -> inventory -> completed');
+  assert.equal(job.status, 'completed');
+  assert.equal(job.itemsTotal, 4);
+  assert.deepEqual(catalogCursors, [null, 'PAGE-2'], 'each catalog step must fetch exactly one page by cursor');
+  assert.deepEqual(countBatches, [['VAR_A', 'VAR_B']], 'inventory counts must run as one bounded batch');
+
+  const fetched = await service.getSquareSyncJob(started.id);
+  assert.equal(fetched.status, 'completed');
+  assert.equal(fetched.errorMessage, null);
+  assert.deepEqual(
+    store.auditLog.map(entry => entry.action),
+    ['command_center.square_sync_job_start', 'command_center.square_sync'],
+    'job start and completion must be audit logged like the one-shot sync',
+  );
+
+  // A step on a finished job is a no-op instead of re-syncing.
+  const again = await service.stepSquareSyncJob(started.id);
+  assert.equal(again.status, 'completed');
+  assert.deepEqual(catalogCursors.length, 2);
+
+  await assert.rejects(
+    service.getSquareSyncJob('missing-job'),
+    error => error.code === 'SQUARE_SYNC_JOB_NOT_FOUND',
+  );
+
+  // The stepped job must persist the same inventory as the old one-shot sync.
+  const oneShotStore = makeMergingStore();
+  const oneShotService = createCommandCenterService({
+    store: oneShotStore,
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: makePagedSquareFetch().fetchImpl,
+    now: () => new Date('2026-07-16T12:00:00Z'),
+  });
+  await oneShotService.syncSquare({ force: true });
+  const pick = rows => rows.map(item => ({ id: item.squareVariationId, name: item.name, quantity: item.quantity, lastCountedAt: item.lastCountedAt }));
+  assert.deepEqual(pick(await service.listInventory()), pick(await oneShotService.listInventory()));
+});
+
+test('square sync job refuses to start without Square and records step failures', async () => {
+  const disconnected = createCommandCenterService({ store: makeMergingStore(), squareConfig: async () => ({}) });
+  await assert.rejects(
+    disconnected.startSquareSyncJob({}),
+    error => error.code === 'SQUARE_INVENTORY_NOT_CONNECTED',
+  );
+
+  const service = createCommandCenterService({
+    store: makeMergingStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async () => new Response(JSON.stringify({ errors: [{ detail: 'Square is down' }] }), { status: 500 }),
+    now: () => new Date('2026-07-16T12:00:00Z'),
+  });
+  const job = await service.startSquareSyncJob({});
+  await assert.rejects(service.stepSquareSyncJob(job.id), /Square is down/);
+  const failed = await service.getSquareSyncJob(job.id);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.errorMessage, 'Square is down');
+});
+
 test('sales history sync is idempotent and produces item-level analytics', async () => {
   let calls = 0;
   const service = createCommandCenterService({

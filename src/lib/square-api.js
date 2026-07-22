@@ -88,6 +88,16 @@ export async function squareRequest(path, {
   return data;
 }
 
+// One bounded page of catalog items, so stepped syncs can stay inside
+// serverless time limits. Returns the next cursor (or null when done).
+export async function listSquareCatalogPage({ cursor = null, limit = 100, ...options } = {}) {
+  const params = new URLSearchParams({ types: 'ITEM' });
+  params.set('limit', String(Math.max(1, Math.min(1000, Number(limit) || 100))));
+  if (cursor) params.set('cursor', cursor);
+  const result = await squareRequest(`/v2/catalog/list?${params.toString()}`, options);
+  return { objects: result.objects ?? [], cursor: result.cursor ?? null };
+}
+
 export async function listSquareCatalogItems({ maxPages = 100, ...options } = {}) {
   const objects = [];
   let cursor;
