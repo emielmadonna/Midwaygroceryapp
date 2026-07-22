@@ -1050,7 +1050,21 @@ export function createApiRouter({
       const conversationMessages = persisted.map(toAgentMessage);
       const newMessages = [];
 
-      const parsedAttachments = await parseAgentAttachments(attachments, { commandCenter });
+      // "Keep reading" continuation: if the owner asks to continue a big file
+      // that was only partially attached, re-attach the next page range from
+      // storage automatically.
+      let resolvedAttachments = attachments;
+      if ((!attachments || !attachments.length) && /keep reading|read the rest|continue reading|next pages|rest of the (file|pages|pdf)/i.test(String(userMessage || ''))) {
+        for (const message of [...persisted].reverse()) {
+          const partial = (message.metadata?.attachments || []).find(item => item.uploadId && item.lastPageRead && item.totalPages && item.lastPageRead < item.totalPages);
+          if (partial) {
+            resolvedAttachments = [{ name: partial.name, type: partial.type, uploadId: partial.uploadId, pageStart: partial.lastPageRead + 1 }];
+            break;
+          }
+        }
+      }
+
+      const parsedAttachments = await parseAgentAttachments(resolvedAttachments, { commandCenter });
       for (const attachment of parsedAttachments.metadata) {
         await onEvent?.({ type: 'attachment_started', name: attachment.name, fileType: attachment.type });
       }
@@ -2811,12 +2825,14 @@ async function parseAgentAttachments(attachments = [], { commandCenter } = {}) {
     const contentType = String(attachment?.type || '').toLowerCase();
     if (!allowedTypes.has(contentType)) throw badRequest(`${fileName} is not a supported file type.`, 'AGENT_ATTACHMENT_TYPE');
     let dataUrl = String(attachment?.dataUrl || '');
+    let pageInfo = {};
     if (!dataUrl && attachment?.uploadId && commandCenter?.readUploadContent) {
       // Large files skip the request body: the browser puts them straight in
       // storage and we pull the bytes back here.
-      const stored = await commandCenter.readUploadContent(attachment.uploadId);
+      const stored = await commandCenter.readUploadContent(attachment.uploadId, { pageStart: attachment?.pageStart || null });
       dataUrl = stored.dataUrl;
       if (stored.note) content.push({ type: 'input_text', text: stored.note });
+      if (stored.lastPage) pageInfo = { lastPageRead: stored.lastPage, totalPages: stored.totalPages };
     }
     const match = dataUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=]+)$/i);
     if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'AGENT_ATTACHMENT_DATA');
@@ -2825,7 +2841,7 @@ async function parseAgentAttachments(attachments = [], { commandCenter } = {}) {
     if (sizeBytes > 28 * 1024 * 1024 || totalBytes > 32 * 1024 * 1024) {
       throw badRequest('Attachments must be under 28 MB each and 32 MB total.', 'AGENT_ATTACHMENT_SIZE');
     }
-    metadata.push({ name: fileName, type: contentType, sizeBytes, uploadId: attachment?.uploadId || null });
+    metadata.push({ name: fileName, type: contentType, sizeBytes, uploadId: attachment?.uploadId || null, ...pageInfo });
     if (contentType.startsWith('image/')) {
       content.push({ type: 'input_image', image_url: dataUrl, detail: 'high' });
     } else {

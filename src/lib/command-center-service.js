@@ -682,7 +682,7 @@ export function createCommandCenterService({
     return { ...fromUpload(data), uploadUrl: signed.signedUrl, uploadToken: signed.token };
   }
 
-  async function readUploadContent(uploadId) {
+  async function readUploadContent(uploadId, { pageStart = null } = {}) {
     if (!supabase) throw serviceError('UPLOAD_STORAGE_REQUIRED', 'File storage is not configured on this server.', 409);
     const { data: row, error } = await supabase.from('command_center_uploads').select('*').eq('id', uploadId).maybeSingle();
     if (error) throw error;
@@ -694,11 +694,17 @@ export function createCommandCenterService({
     if (downloadError) throw downloadError;
     let buffer = Buffer.from(await blob.arrayBuffer());
     let note = null;
-    if (record.contentType === 'application/pdf' && buffer.length > 28 * 1024 * 1024) {
-      const shrunk = await shrinkPdfBuffer(buffer);
+    let lastPage = null;
+    let totalPages = null;
+    if (record.contentType === 'application/pdf' && (pageStart || buffer.length > 28 * 1024 * 1024)) {
+      const shrunk = await shrinkPdfBuffer(buffer, { pageStart: pageStart || 1 });
       buffer = shrunk.buffer;
-      if (shrunk.keptPages !== null && shrunk.keptPages < shrunk.totalPages) {
-        note = `Only the first ${shrunk.keptPages} of ${shrunk.totalPages} pages of ${record.fileName} could be read (the file is very large). Mention this, and ask for the rest split into a second file if it matters.`;
+      lastPage = shrunk.lastPage;
+      totalPages = shrunk.totalPages;
+      if (shrunk.keptPages !== null && shrunk.lastPage !== null && shrunk.lastPage < shrunk.totalPages) {
+        note = `This is pages ${shrunk.firstPage}-${shrunk.lastPage} of ${shrunk.totalPages} in ${record.fileName}. Nothing is lost: when the owner says "keep reading", the next pages (from page ${shrunk.lastPage + 1}) are attached automatically. Offer that.`;
+      } else if (pageStart && shrunk.firstPage > 1) {
+        note = `This is pages ${shrunk.firstPage}-${shrunk.lastPage ?? shrunk.totalPages} of ${shrunk.totalPages} in ${record.fileName}.`;
       }
     }
     if (buffer.length > 28 * 1024 * 1024) {
@@ -710,6 +716,8 @@ export function createCommandCenterService({
       dataUrl: `data:${record.contentType};base64,${buffer.toString('base64')}`,
       sizeBytes: buffer.length,
       note,
+      lastPage,
+      totalPages,
     };
   }
 
@@ -1147,24 +1155,33 @@ const DEFAULT_LOW_STOCK_THRESHOLD = 3;
 
 // Re-save (and if needed, page-trim) a PDF that is too large to hand to the
 // AI model. Loaded lazily so the dependency only costs when actually needed.
-async function shrinkPdfBuffer(buffer) {
+async function shrinkPdfBuffer(buffer, { pageStart = 1 } = {}) {
   try {
     const { PDFDocument } = await import('pdf-lib');
     const source = await PDFDocument.load(buffer, { ignoreEncryption: true });
     const totalPages = source.getPageCount();
-    const resaved = await source.save({ useObjectStreams: true });
-    if (resaved.length <= 28 * 1024 * 1024) return { buffer: Buffer.from(resaved), keptPages: totalPages, totalPages };
+    const firstIndex = Math.min(Math.max(1, pageStart), totalPages) - 1;
+    if (firstIndex === 0) {
+      const resaved = await source.save({ useObjectStreams: true });
+      if (resaved.length <= 28 * 1024 * 1024) {
+        return { buffer: Buffer.from(resaved), keptPages: totalPages, totalPages, firstPage: 1, lastPage: totalPages };
+      }
+    }
     for (const pageLimit of [80, 40, 20]) {
-      if (totalPages <= pageLimit) continue;
+      const count = Math.min(pageLimit, totalPages - firstIndex);
+      if (count <= 0) break;
+      if (firstIndex === 0 && count >= totalPages) continue;
       const trimmed = await PDFDocument.create();
-      const pages = await trimmed.copyPages(source, Array.from({ length: pageLimit }, (_, index) => index));
+      const pages = await trimmed.copyPages(source, Array.from({ length: count }, (_, index) => firstIndex + index));
       for (const page of pages) trimmed.addPage(page);
       const saved = await trimmed.save({ useObjectStreams: true });
-      if (saved.length <= 28 * 1024 * 1024) return { buffer: Buffer.from(saved), keptPages: pageLimit, totalPages };
+      if (saved.length <= 28 * 1024 * 1024) {
+        return { buffer: Buffer.from(saved), keptPages: count, totalPages, firstPage: firstIndex + 1, lastPage: firstIndex + count };
+      }
     }
-    return { buffer, keptPages: totalPages, totalPages };
+    return { buffer, keptPages: totalPages, totalPages, firstPage: 1, lastPage: totalPages };
   } catch {
-    return { buffer, keptPages: null, totalPages: null };
+    return { buffer, keptPages: null, totalPages: null, firstPage: 1, lastPage: null };
   }
 }
 
