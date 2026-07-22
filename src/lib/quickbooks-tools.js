@@ -219,6 +219,61 @@ export function registerQuickBooksTools(registry, { quickbooksService, env } = {
     },
   });
 
+  registry.register({
+    name: 'qbo_query',
+    description: 'Run any QuickBooks Online query (their SQL-like syntax) to look up any entity: Item, Account, Vendor, Bill, Purchase, JournalEntry, Employee, TimeActivity, and more. Example: "select * from Account where AccountType = \'Income\' maxresults 50".',
+    requiredScope: 'read',
+    requiredFlag: 'accounting.summaries',
+    sideEffect: 'read',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['query'],
+      properties: {
+        query: { type: 'string', minLength: 10, maxLength: 500, description: 'The QuickBooks query, e.g. select * from Item maxresults 100.' },
+      },
+    },
+    handler: async ({ input }) => {
+      const data = await quickbooksService.request({
+        method: 'GET',
+        path: '/query',
+        query: { query: input.query },
+        ...requestOptions(),
+      });
+      return data?.QueryResponse ?? data;
+    },
+  });
+
+  registry.register({
+    name: 'qbo_api_request',
+    description: 'Call any QuickBooks Online API endpoint that changes something — create or update bills, vendors, items, journal entries, purchases, and every other QuickBooks capability. Always requires explicit owner approval. Path is relative to the company, e.g. /bill, /vendor, /journalentry. For lookups use qbo_query instead.',
+    requiredScope: 'owner',
+    requiredFlag: 'accounting.summaries',
+    sideEffect: 'destructive',
+    auditTarget: { type: 'quickbooks_api', id: 'midway' },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path', 'body'],
+      properties: {
+        path: { type: 'string', minLength: 2, maxLength: 120, description: 'The QuickBooks entity path, e.g. /bill or /item.' },
+        body: { type: 'object', additionalProperties: true, properties: {}, description: 'The JSON payload, following QuickBooks Online API conventions.' },
+      },
+    },
+    handler: async ({ input }) => {
+      const cleanPath = String(input.path || '').trim();
+      if (!/^\/[a-z][a-z0-9/-]*$/i.test(cleanPath) || cleanPath.toLowerCase().startsWith('/query')) {
+        throw Object.assign(new Error('The QuickBooks path must be a simple entity path like /bill.'), { code: 'QBO_PATH_INVALID', statusCode: 400 });
+      }
+      return quickbooksService.request({
+        method: 'POST',
+        path: cleanPath,
+        body: input.body,
+        ...requestOptions(),
+      });
+    },
+  });
+
   return registry;
 }
 

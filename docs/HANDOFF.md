@@ -120,33 +120,40 @@ storefront is midwayplain.com (redirects to www).
    Need a photo of the console/brand and whether there's a web portal login for
    gas reports. Then scope: portal-login connector (like Harbor) vs report ingestion.
 
-## REMAINING ENGINEERING (the user's latest asks — NOT yet built)
-1. **Read ALL pages automatically, including scanned PDFs with no text layer.**
-   Text-layer PDFs are solved (full text injected). For SCANNED PDFs (no text),
-   the server still only attaches the first visual chunk and leaves a note. TODO:
-   in `parseAgentAttachments` (src/api/routes.js), when a PDF has no `fullText`
-   and `lastPage < totalPages`, loop `readUploadContent({pageStart})` over ALL
-   remaining ranges and append each as an `input_file` content part in the SAME
-   turn (respect a combined ~30 MB budget; if it genuinely can't fit, THEN say so
-   honestly). Never rely on the user saying "keep reading." Consider OCR
-   (tesseract.js or an OpenAI vision pass per page) for truly text-less scans so
-   understanding doesn't depend on how many image pages fit.
-2. **Live ingestion progress** — the user wants real-time progress counts while a
-   document is being ingested/parsed (e.g. "reading page 12 of 40"). The SSE
-   stream endpoint is `POST /admin/agent/turn/stream` (emits events via `onEvent`;
-   `attachment_started` already fires). Add per-page/per-chunk progress events
-   from the upload-read path and render them in the composer's live activity area
-   (`LiveAssistant` component in src/command-center.jsx already renders an activity
-   list from `liveActivity`).
-3. **Live MCP activity UI** — show which MCP/vendor server is being used and what
-   it's doing, in real time. Tool lifecycle events already flow through the agent
-   loop (`tool_started`/`tool_completed` in src/lib/agent.js, surfaced via onEvent
-   and `friendlyToolActivity` in src/command-center.jsx). Extend: label vendor MCP
-   calls with the server + tool name, show a running list ("Harbor · searching
-   catalog", "QuickBooks · posting invoice"), and keep counts. The plumbing exists;
-   this is mostly UI + richer event payloads.
-4. Follow-ups: QBO income-account check post-connect; auto-mapping-sweep UI (tools
-   exist, no button yet); Square sync progress bar polish; voice real-world QA.
+## SHIPPED 2026-07-22 (second pass — was "remaining engineering")
+1. **Documents read fully, automatically.** Text-layer PDFs: full text injected
+   (was already live). Scanned PDFs (no text layer): `parseAgentAttachments`
+   (src/api/routes.js) now loops `readUploadContent({pageStart})` over ALL page
+   ranges in the SAME turn. If every range fits the ~24 MB budget they are all
+   attached as labeled `input_file` parts; if not, each range is transcribed by
+   an OpenAI vision pass (`transcribeChunk` in runAdminAgentTurn, same saved
+   key) and the complete transcription is injected as text. The owner is never
+   asked to "keep reading". Only if transcription also fails does the assistant
+   say honestly what it could read.
+2. **Live ingestion progress** — `attachment_progress` ("Reading page 12 of 40
+   in file.pdf", "Transcribing pages 21–40 …") and `attachment_completed` events
+   stream over `POST /admin/agent/turn/stream` and render in the LiveAssistant
+   activity list.
+3. **Live MCP/tool activity** — `tool_started` events now carry
+   `connector`/`innerTool`/`apiPath`/`subject`; `friendlyToolActivity` renders
+   "Harbor · search catalog", "Square · payments" style labels.
+4. **Full Square control** — new agent tools: `create_square_item` (auto-assigns
+   the next numeric item number ≥1001 when no SKU given; find-or-creates the
+   category; sets initial stock; absorbs the item into local inventory
+   immediately), `update_square_item`, `set_square_item_stock`,
+   `delete_square_item`, plus `call_square_read_api` (GET, no approval) and
+   `call_square_api` (POST/PUT/DELETE, approval-gated) reaching EVERY Square v2
+   endpoint. Service fns in command-center-service.js; payload builder
+   `buildSquareItemObject` in square-api.js (tested).
+5. **Full QuickBooks reach (pending creds)** — `qbo_query` (any QBO query) and
+   `qbo_api_request` (any entity create/update, approval-gated) join the 7
+   typed tools.
+6. Agent turn budget raised (MAX_ITERATIONS 10 → 40) so whole-document actions
+   (e.g. creating dozens of items from one invoice) finish in one turn.
+
+## Follow-ups (small)
+- QBO income-account check after the owner connects; auto-mapping-sweep UI
+  button (tools exist); Square sync progress bar polish; voice real-world QA.
 
 ## Test/verify scripts (in scripts/, run with node from repo root)
 - `verify-sales-sync.mjs` — Square API vs stored sales, penny check.
