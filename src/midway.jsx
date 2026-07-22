@@ -342,7 +342,7 @@ const Hero = ({ flags = {}, hours = [] }) => {
       <div className="hero-shade" aria-hidden="true" />
       <div className="hero-copy">
         <div className="hero-status">
-          <span className="hero-status-open"><i /> {statusLabel}</span>
+          <a className="hero-status-open" href="#find" title="See our full hours"><i /> {statusLabel}</a>
           <span className="hero-status-sep">/</span>
           <span className="hero-status-gas">Gas 24/7</span>
         </div>
@@ -368,11 +368,11 @@ const Ticker = ({ onJumpStay, sites, bootstrap }) => {
   return (
     <section id="today" className="ticker today-strip">
       {today && (
-        <div>
+        <a className="today-hours-link" href="#find" title="See our full hours">
           <div className="l">Store today</div>
           <div className="v">{beforeSeason ? 'Closed' : compactHour(today)}</div>
           <div className="s">{beforeSeason ? 'Opens Thu, Jun 19' : (today.closed ? 'Closed today' : hourLabel(today))}</div>
-        </div>
+        </a>
       )}
       <div className="gas">
         <div className="l">Gas · pay at pump</div>
