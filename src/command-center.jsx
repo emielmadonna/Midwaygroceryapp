@@ -52,6 +52,7 @@ function App() {
   const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(Boolean(token));
   const [busy, setBusy] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [inventorySearch, setInventorySearch] = useState('');
@@ -409,16 +410,25 @@ function App() {
     }
   };
 
+  // Square sync runs as a stepped background job: each request does one small
+  // chunk and reports progress, so nothing runs long enough to time out.
   const syncSquare = async () => {
-    setBusy(true);
+    setBusy(true); setError('');
     try {
-      const result = await api('/admin/command-center/square/sync', { method: 'POST', body: {} });
-      setNotice(`Square updated: ${result.catalogItems} products and ${result.inventoryCounts} counts.`);
+      let job = await api('/admin/command-center/square/sync/jobs', { method: 'POST', body: {} });
+      setSyncProgress({ phase: job.phase, itemsDone: job.itemsDone });
+      for (let step = 0; job.status === 'running' && step < 120; step += 1) {
+        job = await api(`/admin/command-center/square/sync/jobs/${encodeURIComponent(job.id)}/step`, { method: 'POST', body: {} });
+        setSyncProgress({ phase: job.phase, itemsDone: job.itemsDone });
+      }
+      if (job.status !== 'completed') throw new Error(job.errorMessage || 'The Square sync did not finish. Try again.');
+      setNotice(`Square updated: ${job.itemsDone} catalog items and counts checked.`);
       await refresh({ quiet: true });
     } catch (syncError) {
       setError(syncError.message);
     } finally {
       setBusy(false);
+      setSyncProgress(null);
     }
   };
 
@@ -451,7 +461,7 @@ function App() {
         {(error || notice) && <Toast tone={error ? 'danger' : 'success'} onClose={() => { setError(''); setNotice(''); }}>{error || notice}</Toast>}
         <div className={view === 'assistant' ? 'cc-content cc-content--assistant' : 'cc-content'}>
           {loading && !overview ? <LoadingScreen /> : null}
-          {!loading && view === 'home' && <Dashboard overview={overview} onAsk={openAssistant} onView={setView} onSync={syncSquare} />}
+          {!loading && view === 'home' && <Dashboard overview={overview} onAsk={openAssistant} onView={setView} onSync={syncSquare} syncProgress={syncProgress} />}
           {view === 'sales' && <SalesView analytics={salesAnalytics} api={api} onSync={syncSales} busy={busy} onAsk={openAssistant} />}
           {view === 'assistant' && (
             <Assistant
@@ -485,6 +495,7 @@ function App() {
               filter={inventoryFilter}
               setFilter={setInventoryFilter}
               onSync={syncSquare}
+              syncProgress={syncProgress}
               busy={busy}
               onAsk={openAssistant}
               api={api}
@@ -597,7 +608,7 @@ function Topbar({ view, overview, onRefresh, loading }) {
   );
 }
 
-function Dashboard({ overview, onAsk, onView, onSync }) {
+function Dashboard({ overview, onAsk, onView, onSync, syncProgress }) {
   const metrics = overview?.metrics || {};
   const square = overview?.square || {};
   const knownInventory = metrics.countedInventoryItems || 0;
@@ -639,7 +650,7 @@ function Dashboard({ overview, onAsk, onView, onSync }) {
             <div className="cc-ring" style={{ '--value': `${(inventoryHealth || 0) * 3.6}deg` }}><span><strong>{inventoryHealth === null ? '—' : `${inventoryHealth}%`}</strong><small>healthy</small></span></div>
             <div className="cc-stock-legend"><span><i className="healthy" />Healthy <b>{healthyInventory}</b></span><span><i className="low" />Running low <b>{metrics.lowStockItems || 0}</b></span><span><i className="unknown" />Not counted <b>{Math.max(0, totalInventory - knownInventory)}</b></span></div>
           </div>
-          <button className="cc-button cc-button--soft" onClick={onSync}><Icon name="refresh" /> Pull latest from Square</button>
+          <button className="cc-button cc-button--soft" onClick={onSync} disabled={Boolean(syncProgress)}><Icon name="refresh" /> {syncButtonLabel(syncProgress, 'Pull latest from Square')}</button>
         </div>
       </section>
 
@@ -734,7 +745,7 @@ function ChatMessage({ message }) {
   return <div className={`cc-chat-message ${isUser ? 'is-user' : 'is-assistant'}`}>{!isUser && <div className="cc-assistant-mark"><Icon name="spark" /></div>}<div className="cc-chat-bubble">{files.length > 0 && <div className="cc-message-files">{files.map(file => <span key={file.name}><Icon name={file.type?.startsWith('image/') ? 'image' : 'file'} />{file.name}</span>)}</div>}<p>{message.content}</p><time>{shortTime(message.createdAt)}</time></div></div>;
 }
 
-function InventoryView({ items, total, search, setSearch, filter, setFilter, onSync, busy, onAsk, api, onRefresh, reconciliations = [], user }) {
+function InventoryView({ items, total, search, setSearch, filter, setFilter, onSync, syncProgress, busy, onAsk, api, onRefresh, reconciliations = [], user }) {
   const [editing, setEditing] = useState(null);
   const [counting, setCounting] = useState(false);
   const [reviewing, setReviewing] = useState(null);
@@ -783,7 +794,7 @@ function InventoryView({ items, total, search, setSearch, filter, setFilter, onS
   };
   return (
     <div className="cc-page">
-      <div className="cc-page-intro"><div><p className="cc-kicker">Square inventory</p><h2>Know what’s on the shelf.</h2><p>Live product information from Square, with vendor and reorder details layered on top.</p></div><div><button className="cc-button cc-button--soft" onClick={onSync} disabled={busy}><Icon name="refresh" /> Sync Square</button><button className="cc-button cc-button--dark" onClick={() => setCounting(true)} disabled={!items.length}><Icon name="camera" /> Start a count</button></div></div>
+      <div className="cc-page-intro"><div><p className="cc-kicker">Square inventory</p><h2>Know what’s on the shelf.</h2><p>Live product information from Square, with vendor and reorder details layered on top.</p></div><div><button className="cc-button cc-button--soft" onClick={onSync} disabled={busy}><Icon name="refresh" /> {syncButtonLabel(syncProgress, 'Sync Square')}</button><button className="cc-button cc-button--dark" onClick={() => setCounting(true)} disabled={!items.length}><Icon name="camera" /> Start a count</button></div></div>
       <div className="cc-toolbar"><label><Icon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products, SKU, category, or vendor" /></label><div>{[['all', `All ${total}`], ['low', 'Running low'], ['unmapped', 'Needs vendor']].map(([id, label]) => <button key={id} className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}</button>)}</div></div>
       <div className="cc-inventory-table">
         <div className="cc-table-head"><span>Product</span><span>On hand</span><span>Reorder at</span><span>Vendor</span><span>Status</span><span /></div>
@@ -1243,6 +1254,8 @@ function shortTime(value) { if (!value) return ''; return new Intl.DateTimeForma
 function shortMonth(value) { return new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(`${value}T12:00:00`)); }
 function dayNumber(value) { return new Date(`${value}T12:00:00`).getDate(); }
 function dayPart() { const hour = new Date().getHours(); return hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'; }
+
+function syncButtonLabel(progress, idleLabel) { if (!progress) return idleLabel; return `Syncing… ${progress.phase === 'catalog' ? 'catalog' : 'counts'} ${progress.itemsDone}`; }
 function isoDateOffset(days) { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); }
 function initials(value = '') { return String(value).split(/\s+|@/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'M'; }
 function safeJson(value) { try { return value ? JSON.parse(value) : null; } catch { return null; } }

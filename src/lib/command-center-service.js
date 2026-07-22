@@ -4,6 +4,7 @@ import {
   batchCreateSquarePhysicalCounts,
   batchRetrieveSquareInventoryCounts,
   listSquareCatalogItems,
+  listSquareCatalogPage,
   listSquarePayments,
   normalizeSquareCatalogItemsForInventory,
   searchSquareOrders,
@@ -44,6 +45,7 @@ export function createCommandCenterService({
     salesLines: new Map(),
     salesSyncRuns: [],
     inventorySnapshots: new Map(),
+    squareSyncJobs: [],
   };
   let squareInventoryRefresh = null;
   let squareInventoryRefreshedAt = 0;
@@ -214,6 +216,175 @@ export function createCommandCenterService({
     } finally {
       squareInventoryRefresh = null;
     }
+  }
+
+  // Stepped Square sync: each call does one bounded chunk of work so a
+  // serverless request never runs long. The client repeats stepSquareSyncJob
+  // until the job reports completed or failed.
+  async function startSquareSyncJob({ actor = null } = {}) {
+    await requireSquareInventoryConfig();
+    const startedAt = now().toISOString();
+    const record = {
+      id: crypto.randomUUID(),
+      status: 'running',
+      phase: 'catalog',
+      cursor: null,
+      itemsDone: 0,
+      itemsTotal: null,
+      errorMessage: null,
+      startedAt,
+      updatedAt: startedAt,
+    };
+    let job;
+    if (!supabase) {
+      memory.squareSyncJobs.unshift(record);
+      job = clone(record);
+    } else {
+      const { data, error } = await supabase.from('square_sync_jobs').insert(toSquareSyncJobRow(record)).select('*').single();
+      if (error) throw error;
+      job = fromSquareSyncJob(data);
+    }
+    await store.recordAuditLog?.({
+      action: 'command_center.square_sync_job_start',
+      actor: actor || { id: 'command-center', role: 'system' },
+      targetType: 'square_sync_job',
+      targetId: job.id,
+      metadata: { phase: job.phase },
+    });
+    return job;
+  }
+
+  async function getSquareSyncJob(jobId) {
+    if (!supabase) {
+      const job = memory.squareSyncJobs.find(item => item.id === jobId);
+      if (!job) throw serviceError('SQUARE_SYNC_JOB_NOT_FOUND', 'That Square sync job was not found.', 404);
+      return clone(job);
+    }
+    if (!isUuid(jobId)) throw serviceError('SQUARE_SYNC_JOB_NOT_FOUND', 'That Square sync job was not found.', 404);
+    const { data, error } = await supabase.from('square_sync_jobs').select('*').eq('id', jobId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw serviceError('SQUARE_SYNC_JOB_NOT_FOUND', 'That Square sync job was not found.', 404);
+    return fromSquareSyncJob(data);
+  }
+
+  async function stepSquareSyncJob(jobId, { actor = null } = {}) {
+    const job = await getSquareSyncJob(jobId);
+    if (job.status !== 'running') return job;
+    try {
+      const config = await requireSquareInventoryConfig();
+      if (job.phase === 'catalog') return await stepSquareCatalogPhase(job, config, actor);
+      return await stepSquareInventoryPhase(job, config, actor);
+    } catch (error) {
+      await updateSquareSyncJob(job.id, { status: 'failed', errorMessage: error.message }).catch(() => {});
+      throw error;
+    }
+  }
+
+  async function stepSquareCatalogPhase(job, config, actor) {
+    const page = await listSquareCatalogPage({
+      cursor: job.cursor,
+      limit: SQUARE_SYNC_CATALOG_PAGE_SIZE,
+      env: config,
+      fetchImpl,
+    });
+    const normalized = normalizeSquareCatalogItemsForInventory(page.objects);
+    if (normalized.length) await store.upsertStoreInventory?.(normalized);
+    const itemsDone = job.itemsDone + normalized.length;
+    if (page.cursor) return updateSquareSyncJob(job.id, { cursor: page.cursor, itemsDone });
+    const variationIds = await listSyncVariationIds();
+    if (!variationIds.length) return completeSquareSyncJob({ ...job, itemsDone }, variationIds, actor);
+    return updateSquareSyncJob(job.id, {
+      phase: 'inventory',
+      cursor: '0',
+      itemsDone,
+      itemsTotal: itemsDone + variationIds.length,
+    });
+  }
+
+  async function stepSquareInventoryPhase(job, config, actor) {
+    const locationId = config.locationId || config.externalLocationId;
+    const variationIds = await listSyncVariationIds();
+    const offset = Math.max(0, Number(job.cursor) || 0);
+    const batch = variationIds.slice(offset, offset + SQUARE_SYNC_INVENTORY_BATCH_SIZE);
+    if (batch.length) {
+      const counts = await batchRetrieveSquareInventoryCounts({
+        catalogObjectIds: batch,
+        locationIds: [locationId],
+        env: config,
+        fetchImpl,
+      });
+      await upsertBalances(counts.map(count => ({
+        squareVariationId: count.catalogObjectId,
+        locationId: count.locationId,
+        quantity: count.quantity,
+        lastCountedAt: count.calculatedAt,
+        source: 'square',
+      })));
+      await persistInventorySnapshots(counts, { source: 'square_sync' });
+    }
+    const itemsDone = job.itemsDone + batch.length;
+    const nextOffset = offset + batch.length;
+    if (nextOffset < variationIds.length) return updateSquareSyncJob(job.id, { cursor: String(nextOffset), itemsDone });
+    return completeSquareSyncJob({ ...job, itemsDone }, variationIds, actor);
+  }
+
+  async function completeSquareSyncJob(job, variationIds, actor) {
+    const updated = await updateSquareSyncJob(job.id, {
+      status: 'completed',
+      phase: 'completed',
+      cursor: null,
+      itemsDone: job.itemsDone,
+      itemsTotal: job.itemsTotal ?? job.itemsDone,
+    });
+    const catalogItems = Math.max(0, (updated.itemsTotal ?? job.itemsDone) - variationIds.length);
+    lastSquareInventorySync = {
+      syncedAt: now().toISOString(),
+      catalogItems,
+      inventoryCounts: variationIds.length,
+    };
+    squareInventoryRefreshedAt = Date.now();
+    await store.recordAuditLog?.({
+      action: 'command_center.square_sync',
+      actor: actor || { id: 'command-center', role: 'system' },
+      targetType: 'store_inventory',
+      targetId: 'square',
+      metadata: { jobId: job.id, catalogItems, inventoryCounts: variationIds.length },
+    });
+    return updated;
+  }
+
+  async function updateSquareSyncJob(jobId, patch = {}) {
+    if (!supabase) {
+      const job = memory.squareSyncJobs.find(item => item.id === jobId);
+      if (!job) throw serviceError('SQUARE_SYNC_JOB_NOT_FOUND', 'That Square sync job was not found.', 404);
+      Object.assign(job, definedOnly(patch), { updatedAt: now().toISOString() });
+      return clone(job);
+    }
+    const { data, error } = await supabase.from('square_sync_jobs').update(definedOnly({
+      status: patch.status,
+      phase: patch.phase,
+      cursor: patch.cursor,
+      items_done: patch.itemsDone,
+      items_total: patch.itemsTotal,
+      error_message: patch.errorMessage,
+      updated_at: now().toISOString(),
+    })).eq('id', jobId).select('*').single();
+    if (error) throw error;
+    return fromSquareSyncJob(data);
+  }
+
+  async function listSyncVariationIds() {
+    const catalog = await store.listStoreInventory?.({ activeOnly: false }) ?? [];
+    return [...new Set(catalog.map(item => item.squareVariationId).filter(Boolean))].sort();
+  }
+
+  async function requireSquareInventoryConfig() {
+    const config = await squareConfig();
+    const locationId = config.locationId || config.externalLocationId;
+    if (!config.accessToken || !locationId || !['sandbox', 'production'].includes(config.environment)) {
+      throw serviceError('SQUARE_INVENTORY_NOT_CONNECTED', 'Connect a valid Square account, location, and environment before loading live inventory.', 409);
+    }
+    return config;
   }
 
   async function getOverviewInventory({ refreshSquare }) {
@@ -1057,6 +1228,9 @@ export function createCommandCenterService({
     getOverview,
     getSquareSnapshot,
     syncSquare,
+    startSquareSyncJob,
+    stepSquareSyncJob,
+    getSquareSyncJob,
     listInventory,
     updateInventoryRule,
     mapVendorProduct,
@@ -1175,6 +1349,36 @@ function publicConnector(record) {
 }
 
 const DEFAULT_LOW_STOCK_THRESHOLD = 3;
+const SQUARE_SYNC_CATALOG_PAGE_SIZE = 100;
+const SQUARE_SYNC_INVENTORY_BATCH_SIZE = 100;
+
+function fromSquareSyncJob(row) {
+  return {
+    id: row.id,
+    status: row.status,
+    phase: row.phase,
+    cursor: row.cursor ?? null,
+    itemsDone: Number(row.items_done ?? 0),
+    itemsTotal: row.items_total === null || row.items_total === undefined ? null : Number(row.items_total),
+    errorMessage: row.error_message ?? null,
+    startedAt: row.started_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toSquareSyncJobRow(record) {
+  return {
+    id: record.id,
+    status: record.status,
+    phase: record.phase,
+    cursor: record.cursor,
+    items_done: record.itemsDone,
+    items_total: record.itemsTotal,
+    error_message: record.errorMessage,
+    started_at: record.startedAt,
+    updated_at: record.updatedAt,
+  };
+}
 
 // Re-save (and if needed, page-trim) a PDF that is too large to hand to the
 // AI model. Loaded lazily so the dependency only costs when actually needed.

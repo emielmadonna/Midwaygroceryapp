@@ -1387,6 +1387,39 @@ export function createApiRouter({
     }
   });
 
+  // Stepped Square sync: start a job, then repeat the step call until the job
+  // reports completed. Each step does one bounded chunk of Square work so no
+  // single request runs long enough to hit serverless time limits.
+  router.post('/admin/command-center/square/sync/jobs', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.startSquareSyncJob({ actor: req.adminUser });
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SQUARE_SYNC_JOB_START_FAILED', error.statusCode || 502);
+    }
+  });
+
+  router.post('/admin/command-center/square/sync/jobs/:id/step', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.stepSquareSyncJob(req.params.id, { actor: req.adminUser });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SQUARE_SYNC_JOB_STEP_FAILED', error.statusCode || 502);
+    }
+  });
+
+  router.get('/admin/command-center/square/sync/jobs/:id', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const data = await commandCenter.getSquareSyncJob(req.params.id);
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SQUARE_SYNC_JOB_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
   router.get('/admin/command-center/vendors', async (req, res) => {
     try {
       requireAdminRole(req.adminUser);
