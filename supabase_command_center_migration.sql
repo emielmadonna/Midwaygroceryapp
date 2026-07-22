@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS command_center_uploads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   file_name TEXT NOT NULL,
   content_type TEXT NOT NULL,
-  size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 6291456),
+  size_bytes BIGINT NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 62914560),
   purpose TEXT NOT NULL DEFAULT 'assistant',
   conversation_id TEXT,
   uploaded_by TEXT,
@@ -250,3 +250,9 @@ ALTER TABLE provider_connections DROP CONSTRAINT IF EXISTS provider_connections_
 ALTER TABLE provider_connections
   ADD CONSTRAINT provider_connections_provider_kind_check
   CHECK (provider_kind IN ('payment', 'accounting', 'messaging', 'social', 'maps', 'ai'));
+
+-- 2026-07-22: allow direct-to-storage uploads up to 60 MB.
+ALTER TABLE command_center_uploads DROP CONSTRAINT IF EXISTS command_center_uploads_size_bytes_check;
+ALTER TABLE command_center_uploads
+  ADD CONSTRAINT command_center_uploads_size_bytes_check
+  CHECK (size_bytes > 0 AND size_bytes <= 62914560);

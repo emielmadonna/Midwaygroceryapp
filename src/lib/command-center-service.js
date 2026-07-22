@@ -653,6 +653,66 @@ export function createCommandCenterService({
     return withUploadUrl(fromUpload(data));
   }
 
+  // Direct-to-storage upload: the browser sends file bytes straight to the
+  // storage bucket via a one-time signed URL, so hosting request-body caps
+  // (~4.5 MB) never apply. The metadata row is created up front.
+  async function createDirectUpload({ fileName, contentType, sizeBytes, actor, conversationId = null, purpose = 'assistant' } = {}) {
+    if (!fileName || !contentType) throw serviceError('UPLOAD_REQUIRED', 'Choose a file to upload.', 400);
+    if (!supabase) throw serviceError('UPLOAD_STORAGE_REQUIRED', 'Large file uploads need file storage, which is not configured on this server.', 409);
+    if (Number(sizeBytes) > 45 * 1024 * 1024) throw serviceError('UPLOAD_TOO_LARGE', 'Files can be up to 45 MB.', 400);
+    const createdAt = now().toISOString();
+    const id = crypto.randomUUID();
+    const safeName = safeFileName(fileName);
+    const bucket = env.COMMAND_CENTER_UPLOADS_BUCKET || 'midway-command-center';
+    const storagePath = `${createdAt.slice(0, 10)}/${id}-${safeName}`;
+    const { data: signed, error: signError } = await supabase.storage.from(bucket).createSignedUploadUrl(storagePath);
+    if (signError) throw signError;
+    const { data, error } = await supabase.from('command_center_uploads').insert({
+      id,
+      file_name: safeName,
+      content_type: contentType,
+      size_bytes: Number(sizeBytes || 0),
+      purpose,
+      conversation_id: conversationId,
+      uploaded_by: actor?.email || actor?.id || null,
+      storage_bucket: bucket,
+      storage_path: storagePath,
+    }).select('*').single();
+    if (error) throw error;
+    return { ...fromUpload(data), uploadUrl: signed.signedUrl, uploadToken: signed.token };
+  }
+
+  async function readUploadContent(uploadId) {
+    if (!supabase) throw serviceError('UPLOAD_STORAGE_REQUIRED', 'File storage is not configured on this server.', 409);
+    const { data: row, error } = await supabase.from('command_center_uploads').select('*').eq('id', uploadId).maybeSingle();
+    if (error) throw error;
+    const record = row ? fromUpload(row) : null;
+    if (!record?.storageBucket || !record?.storagePath) {
+      throw serviceError('UPLOAD_NOT_FOUND', 'That uploaded file could not be found.', 404);
+    }
+    const { data: blob, error: downloadError } = await supabase.storage.from(record.storageBucket).download(record.storagePath);
+    if (downloadError) throw downloadError;
+    let buffer = Buffer.from(await blob.arrayBuffer());
+    let note = null;
+    if (record.contentType === 'application/pdf' && buffer.length > 28 * 1024 * 1024) {
+      const shrunk = await shrinkPdfBuffer(buffer);
+      buffer = shrunk.buffer;
+      if (shrunk.keptPages !== null && shrunk.keptPages < shrunk.totalPages) {
+        note = `Only the first ${shrunk.keptPages} of ${shrunk.totalPages} pages of ${record.fileName} could be read (the file is very large). Mention this, and ask for the rest split into a second file if it matters.`;
+      }
+    }
+    if (buffer.length > 28 * 1024 * 1024) {
+      throw serviceError('UPLOAD_TOO_LARGE_TO_READ', `${record.fileName} is too large to read even after shrinking. Split it into smaller files and try again.`, 400);
+    }
+    return {
+      fileName: record.fileName,
+      contentType: record.contentType,
+      dataUrl: `data:${record.contentType};base64,${buffer.toString('base64')}`,
+      sizeBytes: buffer.length,
+      note,
+    };
+  }
+
   async function listUploads({ limit = 50, conversationId } = {}) {
     if (!supabase) return memory.uploads.filter(item => !conversationId || item.conversationId === conversationId).slice(0, limit).map(clone);
     let query = supabase.from('command_center_uploads').select('*').order('created_at', { ascending: false }).limit(Math.min(100, limit));
@@ -940,6 +1000,8 @@ export function createCommandCenterService({
     getSalesAnalytics,
     listSalesSyncRuns,
     saveUpload,
+    createDirectUpload,
+    readUploadContent,
     listUploads,
     listReconciliations,
     createReconciliation,
@@ -1036,6 +1098,29 @@ function publicConnector(record) {
 }
 
 const DEFAULT_LOW_STOCK_THRESHOLD = 3;
+
+// Re-save (and if needed, page-trim) a PDF that is too large to hand to the
+// AI model. Loaded lazily so the dependency only costs when actually needed.
+async function shrinkPdfBuffer(buffer) {
+  try {
+    const { PDFDocument } = await import('pdf-lib');
+    const source = await PDFDocument.load(buffer, { ignoreEncryption: true });
+    const totalPages = source.getPageCount();
+    const resaved = await source.save({ useObjectStreams: true });
+    if (resaved.length <= 28 * 1024 * 1024) return { buffer: Buffer.from(resaved), keptPages: totalPages, totalPages };
+    for (const pageLimit of [80, 40, 20]) {
+      if (totalPages <= pageLimit) continue;
+      const trimmed = await PDFDocument.create();
+      const pages = await trimmed.copyPages(source, Array.from({ length: pageLimit }, (_, index) => index));
+      for (const page of pages) trimmed.addPage(page);
+      const saved = await trimmed.save({ useObjectStreams: true });
+      if (saved.length <= 28 * 1024 * 1024) return { buffer: Buffer.from(saved), keptPages: pageLimit, totalPages };
+    }
+    return { buffer, keptPages: totalPages, totalPages };
+  } catch {
+    return { buffer, keptPages: null, totalPages: null };
+  }
+}
 
 // Square names the default variation "Regular", which turns every item into
 // "Thing - Regular" in lists. Drop that noise for display.

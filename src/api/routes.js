@@ -1045,7 +1045,7 @@ export function createApiRouter({
       const conversationMessages = persisted.map(toAgentMessage);
       const newMessages = [];
 
-      const parsedAttachments = parseAgentAttachments(attachments);
+      const parsedAttachments = await parseAgentAttachments(attachments, { commandCenter });
       for (const attachment of parsedAttachments.metadata) {
         await onEvent?.({ type: 'attachment_started', name: attachment.name, fileType: attachment.type });
       }
@@ -1194,6 +1194,30 @@ export function createApiRouter({
       res.json({ ok: true, data });
     } catch (error) {
       sendApiError(res, error, 'COMMAND_CENTER_UPLOADS_UNAVAILABLE');
+    }
+  });
+
+  router.post('/admin/command-center/uploads/direct', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const data = await commandCenter.createDirectUpload({
+        fileName: req.body?.fileName,
+        contentType: String(req.body?.contentType || '').toLowerCase(),
+        sizeBytes: Number(req.body?.sizeBytes) || 0,
+        actor: req.adminUser,
+        conversationId: req.body?.conversationId || null,
+        purpose: req.body?.purpose || 'assistant',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'command_center.file_upload_direct',
+        actor: req.adminUser,
+        targetType: 'command_center_upload',
+        targetId: data.id,
+        metadata: { fileName: data.fileName, contentType: data.contentType, sizeBytes: data.sizeBytes },
+      });
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'COMMAND_CENTER_UPLOAD_FAILED', error.statusCode || 400);
     }
   });
 
@@ -2680,7 +2704,7 @@ function toAgentMessage(persisted) {
   return message;
 }
 
-function parseAgentAttachments(attachments = []) {
+async function parseAgentAttachments(attachments = [], { commandCenter } = {}) {
   if (!Array.isArray(attachments)) throw badRequest('attachments must be an array.', 'AGENT_ATTACHMENTS_INVALID');
   if (attachments.length > 3) throw badRequest('Attach up to three files at a time.', 'AGENT_ATTACHMENTS_LIMIT');
   const allowedTypes = commandCenterContentTypes();
@@ -2690,14 +2714,21 @@ function parseAgentAttachments(attachments = []) {
   for (const attachment of attachments) {
     const fileName = String(attachment?.name || 'attachment').slice(0, 180);
     const contentType = String(attachment?.type || '').toLowerCase();
-    const dataUrl = String(attachment?.dataUrl || '');
     if (!allowedTypes.has(contentType)) throw badRequest(`${fileName} is not a supported file type.`, 'AGENT_ATTACHMENT_TYPE');
+    let dataUrl = String(attachment?.dataUrl || '');
+    if (!dataUrl && attachment?.uploadId && commandCenter?.readUploadContent) {
+      // Large files skip the request body: the browser puts them straight in
+      // storage and we pull the bytes back here.
+      const stored = await commandCenter.readUploadContent(attachment.uploadId);
+      dataUrl = stored.dataUrl;
+      if (stored.note) content.push({ type: 'input_text', text: stored.note });
+    }
     const match = dataUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=]+)$/i);
     if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'AGENT_ATTACHMENT_DATA');
     const sizeBytes = Math.floor(match[2].length * 0.75);
     totalBytes += sizeBytes;
-    if (sizeBytes > 20 * 1024 * 1024 || totalBytes > 25 * 1024 * 1024) {
-      throw badRequest('Attachments must be under 20 MB each and 25 MB total.', 'AGENT_ATTACHMENT_SIZE');
+    if (sizeBytes > 28 * 1024 * 1024 || totalBytes > 32 * 1024 * 1024) {
+      throw badRequest('Attachments must be under 28 MB each and 32 MB total.', 'AGENT_ATTACHMENT_SIZE');
     }
     metadata.push({ name: fileName, type: contentType, sizeBytes, uploadId: attachment?.uploadId || null });
     if (contentType.startsWith('image/')) {

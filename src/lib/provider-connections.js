@@ -1075,11 +1075,36 @@ function providerRuntimeConfig(connection, definition, env = process.env) {
   };
 }
 
-function toProviderStatus(connection, definition) {
+function toProviderStatus(connection, definition, env = process.env) {
   const normalized = normalizeProviderConnection(connection);
   const credentialKeys = Object.keys(normalized.encryptedCredentials || {});
   const missingInstagramCredentials = definition.providerKey === 'instagram'
     && !(normalized.encryptedCredentials?.accessToken && normalized.externalAccountId);
+  // A "connected" OpenAI row whose key cannot be decrypted (encryption secret
+  // changed) must not report connected — the owner needs to paste the key again.
+  let unreadableOpenAiKey = false;
+  if (definition.providerKey === 'openai' && normalized.status === 'connected' && normalized.encryptedCredentials?.apiKeyCiphertext) {
+    try { decryptProviderSecret(normalized.encryptedCredentials.apiKeyCiphertext, env); } catch { unreadableOpenAiKey = true; }
+  }
+  if (unreadableOpenAiKey) {
+    return {
+      providerKey: definition.providerKey,
+      providerKind: definition.providerKind,
+      displayName: definition.displayName,
+      requiredFor: definition.requiredFor,
+      status: 'error',
+      publicConfig: normalized.publicConfig,
+      scopes: normalized.scopes,
+      externalAccountId: normalized.externalAccountId,
+      externalLocationId: normalized.externalLocationId,
+      lastSyncAt: normalized.lastSyncAt,
+      errorMessage: 'The saved key cannot be read on this server. Paste the API key again to reconnect.',
+      hasSecretRef: Boolean(normalized.secretRef),
+      hasEncryptedCredentials: credentialKeys.length > 0,
+      credentialKeys,
+      updatedAt: normalized.updatedAt,
+    };
+  }
   return {
     providerKey: definition.providerKey,
     providerKind: definition.providerKind,
