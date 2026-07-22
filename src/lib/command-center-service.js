@@ -1155,7 +1155,7 @@ const DEFAULT_LOW_STOCK_THRESHOLD = 3;
 
 // Re-save (and if needed, page-trim) a PDF that is too large to hand to the
 // AI model. Loaded lazily so the dependency only costs when actually needed.
-async function shrinkPdfBuffer(buffer, { pageStart = 1 } = {}) {
+export async function shrinkPdfBuffer(buffer, { pageStart = 1 } = {}) {
   try {
     const { PDFDocument } = await import('pdf-lib');
     const source = await PDFDocument.load(buffer, { ignoreEncryption: true });
@@ -1167,10 +1167,12 @@ async function shrinkPdfBuffer(buffer, { pageStart = 1 } = {}) {
         return { buffer: Buffer.from(resaved), keptPages: totalPages, totalPages, firstPage: 1, lastPage: totalPages };
       }
     }
-    for (const pageLimit of [80, 40, 20]) {
+    // Adaptive chunk sizes all the way down to a single page, so even a
+    // handful of enormous scanned pages can be read piece by piece.
+    for (const pageLimit of [80, 40, 20, 10, 5, 2, 1]) {
       const count = Math.min(pageLimit, totalPages - firstIndex);
       if (count <= 0) break;
-      if (firstIndex === 0 && count >= totalPages) continue;
+      if (firstIndex === 0 && count >= totalPages && totalPages > 1) continue;
       const trimmed = await PDFDocument.create();
       const pages = await trimmed.copyPages(source, Array.from({ length: count }, (_, index) => firstIndex + index));
       for (const page of pages) trimmed.addPage(page);
