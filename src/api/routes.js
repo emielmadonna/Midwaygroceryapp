@@ -43,6 +43,7 @@ import { buildXeroAuthUrl, xeroProviderConfigFromEnv } from '../lib/xero-api.js'
 import { createXeroService } from '../lib/xero-service.js';
 import { buildQuickBooksAuthUrl, quickbooksProviderConfigFromEnv } from '../lib/quickbooks-api.js';
 import { createQuickBooksService } from '../lib/quickbooks-service.js';
+import { createQuickBooksDailySales } from '../lib/quickbooks-daily-sales.js';
 import { registerQuickBooksTools } from '../lib/quickbooks-tools.js';
 
 export function createApiRouter({
@@ -219,6 +220,30 @@ export function createApiRouter({
   };
   router.get('/cron/sales-history', runSalesHistoryCron);
   router.post('/cron/sales-history', runSalesHistoryCron);
+
+  const runQuickBooksDailySalesCron = async (req, res) => {
+    try {
+      requireCronAuth(req, env);
+      // Post yesterday's Square totals to QuickBooks as one sales receipt.
+      // Quietly skips until QuickBooks is connected, and never double-posts a day.
+      const dailySales = createQuickBooksDailySales({ quickbooksService, commandCenter, env });
+      const data = await dailySales.postDailySales({ businessDate: req.body?.businessDate || null });
+      if (data.status === 'posted') {
+        await resolvedStore.recordAuditLog?.({
+          action: 'quickbooks.daily_sales_posted',
+          actor: { id: 'cron', role: 'system' },
+          targetType: 'quickbooks_sales_receipt',
+          targetId: data.receiptId || data.businessDate,
+          metadata: { businessDate: data.businessDate, netCents: data.netCents, taxCents: data.taxCents },
+        });
+      }
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'QBO_DAILY_SALES_CRON_FAILED', error.statusCode || 502);
+    }
+  };
+  router.get('/cron/qbo-daily-sales', runQuickBooksDailySalesCron);
+  router.post('/cron/qbo-daily-sales', runQuickBooksDailySalesCron);
 
   router.post('/admin/auth/login', async (req, res) => {
     try {

@@ -533,6 +533,28 @@ export function createCommandCenterService({
     return buildSalesAnalytics({ lines, days: safeDays, now: now(), lastSync: syncRuns.find(run => run.status === 'completed') || null, catalog, inventorySnapshots });
   }
 
+  async function getDailySalesTotals({ businessDate } = {}) {
+    if (!businessDate) throw serviceError('BUSINESS_DATE_REQUIRED', 'Provide a business date (YYYY-MM-DD).', 400);
+    let orders;
+    if (!supabase) {
+      orders = [...memory.salesOrders.values()]
+        .filter(order => order.businessDate === businessDate)
+        .map(order => ({ totalCents: Number(order.totalCents || 0), taxCents: Number(order.taxCents || 0), refundCents: Number(order.refundCents || 0) }));
+    } else {
+      const { data, error } = await supabase
+        .from('square_sales_orders')
+        .select('total_cents, tax_cents, refund_cents')
+        .eq('business_date', businessDate)
+        .limit(10000);
+      if (error) throw error;
+      orders = (data ?? []).map(row => ({ totalCents: Number(row.total_cents || 0), taxCents: Number(row.tax_cents || 0), refundCents: Number(row.refund_cents || 0) }));
+    }
+    const grossCents = orders.reduce((sum, order) => sum + order.totalCents, 0);
+    const taxCents = orders.reduce((sum, order) => sum + order.taxCents, 0);
+    const refundCents = orders.reduce((sum, order) => sum + order.refundCents, 0);
+    return { businessDate, orders: orders.length, grossCents, taxCents, refundCents, netCents: grossCents - refundCents };
+  }
+
   async function persistInventorySnapshots(counts = [], { source = 'square' } = {}) {
     const capturedAt = now().toISOString();
     const snapshotDate = capturedAt.slice(0, 10);
@@ -1052,6 +1074,7 @@ export function createCommandCenterService({
     syncSalesHistory,
     captureInventorySnapshot,
     getSalesAnalytics,
+    getDailySalesTotals,
     listSalesSyncRuns,
     saveUpload,
     createDirectUpload,
