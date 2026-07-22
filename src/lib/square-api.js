@@ -88,9 +88,180 @@ export async function squareRequest(path, {
   return data;
 }
 
-export async function listSquareCatalogItems(options = {}) {
-  const result = await squareRequest('/v2/catalog/list?types=ITEM', options);
-  return result.objects ?? [];
+export async function listSquareCatalogItems({ maxPages = 100, ...options } = {}) {
+  const objects = [];
+  let cursor;
+  let pages = 0;
+  do {
+    const params = new URLSearchParams({ types: 'ITEM' });
+    if (cursor) params.set('cursor', cursor);
+    const result = await squareRequest(`/v2/catalog/list?${params.toString()}`, options);
+    objects.push(...(result.objects ?? []));
+    cursor = result.cursor;
+    pages += 1;
+  } while (cursor && pages < Math.max(1, maxPages));
+  if (cursor) throw new Error('Square catalog exceeded the safe pagination limit.');
+  return objects;
+}
+
+export async function batchRetrieveSquareInventoryCounts({
+  catalogObjectIds = [],
+  locationIds = [],
+  states = ['IN_STOCK'],
+  maxPages = 100,
+  ...options
+} = {}) {
+  const uniqueCatalogIds = [...new Set(catalogObjectIds.filter(Boolean))];
+  if (!uniqueCatalogIds.length) return [];
+  const counts = [];
+  for (const catalogBatch of chunkValues(uniqueCatalogIds, 1000)) {
+    let cursor;
+    let pages = 0;
+    do {
+      const result = await squareRequest('/v2/inventory/counts/batch-retrieve', {
+        ...options,
+        method: 'POST',
+        body: {
+          catalog_object_ids: catalogBatch,
+          location_ids: locationIds.filter(Boolean),
+          states,
+          limit: 1000,
+          ...(cursor ? { cursor } : {}),
+        },
+      });
+      counts.push(...(result.counts ?? []));
+      cursor = result.cursor;
+      pages += 1;
+    } while (cursor && pages < Math.max(1, maxPages));
+    if (cursor) throw new Error('Square inventory counts exceeded the safe pagination limit.');
+  }
+  return counts.map(count => ({
+    catalogObjectId: count.catalog_object_id,
+    locationId: count.location_id,
+    state: count.state,
+    quantity: Number(count.quantity ?? 0),
+    calculatedAt: count.calculated_at ?? null,
+  }));
+}
+
+export async function listSquarePayments({
+  beginTime,
+  endTime,
+  locationId,
+  limit = 100,
+  maxPages = 100,
+  ...options
+} = {}) {
+  const payments = [];
+  let cursor;
+  let pages = 0;
+  do {
+    const params = new URLSearchParams();
+    if (beginTime) params.set('begin_time', beginTime);
+    if (endTime) params.set('end_time', endTime);
+    if (locationId) params.set('location_id', locationId);
+    if (cursor) params.set('cursor', cursor);
+    params.set('sort_order', 'DESC');
+    params.set('limit', String(Math.max(1, Math.min(100, Number(limit) || 100))));
+    const result = await squareRequest(`/v2/payments?${params.toString()}`, options);
+    payments.push(...(result.payments ?? []));
+    cursor = result.cursor;
+    pages += 1;
+  } while (cursor && pages < Math.max(1, maxPages));
+  if (cursor) throw new Error('Square payments exceeded the safe pagination limit. Narrow the reporting period and try again.');
+  return payments.map(payment => ({
+    id: payment.id,
+    orderId: payment.order_id ?? null,
+    status: payment.status,
+    amountCents: Number(payment.amount_money?.amount ?? 0),
+    refundedCents: Number(payment.refunded_money?.amount ?? 0),
+    netAmountCents: Number(payment.amount_money?.amount ?? 0) - Number(payment.refunded_money?.amount ?? 0),
+    currency: payment.amount_money?.currency ?? 'USD',
+    sourceType: payment.source_type ?? null,
+    createdAt: payment.created_at ?? null,
+    updatedAt: payment.updated_at ?? null,
+    receiptUrl: payment.receipt_url ?? null,
+  }));
+}
+
+function chunkValues(values, size) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
+}
+
+export async function searchSquareOrders({
+  locationIds = [],
+  startAt,
+  endAt,
+  states = ['COMPLETED'],
+  limit = 1000,
+  maxPages = 100,
+  ...options
+} = {}) {
+  const locations = [...new Set(locationIds.filter(Boolean))];
+  if (!locations.length) throw new Error('Square order history requires a location ID.');
+  const query = {
+    filter: {
+      ...(startAt || endAt ? { date_time_filter: { closed_at: definedOnly({ start_at: startAt, end_at: endAt }) } } : {}),
+      ...(states?.length ? { state_filter: { states } } : {}),
+    },
+    sort: { sort_field: 'CLOSED_AT', sort_order: 'ASC' },
+  };
+  const orders = [];
+  let cursor;
+  let pages = 0;
+  do {
+    const result = await squareRequest('/v2/orders/search', {
+      ...options,
+      method: 'POST',
+      body: {
+        location_ids: locations,
+        query,
+        limit: Math.max(1, Math.min(1000, Number(limit) || 1000)),
+        ...(cursor ? { cursor } : {}),
+        return_entries: false,
+      },
+    });
+    orders.push(...(result.orders ?? []));
+    cursor = result.cursor;
+    pages += 1;
+  } while (cursor && pages < Math.max(1, maxPages));
+  if (cursor) throw new Error('Square order history exceeded the safe pagination limit. Narrow the sync range and try again.');
+  return orders;
+}
+
+export async function batchCreateSquarePhysicalCounts({
+  counts = [],
+  locationId,
+  occurredAt = new Date().toISOString(),
+  idempotencyKey = crypto.randomUUID(),
+  ...options
+} = {}) {
+  const changes = counts
+    .filter(count => count?.catalogObjectId && Number.isFinite(Number(count.quantity)))
+    .map(count => ({
+      type: 'PHYSICAL_COUNT',
+      physical_count: {
+        catalog_object_id: count.catalogObjectId,
+        location_id: count.locationId || locationId,
+        state: 'IN_STOCK',
+        quantity: String(Math.max(0, Number(count.quantity))),
+        occurred_at: count.occurredAt || occurredAt,
+      },
+    }))
+    .filter(change => change.physical_count.location_id);
+  if (!changes.length) return { counts: [], changes: [] };
+  const result = await squareRequest('/v2/inventory/changes/batch-create', {
+    ...options,
+    method: 'POST',
+    body: {
+      idempotency_key: String(idempotencyKey).slice(0, 45),
+      changes,
+      ignore_unchanged_counts: true,
+    },
+  });
+  return { counts: result.counts ?? [], changes: result.changes ?? [] };
 }
 
 export function normalizeSquareCatalogItemsForInventory(objects = []) {
@@ -389,6 +560,10 @@ function readSquareValue(config, key) {
   const value = config?.[key];
   if (value === undefined || value === null || value === '') return undefined;
   return typeof value === 'string' ? value.trim() : value;
+}
+
+function definedOnly(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''));
 }
 
 export function squareIdempotencyKey(value, prefix = 'square') {

@@ -1,14 +1,23 @@
-const DEFAULT_SYSTEM_PROMPT = `You are the Midway Gas & Grocery operations assistant.
-You help the owner manage the store: hours, fuel prices, tank levels, RV bookings,
-public site settings, products, and Instagram. You can call tools listed for you.
+const DEFAULT_SYSTEM_PROMPT = `You are Midway, the calm operations copilot for Midway Gas & Grocery.
+You help the owner and staff run the entire store: live Square sales, inventory,
+vendors, reorder drafts, receiving, reconciliation, fuel, RV bookings, hours,
+public site settings, products, and integrations. You can review attached photos,
+PDFs, spreadsheets, and vendor documents and call the tools listed for you.
 
 Style:
-- Be brief and direct. No filler.
-- Confirm what you did, with the smallest possible quote of the result.
+- Write for a busy owner who is not technical. Be warm, brief, and direct.
+- Lead with what needs attention, then the easiest next action.
+- Never show raw JSON, internal tool names, IDs, or implementation details unless asked.
+- Confirm what you did in plain language and show important before/after values.
 - If a tool returns an error, explain it plainly and offer a next step.
 - Never guess values — call a list_* tool first if you don't know.
-- For destructive actions (refund, cancel, delete) restate the action and the
-  exact target before calling the tool, then call it.`;
+- For sales questions, use get_sales_analytics and state the date range. Separate
+  observed history from forecasts, mention data-quality warnings, and never present
+  a low-confidence forecast as a fact.
+- Draft orders before sending them. Never place a vendor order without explicit approval.
+- Treat every external vendor MCP call as potentially consequential.
+- For destructive actions (refund, cancel, delete, vendor call) restate the action
+  and exact target before calling the tool, then wait for approval.`;
 
 const MAX_ITERATIONS = 10;
 
@@ -22,8 +31,11 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
     pendingConfirmation = null,
     confirmations = {},
     model,
+    onEvent,
   } = {}) {
     if (!actor) throw authError('Agent requires an authenticated actor.');
+
+    await emitAgentEvent(onEvent, { type: 'turn_started' });
 
     const tools = registry.list({ actor, store });
     const conversation = [
@@ -39,6 +51,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
         const refusal = `Tool call ${pendingConfirmation.toolName} was not approved by the user.`;
         conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: false, error: refusal }));
         trace.push({ type: 'tool_denied', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName });
+        await emitAgentEvent(onEvent, { type: 'tool_denied', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName });
         pendingConfirmation = null;
       } else if (decision === true) {
         const tool = registry.get(pendingConfirmation.toolName);
@@ -47,6 +60,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           trace.push({ type: 'tool_error', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName, error: 'unknown_tool' });
         } else {
           try {
+            await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name });
             const result = await registry.execute(pendingConfirmation.toolName, {
               input: pendingConfirmation.arguments ?? {},
               actor,
@@ -54,9 +68,11 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
             });
             conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: true, data: result }));
             trace.push({ type: 'tool_result', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: true });
+            await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: true });
           } catch (error) {
             conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: false, error: error.message, code: error.code }));
             trace.push({ type: 'tool_result', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: false, error: error.message });
+            await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: false });
           }
         }
         pendingConfirmation = null;
@@ -65,6 +81,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
       if (pendingConfirmation) {
+        await emitAgentEvent(onEvent, { type: 'approval_required', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName });
         return {
           message: null,
           pendingConfirmation,
@@ -72,15 +89,18 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           finishReason: 'awaiting_confirmation',
         };
       }
+      await emitAgentEvent(onEvent, { type: 'thinking', iteration });
       const turn = await provider.runTurn({
         messages: conversation,
         tools,
         model,
+        onEvent,
       });
       conversation.push(turn.message);
       trace.push({ type: 'assistant', content: turn.message.content, toolCalls: turn.message.toolCalls });
 
       if (!turn.toolCalls?.length) {
+        await emitAgentEvent(onEvent, { type: 'turn_completed', finishReason: turn.finishReason || 'stop' });
         return {
           message: turn.message,
           pendingConfirmation: null,
@@ -108,6 +128,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           break;
         }
         try {
+          await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: toolCall.id, toolName: tool.name });
           const result = await registry.execute(toolCall.name, {
             input: toolCall.arguments ?? {},
             actor,
@@ -115,6 +136,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           });
           conversation.push(toolResultMessage(toolCall.id, { ok: true, data: result }));
           trace.push({ type: 'tool_result', toolCallId: toolCall.id, toolName: tool.name, ok: true });
+          await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: toolCall.id, toolName: tool.name, ok: true });
         } catch (error) {
           conversation.push(toolResultMessage(toolCall.id, {
             ok: false,
@@ -128,12 +150,14 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
             ok: false,
             error: error.message,
           });
+          await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: toolCall.id, toolName: tool.name, ok: false });
         }
       }
 
       if (requestedConfirmation) {
         pendingConfirmation = requestedConfirmation;
         trace.push({ type: 'awaiting_confirmation', ...requestedConfirmation });
+        await emitAgentEvent(onEvent, { type: 'approval_required', toolCallId: requestedConfirmation.toolCallId, toolName: requestedConfirmation.toolName });
         return {
           message: null,
           pendingConfirmation,
@@ -143,6 +167,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
       }
     }
 
+    await emitAgentEvent(onEvent, { type: 'turn_completed', finishReason: 'iteration_limit' });
     return {
       message: { role: 'assistant', content: 'I hit the tool-call iteration limit. Try simplifying your request.' },
       pendingConfirmation: null,
@@ -152,6 +177,10 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
   }
 
   return { runTurn };
+}
+
+async function emitAgentEvent(onEvent, event) {
+  if (typeof onEvent === 'function') await onEvent(event);
 }
 
 function toolResultMessage(toolCallId, payload) {

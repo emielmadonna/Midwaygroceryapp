@@ -110,6 +110,26 @@ test('agent executes a non-destructive tool then yields assistant reply', async 
   assert.equal(result.message.content, 'Done.');
 });
 
+test('agent reports live progress around tool work', async () => {
+  const provider = scriptedProvider([
+    { toolCalls: [{ id: 'tc-live', name: 'list_fuel_prices', arguments: {} }] },
+    { content: 'Fuel prices are current.' },
+  ]);
+  const events = [];
+  const agent = createAgent({ provider, registry: buildRegistry(), store: makeStubStore() });
+  await agent.runTurn({
+    messages: [{ role: 'user', content: 'Check fuel prices.' }],
+    actor: owner,
+    onEvent: event => events.push(event),
+  });
+
+  assert.equal(events[0].type, 'turn_started');
+  assert.ok(events.some(event => event.type === 'thinking'));
+  assert.ok(events.some(event => event.type === 'tool_started' && event.toolName === 'list_fuel_prices'));
+  assert.ok(events.some(event => event.type === 'tool_completed' && event.ok === true));
+  assert.equal(events.at(-1).type, 'turn_completed');
+});
+
 test('agent pauses on destructive tool without confirmation', async () => {
   let canceled = false;
   const provider = scriptedProvider([

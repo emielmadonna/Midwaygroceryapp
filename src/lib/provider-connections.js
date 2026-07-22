@@ -12,7 +12,7 @@ export const PROVIDER_DEFINITIONS = [
     providerKey: 'square',
     providerKind: 'payment',
     displayName: 'Square',
-    requiredFor: ['payments', 'catalog', 'refunds'],
+    requiredFor: ['payments', 'catalog', 'inventory', 'refunds'],
   },
   {
     providerKey: 'email',
@@ -38,6 +38,12 @@ export const PROVIDER_DEFINITIONS = [
     displayName: 'Xero',
     requiredFor: ['per_booking_invoices', 'p_and_l_reporting'],
   },
+  {
+    providerKey: 'openai',
+    providerKind: 'ai',
+    displayName: 'OpenAI',
+    requiredFor: ['command_center_chat', 'file_analysis', 'mcp_tools'],
+  },
 ];
 
 const DEFAULT_SQUARE_OAUTH_SCOPES = [
@@ -47,6 +53,9 @@ const DEFAULT_SQUARE_OAUTH_SCOPES = [
   'ORDERS_READ',
   'ORDERS_WRITE',
   'ITEMS_READ',
+  'ITEMS_WRITE',
+  'INVENTORY_READ',
+  'INVENTORY_WRITE',
 ];
 const SQUARE_OAUTH_API_VERSION = '2026-01-22';
 const DEFAULT_INSTAGRAM_OAUTH_SCOPES = [
@@ -58,6 +67,7 @@ export function createProviderConnectionService({
   store = null,
   tenantConfig = null,
   platformProviderConfigs = [],
+  env = process.env,
   fetchImpl = globalThis.fetch,
   now = () => new Date(),
 } = {}) {
@@ -92,7 +102,127 @@ export function createProviderConnectionService({
       });
       const definition = getProviderDefinition(providerKey);
       const record = await getConnectionRecord({ store, tenantConfig: resolvedTenantConfig, providerKey, scope, now });
-      return providerRuntimeConfig(record, definition);
+      return providerRuntimeConfig(record, definition, env);
+    },
+
+    async getOpenAiStatus(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: resolvedTenantConfig?.tenantId,
+        locationId: resolvedTenantConfig?.locationId,
+        ...input,
+      });
+      const definition = getProviderDefinition('openai');
+      const record = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'openai',
+        scope,
+        now,
+      });
+      return openAiStatus(record, definition, env);
+    },
+
+    async upsertOpenAiConnection(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: resolvedTenantConfig?.tenantId,
+        locationId: resolvedTenantConfig?.locationId,
+        ...input,
+      });
+      const definition = getProviderDefinition('openai');
+      const existing = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'openai',
+        scope,
+        now,
+      });
+      const apiKey = String(input.apiKey || '').trim();
+      if (apiKey && !isLikelyOpenAiApiKey(apiKey)) {
+        throw providerError('OPENAI_KEY_INVALID', 'That does not look like an OpenAI API key. It should begin with sk-.', 400);
+      }
+      const model = normalizeOpenAiModel(input.model || existing?.publicConfig?.model || env.OPENAI_MODEL);
+      const reasoningEffort = normalizeOpenAiReasoning(input.reasoningEffort || existing?.publicConfig?.reasoningEffort || env.OPENAI_REASONING_EFFORT);
+      const existingCiphertext = existing?.encryptedCredentials?.apiKeyCiphertext || '';
+      const apiKeyCiphertext = apiKey ? encryptProviderSecret(apiKey, env) : existingCiphertext;
+      const keyEnding = apiKey ? apiKey.slice(-4) : existing?.publicConfig?.keyEnding;
+      const connection = await upsertConnection({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        connection: {
+          ...existing,
+          tenantId: scope.tenantId,
+          locationId: scope.locationId,
+          providerKey: 'openai',
+          providerKind: 'ai',
+          status: apiKeyCiphertext || validEnvOpenAiKey(env) ? 'connected' : 'not_connected',
+          publicConfig: pickDefined({ model, reasoningEffort, keyEnding }),
+          encryptedCredentials: pickDefined({ apiKeyCiphertext }),
+          errorMessage: null,
+          updatedBy: input.actor?.id ?? null,
+        },
+        now,
+      });
+      return openAiStatus(connection, definition, env);
+    },
+
+    async removeOpenAiConnection(input = {}) {
+      const resolvedTenantConfig = await resolveTenantConfig({ store, tenantConfig });
+      const scope = resolveScope({
+        tenantId: resolvedTenantConfig?.tenantId,
+        locationId: resolvedTenantConfig?.locationId,
+        ...input,
+      });
+      const definition = getProviderDefinition('openai');
+      const existing = await getConnectionRecord({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        providerKey: 'openai',
+        scope,
+        now,
+      });
+      const connection = await upsertConnection({
+        store,
+        tenantConfig: resolvedTenantConfig,
+        connection: {
+          ...existing,
+          tenantId: scope.tenantId,
+          locationId: scope.locationId,
+          providerKey: 'openai',
+          providerKind: 'ai',
+          status: validEnvOpenAiKey(env) ? 'connected' : 'not_connected',
+          publicConfig: pickDefined({
+            model: normalizeOpenAiModel(existing?.publicConfig?.model || env.OPENAI_MODEL),
+            reasoningEffort: normalizeOpenAiReasoning(existing?.publicConfig?.reasoningEffort || env.OPENAI_REASONING_EFFORT),
+          }),
+          encryptedCredentials: {},
+          errorMessage: null,
+          updatedBy: input.actor?.id ?? null,
+        },
+        now,
+      });
+      return openAiStatus(connection, definition, env);
+    },
+
+    async testOpenAiConnection(input = {}) {
+      const config = await this.getProviderConfig('openai', input);
+      const apiKey = config.apiKey || validEnvOpenAiKey(env);
+      if (!apiKey) throw providerError('OPENAI_NOT_CONNECTED', 'Add an OpenAI API key first.', 409);
+      const model = normalizeOpenAiModel(config.model || env.OPENAI_MODEL);
+      const baseUrl = String(env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
+      const response = await fetchImpl(`${baseUrl}/models/${encodeURIComponent(model)}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw providerError(
+          'OPENAI_CONNECTION_FAILED',
+          data.error?.message || 'OpenAI could not verify this key and model.',
+          response.status === 401 ? 400 : 502,
+        );
+      }
+      return { connected: true, model: data.id || model, checkedAt: now().toISOString() };
     },
 
     async upsertInstagramConnection(input = {}) {
@@ -905,17 +1035,39 @@ function connectionFromTenantProviderConfig({
     });
   }
 
+  if (providerKey === 'openai') {
+    return normalizeProviderConnection({
+      ...base,
+      status: config?.status || (config?.apiKey || config?.secretRef ? 'connected' : 'not_connected'),
+      publicConfig: pickDefined({
+        model: config?.model,
+        reasoningEffort: config?.reasoningEffort,
+      }),
+      encryptedCredentials: {},
+    });
+  }
+
   return normalizeProviderConnection(base);
 }
 
-function providerRuntimeConfig(connection, definition) {
+function providerRuntimeConfig(connection, definition, env = process.env) {
   const normalized = normalizeProviderConnection(connection);
+  let apiKey;
+  if (definition.providerKey === 'openai' && normalized.encryptedCredentials?.apiKeyCiphertext) {
+    // A key encrypted under a different server secret must not take the whole
+    // admin down — treat it as missing so the owner can simply paste it again.
+    try {
+      apiKey = decryptProviderSecret(normalized.encryptedCredentials.apiKeyCiphertext, env);
+    } catch {
+      apiKey = undefined;
+    }
+  }
   return {
     providerKey: definition.providerKey,
     providerKind: definition.providerKind,
     status: normalized.status,
     ...normalized.publicConfig,
-    ...normalized.encryptedCredentials,
+    ...(definition.providerKey === 'openai' ? pickDefined({ apiKey }) : normalized.encryptedCredentials),
     secretRef: normalized.secretRef,
     scopes: normalized.scopes,
     externalAccountId: normalized.externalAccountId,
@@ -946,6 +1098,25 @@ function toProviderStatus(connection, definition) {
     hasEncryptedCredentials: credentialKeys.length > 0,
     credentialKeys,
     updatedAt: normalized.updatedAt,
+  };
+}
+
+function openAiStatus(connection, definition, env) {
+  const normalized = normalizeProviderConnection(connection);
+  const stored = Boolean(normalized.encryptedCredentials?.apiKeyCiphertext);
+  const envKey = validEnvOpenAiKey(env);
+  const status = stored || envKey ? 'connected' : 'not_connected';
+  return {
+    ...toProviderStatus(normalized, definition),
+    status,
+    hasEncryptedCredentials: stored,
+    credentialKeys: stored ? ['apiKey'] : [],
+    publicConfig: {
+      model: normalizeOpenAiModel(normalized.publicConfig?.model || env.OPENAI_MODEL),
+      reasoningEffort: normalizeOpenAiReasoning(normalized.publicConfig?.reasoningEffort || env.OPENAI_REASONING_EFFORT),
+      keyEnding: stored ? normalized.publicConfig?.keyEnding || null : (envKey ? envKey.slice(-4) : null),
+      keySource: stored ? 'store_settings' : (envKey ? 'server_environment' : null),
+    },
   };
 }
 
@@ -1223,6 +1394,68 @@ function pickDefined(values) {
 
 function cloneJson(value) {
   return structuredClone(value || {});
+}
+
+function normalizeOpenAiModel(value) {
+  return String(value || 'gpt-5.6-terra').trim() || 'gpt-5.6-terra';
+}
+
+function normalizeOpenAiReasoning(value) {
+  const effort = String(value || 'low').trim().toLowerCase();
+  return ['none', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? effort : 'low';
+}
+
+function isLikelyOpenAiApiKey(value) {
+  const key = String(value || '').trim();
+  return key.startsWith('sk-') && key.length >= 24 && !/\s/.test(key);
+}
+
+function validEnvOpenAiKey(env = process.env) {
+  const key = String(env.OPENAI_API_KEY || '').trim();
+  return isLikelyOpenAiApiKey(key) ? key : '';
+}
+
+function providerEncryptionKey(env = process.env) {
+  const secret = String(
+    env.PROVIDER_CREDENTIALS_ENCRYPTION_KEY
+    || env.ADMIN_SESSION_SECRET
+    || env.ADMIN_OWNER_TOKEN
+    || env.MIDWAY_ADMIN_TOKEN
+    || (env.NODE_ENV === 'production' ? '' : 'midway-local-provider-credentials'),
+  ).trim();
+  if (!secret) {
+    throw providerError(
+      'PROVIDER_ENCRYPTION_NOT_CONFIGURED',
+      'Server-side credential encryption is not configured.',
+      500,
+    );
+  }
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptProviderSecret(value, env) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', providerEncryptionKey(env), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1.${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptProviderSecret(value, env) {
+  const [version, ivRaw, tagRaw, encryptedRaw] = String(value || '').split('.');
+  if (version !== 'v1' || !ivRaw || !tagRaw || !encryptedRaw) {
+    throw providerError('PROVIDER_CREDENTIAL_INVALID', 'The saved OpenAI credential cannot be read.', 500);
+  }
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', providerEncryptionKey(env), Buffer.from(ivRaw, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedRaw, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    throw providerError('PROVIDER_CREDENTIAL_INVALID', 'The saved OpenAI credential cannot be read.', 500);
+  }
 }
 
 function providerError(code, message, statusCode = 400) {

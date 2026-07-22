@@ -6,6 +6,8 @@ import { createAgent } from '../lib/agent.js';
 import { createAgentConversationStore } from '../lib/agent-conversations.js';
 import { createOpenAiProvider } from '../lib/ai-providers/openai-provider.js';
 import { createApiTokenService } from '../lib/api-tokens.js';
+import { createCommandCenterService } from '../lib/command-center-service.js';
+import { registerCommandCenterTools } from '../lib/command-center-tools.js';
 import { createIdempotencyMiddleware, createIdempotencyService } from '../lib/idempotency.js';
 import { createMcpServer } from '../lib/mcp-server.js';
 import { calculateCancellationRefund } from '../lib/rv-booking.js';
@@ -59,26 +61,90 @@ export function createApiRouter({
     platformProviderConfigs: resolvedPlatformProviderConfigs,
   });
   const notifications = createNotificationService({ store: resolvedStore, env, fetchImpl });
-  const supabase = createSupabaseServerClient({ env });
+  const supabase = env.NODE_ENV !== 'production' && env.MIDWAY_ALLOW_MEMORY_STORE === 'true'
+    ? null
+    : createSupabaseServerClient({ env });
   const apiTokenService = createApiTokenService({ supabase, env });
   const idempotencyService = createIdempotencyService({ supabase });
   const adminAuth = createAdminAuthService({ env, apiTokenService });
+  const squareProviderConfig = async () => {
+    const providerConfig = await providerConnections.getProviderConfig('square').catch(() => ({}));
+    let storeConfig = {};
+    try {
+      storeConfig = await resolvedStore.getProviderConfig?.('square') ?? {};
+    } catch {
+      storeConfig = {};
+    }
+    const environmentConfig = squareRuntimeConfigFromEnv(env);
+    const hasSavedMerchantCredential = Boolean(storeConfig.accessToken || providerConfig.accessToken);
+    return {
+      nodeEnv: env.NODE_ENV,
+      ...(hasSavedMerchantCredential
+        ? { ...environmentConfig, ...providerConfig, ...storeConfig }
+        : { ...providerConfig, ...storeConfig, ...environmentConfig }),
+    };
+  };
+  const commandCenter = createCommandCenterService({
+    store: resolvedStore,
+    supabase,
+    providerConnections,
+    squareConfig: squareProviderConfig,
+    fetchImpl,
+    env,
+  });
+  const bookingActions = {
+    async refund({ input, actor }) {
+      const booking = await resolvedStore.getBooking(input.bookingCode);
+      if (!booking) throw bookingActionError('BOOKING_NOT_FOUND', 'Booking was not found.', 404);
+      if (!['paid', 'confirmed'].includes(booking.status)) throw bookingActionError('BOOKING_NOT_REFUNDABLE', 'Only paid or confirmed bookings can be refunded.', 409);
+      const refund = await createSquareRefund({
+        booking,
+        reason: input.reason,
+        env: await squareProviderConfig(),
+        fetchImpl,
+      });
+      const updated = await refundBookingRecord(resolvedStore, { bookingCode: booking.bookingCode, refund, actor });
+      return { booking: updated, refund };
+    },
+    async update({ input, actor }) {
+      const booking = await resolvedStore.getBooking(input.bookingCode);
+      if (!booking) throw bookingActionError('BOOKING_NOT_FOUND', 'Booking was not found.', 404);
+      const { bookingCode, ...patch } = input;
+      const preview = await resolvedStore.previewBookingEdit?.({ bookingCode, patch });
+      if (!preview) throw bookingActionError('BOOKING_NOT_FOUND', 'Booking was not found.', 404);
+      if (preview.diffCents > 0) {
+        throw bookingActionError('BOOKING_PAYMENT_REQUIRED', `This change requires an additional ${formatMoneyForError(preview.diffCents)} payment. Open the booking screen to collect it safely.`, 409);
+      }
+      const applied = await resolvedStore.updateBookingDetails({ bookingCode, patch });
+      if (preview.diffCents < 0 && booking.squarePaymentId) {
+        const refund = await createSquareRefund({ booking, amountCents: Math.abs(preview.diffCents), reason: 'Booking edited — price reduced', env: await squareProviderConfig(), fetchImpl });
+        return { ...applied, refund, changedBy: actor?.email || actor?.id || null };
+      }
+      return { ...applied, changedBy: actor?.email || actor?.id || null };
+    },
+  };
   const toolRegistry = createToolRegistry();
-  registerCoreTools(toolRegistry, { store: resolvedStore });
+  registerCoreTools(toolRegistry, { store: resolvedStore, bookingActions });
+  registerCommandCenterTools(toolRegistry, { commandCenter });
   const xeroService = createXeroService({ store: resolvedStore, env, fetchImpl });
   registerXeroTools(toolRegistry, { xeroService, env });
   const mcpServer = createMcpServer({ registry: toolRegistry, store: resolvedStore });
-  const aiProvider = createOpenAiProvider({ env });
+  const aiProvider = {
+    name: 'openai',
+    async runTurn(input) {
+      const saved = await providerConnections.getProviderConfig('openai');
+      return createOpenAiProvider({
+        env: {
+          ...env,
+          OPENAI_API_KEY: saved.apiKey || env.OPENAI_API_KEY,
+          OPENAI_MODEL: saved.model || env.OPENAI_MODEL,
+          OPENAI_REASONING_EFFORT: saved.reasoningEffort || env.OPENAI_REASONING_EFFORT,
+        },
+      }).runTurn(input);
+    },
+  };
   const agent = createAgent({ provider: aiProvider, registry: toolRegistry, store: resolvedStore });
   const agentStore = createAgentConversationStore({ supabase });
-  const squareProviderConfig = async () => ({
-    nodeEnv: env.NODE_ENV,
-    ...(
-      await resolvedStore.getProviderConfig?.('square')
-      || await providerConnections.getProviderConfig('square')
-      || {}
-    ),
-  });
 
   const runInstagramCronRefresh = async (req, res) => {
     try {
@@ -107,6 +173,47 @@ export function createApiRouter({
   };
   router.get('/cron/instagram-refresh', runInstagramCronRefresh);
   router.post('/cron/instagram-refresh', runInstagramCronRefresh);
+
+  router.get('/health', async (_req, res) => {
+    const [square, openai, connectors] = await Promise.all([
+      commandCenter.getSquareSnapshot(),
+      providerConnections.getOpenAiStatus().catch(error => ({ status: 'error', errorMessage: error.message })),
+      commandCenter.listConnectors().catch(error => [{ status: 'error', errorMessage: error.message }]),
+    ]);
+    const persistenceReady = Boolean(supabase);
+    const coreReady = persistenceReady && square.connected === true;
+    const assistantReady = openai.status === 'connected';
+    const data = {
+      status: coreReady && assistantReady ? 'ready' : coreReady ? 'degraded' : 'setup_required',
+      persistence: { ready: persistenceReady, mode: persistenceReady ? 'supabase' : 'memory' },
+      square: { ready: square.connected === true, status: square.status, errorMessage: square.errorMessage ?? null },
+      openai: { ready: openai.status === 'connected', status: openai.status, errorMessage: openai.errorMessage ?? null },
+      mcp: {
+        endpoint: '/api/mcp',
+        inboundReady: persistenceReady,
+        authentication: 'Bearer mw_ API token',
+        vendorConnections: connectors.filter(connector => connector.status === 'connected').length,
+        vendorConnectionErrors: connectors.filter(connector => connector.status === 'error').length,
+      },
+      checkedAt: new Date().toISOString(),
+    };
+    res.json({ ok: true, data });
+  });
+
+  const runSalesHistoryCron = async (req, res) => {
+    try {
+      requireCronAuth(req, env);
+      // Re-read two weeks each day so late offline Square orders, edits, and
+      // returns repair the existing facts instead of leaving stale history.
+      const sales = await commandCenter.syncSalesHistory({ days: Number(req.body?.days) || 14, actor: { id: 'cron', role: 'system' } });
+      const inventory = await commandCenter.captureInventorySnapshot();
+      res.json({ ok: true, data: { sales, inventory } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SALES_HISTORY_CRON_FAILED', error.statusCode || 502);
+    }
+  };
+  router.get('/cron/sales-history', runSalesHistoryCron);
+  router.post('/cron/sales-history', runSalesHistoryCron);
 
   router.post('/admin/auth/login', async (req, res) => {
     try {
@@ -152,6 +259,11 @@ export function createApiRouter({
         serverInfo: { name: 'midway-mcp', version: '0.1.0' },
         transport: 'streamable-http',
         endpoint: '/api/mcp',
+        authentication: {
+          type: 'bearer',
+          tokenPrefix: 'mw_',
+          createAt: '/admin.html?view=connections',
+        },
       },
     });
   });
@@ -918,44 +1030,47 @@ export function createApiRouter({
     }
   });
 
-  router.post('/admin/agent/turn', async (req, res) => {
-    try {
+  const runAdminAgentTurn = async (req, { onEvent } = {}) => {
       resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
       requireAdminRole(req.adminUser);
-      const { conversationId, userMessage = '', confirmations = {} } = req.body || {};
+      const {
+        conversationId,
+        userMessage = '',
+        confirmations = {},
+        pendingConfirmation = null,
+        attachments = [],
+      } = req.body || {};
       if (!conversationId) throw badRequest('conversationId is required.');
       const persisted = await agentStore.listMessages({ conversationId });
       const conversationMessages = persisted.map(toAgentMessage);
       const newMessages = [];
 
-      if (userMessage && userMessage.trim()) {
-        conversationMessages.push({ role: 'user', content: userMessage.trim() });
-        newMessages.push({ role: 'user', content: userMessage.trim() });
+      const parsedAttachments = parseAgentAttachments(attachments);
+      for (const attachment of parsedAttachments.metadata) {
+        await onEvent?.({ type: 'attachment_started', name: attachment.name, fileType: attachment.type });
+      }
+      if ((userMessage && userMessage.trim()) || parsedAttachments.content.length) {
+        const text = userMessage.trim() || 'Please review the attached file and tell me what needs attention.';
+        const content = parsedAttachments.content.length
+          ? [{ type: 'input_text', text }, ...parsedAttachments.content]
+          : text;
+        conversationMessages.push({ role: 'user', content });
+        newMessages.push({
+          role: 'user',
+          content: text,
+          metadata: parsedAttachments.metadata.length ? { attachments: parsedAttachments.metadata } : {},
+        });
       }
 
       const result = await agent.runTurn({
         messages: conversationMessages,
         actor: req.adminUser,
+        pendingConfirmation,
         confirmations,
+        onEvent,
       });
 
-      if (result.message) {
-        newMessages.push({
-          role: 'assistant',
-          content: result.message.content || '',
-          toolCalls: result.message.toolCalls || null,
-        });
-      }
-
-      const traceToolMessages = result.trace
-        .filter(entry => entry.type === 'tool_result' || entry.type === 'tool_denied' || entry.type === 'tool_error')
-        .map(entry => ({
-          role: 'tool',
-          toolCallId: entry.toolCallId,
-          toolName: entry.toolName,
-          content: JSON.stringify({ ok: entry.ok ?? false, error: entry.error ?? null }),
-        }));
-      newMessages.push(...traceToolMessages);
+      newMessages.push(...traceToPersistedMessages(result.trace));
 
       await agentStore.appendMessages({ conversationId, messages: newMessages });
       await resolvedStore.recordAuditLog?.({
@@ -969,17 +1084,260 @@ export function createApiRouter({
         },
       });
 
-      res.json({
-        ok: true,
-        data: {
-          finishReason: result.finishReason,
-          pendingConfirmation: result.pendingConfirmation,
-          message: result.message,
-          trace: result.trace,
-        },
-      });
+      return {
+        finishReason: result.finishReason,
+        pendingConfirmation: result.pendingConfirmation,
+        message: result.message,
+        trace: result.trace,
+      };
+  };
+
+  router.post('/admin/agent/turn', async (req, res) => {
+    try {
+      const data = await runAdminAgentTurn(req);
+      res.json({ ok: true, data });
     } catch (error) {
       sendApiError(res, error, error.code || 'AGENT_TURN_FAILED', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/agent/turn/stream', async (req, res) => {
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+    let open = true;
+    res.on('close', () => { open = false; });
+    const writeEvent = event => {
+      if (!open || res.writableEnded) return;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    writeEvent({ type: 'connected' });
+    try {
+      const data = await runAdminAgentTurn(req, { onEvent: writeEvent });
+      writeEvent({ type: 'done', data });
+    } catch (error) {
+      writeEvent({
+        type: 'error',
+        code: error.code || 'AGENT_TURN_FAILED',
+        message: error.message || 'Midway could not finish that request.',
+      });
+    } finally {
+      if (open && !res.writableEnded) res.end();
+    }
+  });
+
+  router.get('/admin/command-center/uploads', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const data = await commandCenter.listUploads({
+        limit: Number(req.query.limit) || 50,
+        conversationId: req.query.conversationId || undefined,
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, 'COMMAND_CENTER_UPLOADS_UNAVAILABLE');
+    }
+  });
+
+  router.post('/admin/command-center/uploads', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const file = parseCommandCenterUpload(req.body || {});
+      const data = await commandCenter.saveUpload({
+        ...file,
+        actor: req.adminUser,
+        conversationId: req.body?.conversationId || null,
+        purpose: req.body?.purpose || 'assistant',
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'command_center.file_upload',
+        actor: req.adminUser,
+        targetType: 'command_center_upload',
+        targetId: data.id,
+        metadata: { fileName: data.fileName, contentType: data.contentType, sizeBytes: data.sizeBytes, purpose: data.purpose },
+      });
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'COMMAND_CENTER_UPLOAD_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/command-center/reconciliations', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      res.json({ ok: true, data: await commandCenter.listReconciliations({ limit: Number(req.query.limit) || 30 }) });
+    } catch (error) {
+      sendApiError(res, error, 'RECONCILIATIONS_UNAVAILABLE');
+    }
+  });
+
+  router.post('/admin/command-center/reconciliations', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const data = await commandCenter.createReconciliation({ ...req.body, actor: req.adminUser });
+      await resolvedStore.recordAuditLog?.({ action: 'inventory.reconciliation_create', actor: req.adminUser, targetType: 'reconciliation_session', targetId: data.id, metadata: { lines: data.lines.length, exceptions: data.exceptionCount } });
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'RECONCILIATION_CREATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/command-center/reconciliations/:id/apply', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.applyReconciliation({ reconciliationId: req.params.id, actor: req.adminUser });
+      await resolvedStore.recordAuditLog?.({ action: 'inventory.reconciliation_apply', actor: req.adminUser, targetType: 'reconciliation_session', targetId: data.id, metadata: { lines: data.lines.length } });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'RECONCILIATION_APPLY_FAILED', error.statusCode || 409);
+    }
+  });
+
+  router.get('/admin/command-center/sales', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      res.json({ ok: true, data: await commandCenter.getSalesAnalytics({ days: Number(req.query.days) || 30 }) });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SALES_ANALYTICS_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/command-center/sales/sync', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.syncSalesHistory({ days: Number(req.body?.days) || 365, actor: req.adminUser });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'SALES_HISTORY_SYNC_FAILED', error.statusCode || 502);
+    }
+  });
+
+  router.get('/admin/command-center/overview', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const data = await commandCenter.getOverview({ refreshSquare: req.query.refreshSquare !== 'false' });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'COMMAND_CENTER_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.get('/admin/command-center/inventory', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      const data = await commandCenter.listInventory({
+        search: req.query.search,
+        lowStockOnly: req.query.lowStockOnly === 'true',
+        limit: Number(req.query.limit) || 250,
+        live: req.query.live !== 'false',
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'COMMAND_CENTER_INVENTORY_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.patch('/admin/command-center/inventory/:variationId/rule', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.updateInventoryRule({
+        squareVariationId: req.params.variationId,
+        reorderPoint: req.body?.reorderPoint,
+        targetStock: req.body?.targetStock,
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'INVENTORY_RULE_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/command-center/square/sync', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.syncSquare({ force: true, actor: req.adminUser });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'COMMAND_CENTER_SQUARE_SYNC_FAILED', error.statusCode || 502);
+    }
+  });
+
+  router.get('/admin/command-center/vendors', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      res.json({ ok: true, data: await commandCenter.listVendors() });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VENDORS_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/command-center/vendors', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.createVendor(req.body || {});
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VENDOR_CREATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.get('/admin/command-center/connectors', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      res.json({ ok: true, data: await commandCenter.listConnectors() });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VENDOR_CONNECTORS_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/command-center/connectors', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.createConnector(req.body || {});
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VENDOR_CONNECTOR_CREATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.patch('/admin/command-center/connectors/:id', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      res.json({ ok: true, data: await commandCenter.updateConnectorCredentials(req.params.id, req.body || {}) });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VENDOR_CONNECTOR_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/command-center/connectors/:id/test', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      res.json({ ok: true, data: await commandCenter.testConnector(req.params.id) });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VENDOR_CONNECTOR_TEST_FAILED', error.statusCode || 502);
+    }
+  });
+
+  router.get('/admin/command-center/orders', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser);
+      res.json({ ok: true, data: await commandCenter.listPurchaseOrders({ limit: Number(req.query.limit) || 50 }) });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'PURCHASE_ORDERS_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.post('/admin/command-center/orders/draft', async (req, res) => {
+    try {
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await commandCenter.draftReorder(req.body || {});
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'PURCHASE_ORDER_DRAFT_FAILED', error.statusCode || 400);
     }
   });
 
@@ -1249,20 +1607,11 @@ export function createApiRouter({
       fetchImpl,
     });
 
-    const toolMessages = result.trace
-      .filter(entry => entry.type === 'tool_result')
-      .map(entry => ({
-        role: 'tool',
-        toolCallId: entry.toolCallId,
-        toolName: entry.toolName,
-        content: JSON.stringify({ ok: entry.ok ?? false }),
-      }));
     await agentStore.appendMessages({
       conversationId: conversation.id,
       messages: [
         { role: 'user', content: text, metadata: { slackUserId: event.user, slackTs: event.ts } },
-        ...(result.message ? [{ role: 'assistant', content: result.message.content || '', toolCalls: result.message.toolCalls || null }] : []),
-        ...toolMessages,
+        ...traceToPersistedMessages(result.trace),
       ],
     });
   }
@@ -1276,6 +1625,79 @@ export function createApiRouter({
       res.json({ ok: true, data });
     } catch (error) {
       sendApiError(res, error, 'ADMIN_PROVIDERS_UNAVAILABLE');
+    }
+  });
+
+  router.get('/admin/providers/openai', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      res.json({ ok: true, data: await providerConnections.getOpenAiStatus() });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'OPENAI_STATUS_UNAVAILABLE', error.statusCode || 500);
+    }
+  });
+
+  router.put('/admin/providers/openai', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.upsertOpenAiConnection({
+        apiKey: req.body?.apiKey,
+        model: req.body?.model,
+        reasoningEffort: req.body?.reasoningEffort,
+        actor: req.adminUser,
+      });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.openai.update',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'openai',
+        metadata: {
+          keyReplaced: Boolean(req.body?.apiKey),
+          model: data.publicConfig?.model,
+          reasoningEffort: data.publicConfig?.reasoningEffort,
+        },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'OPENAI_UPDATE_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.post('/admin/providers/openai/test', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.testOpenAiConnection();
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.openai.test',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'openai',
+        metadata: { model: data.model, connected: data.connected },
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'OPENAI_TEST_FAILED', error.statusCode || 400);
+    }
+  });
+
+  router.delete('/admin/providers/openai', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('core.provider_adapters', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser, ['owner']);
+      const data = await providerConnections.removeOpenAiConnection({ actor: req.adminUser });
+      await resolvedStore.recordAuditLog?.({
+        action: 'provider.openai.remove',
+        actor: req.adminUser,
+        targetType: 'provider_connection',
+        targetId: 'openai',
+        metadata: {},
+      });
+      res.json({ ok: true, data });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'OPENAI_REMOVE_FAILED', error.statusCode || 400);
     }
   });
 
@@ -2018,6 +2440,25 @@ function platformProviderConfigsFromEnv(env = {}) {
   return configs;
 }
 
+function squareRuntimeConfigFromEnv(env = {}) {
+  return Object.fromEntries(Object.entries({
+    accessToken: liveCredentialValue(env.SQUARE_ACCESS_TOKEN),
+    applicationId: liveCredentialValue(env.SQUARE_APPLICATION_ID || env.VITE_SQUARE_APPLICATION_ID),
+    locationId: liveCredentialValue(env.SQUARE_LOCATION_ID || env.VITE_SQUARE_LOCATION_ID),
+    environment: liveCredentialValue(env.SQUARE_ENVIRONMENT || env.VITE_SQUARE_ENVIRONMENT),
+    webhookSignatureKey: liveCredentialValue(env.SQUARE_WEBHOOK_SIGNATURE_KEY),
+    apiVersion: liveCredentialValue(env.SQUARE_API_VERSION),
+    checkoutSurface: liveCredentialValue(env.SQUARE_CHECKOUT_SURFACE),
+    timezone: liveCredentialValue(env.MIDWAY_TIMEZONE) || 'America/Los_Angeles',
+  }).filter(([, value]) => value !== undefined));
+}
+
+function liveCredentialValue(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || /your_|placeholder|replace[_-]?me|example(?:\.com)?/i.test(normalized)) return undefined;
+  return normalized;
+}
+
 function envValue(env, name) {
   const value = env[name];
   return typeof value === 'string' ? value.trim() : value;
@@ -2093,6 +2534,19 @@ function parseDriverLicenseImage(body = {}) {
   };
 }
 
+function parseCommandCenterUpload(body = {}) {
+  const fileName = String(body.name || body.fileName || 'upload').trim().slice(0, 180);
+  const contentType = String(body.type || body.contentType || '').trim().toLowerCase();
+  const allowedTypes = commandCenterContentTypes();
+  if (!allowedTypes.has(contentType)) throw badRequest(`${fileName} is not a supported file type.`, 'COMMAND_CENTER_UPLOAD_TYPE');
+  const dataUrl = String(body.dataUrl || '');
+  const match = dataUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=]+)$/i);
+  if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'COMMAND_CENTER_UPLOAD_DATA');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 6 * 1024 * 1024) throw badRequest('Files must be under 6 MB.', 'COMMAND_CENTER_UPLOAD_SIZE');
+  return { fileName, contentType, buffer, sizeBytes: buffer.length };
+}
+
 function readConfig(config, key) {
   const value = config?.[key];
   if (value !== undefined && value !== null && value !== '') return typeof value === 'string' ? value.trim() : value;
@@ -2130,6 +2584,38 @@ function badRequest(message, code = 'BAD_REQUEST') {
   return error;
 }
 
+function bookingActionError(code, message, statusCode = 400) {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = statusCode;
+  return error;
+}
+
+function formatMoneyForError(cents) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(cents || 0) / 100);
+}
+
+function traceToPersistedMessages(trace = []) {
+  const messages = [];
+  for (const entry of trace) {
+    if (entry.type === 'assistant') {
+      messages.push({
+        role: 'assistant',
+        content: entry.content || '',
+        toolCalls: entry.toolCalls?.length ? entry.toolCalls : null,
+      });
+    } else if (entry.type === 'tool_result' || entry.type === 'tool_denied' || entry.type === 'tool_error') {
+      messages.push({
+        role: 'tool',
+        toolCallId: entry.toolCallId,
+        toolName: entry.toolName,
+        content: JSON.stringify({ ok: entry.ok ?? false, error: entry.error ?? null }),
+      });
+    }
+  }
+  return messages;
+}
+
 function toAgentMessage(persisted) {
   const message = {
     role: persisted.role,
@@ -2139,6 +2625,46 @@ function toAgentMessage(persisted) {
   if (persisted.toolCallId) message.toolCallId = persisted.toolCallId;
   if (persisted.toolName) message.toolName = persisted.toolName;
   return message;
+}
+
+function parseAgentAttachments(attachments = []) {
+  if (!Array.isArray(attachments)) throw badRequest('attachments must be an array.', 'AGENT_ATTACHMENTS_INVALID');
+  if (attachments.length > 3) throw badRequest('Attach up to three files at a time.', 'AGENT_ATTACHMENTS_LIMIT');
+  const allowedTypes = commandCenterContentTypes();
+  let totalBytes = 0;
+  const content = [];
+  const metadata = [];
+  for (const attachment of attachments) {
+    const fileName = String(attachment?.name || 'attachment').slice(0, 180);
+    const contentType = String(attachment?.type || '').toLowerCase();
+    const dataUrl = String(attachment?.dataUrl || '');
+    if (!allowedTypes.has(contentType)) throw badRequest(`${fileName} is not a supported file type.`, 'AGENT_ATTACHMENT_TYPE');
+    const match = dataUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=]+)$/i);
+    if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'AGENT_ATTACHMENT_DATA');
+    const sizeBytes = Math.floor(match[2].length * 0.75);
+    totalBytes += sizeBytes;
+    if (sizeBytes > 6 * 1024 * 1024 || totalBytes > 7 * 1024 * 1024) {
+      throw badRequest('Attachments must be under 6 MB each and 7 MB total.', 'AGENT_ATTACHMENT_SIZE');
+    }
+    metadata.push({ name: fileName, type: contentType, sizeBytes, uploadId: attachment?.uploadId || null });
+    if (contentType.startsWith('image/')) {
+      content.push({ type: 'input_image', image_url: dataUrl, detail: 'high' });
+    } else {
+      content.push({ type: 'input_file', filename: fileName, file_data: dataUrl, detail: contentType === 'application/pdf' ? 'high' : undefined });
+    }
+  }
+  return { content, metadata };
+}
+
+function commandCenterContentTypes() {
+  return new Set([
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+    'application/pdf', 'text/plain', 'text/csv', 'text/tab-separated-values',
+    'application/json', 'text/markdown',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]);
 }
 
 async function authenticateMcpRequest(req, { apiTokenService } = {}) {

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --port 3000",
     "api": "node api-server.js",
+    "api:test": "MIDWAY_ALLOW_MEMORY_STORE=true ADMIN_USERS_JSON='[{\"id\":\"test-owner\",\"email\":\"admin@midway.local\",\"name\":\"Test Owner\",\"role\":\"owner\",\"passwordHash\":\"midway-dev-owner\"}]' node api-server.js",
+    "api:admin": "ADMIN_USERS_JSON='[{\"id\":\"local-admin\",\"email\":\"admin@midway.local\",\"name\":\"Local Admin\",\"role\":\"owner\",\"passwordHash\":\"midway-dev-owner\"}]' node api-server.js",
     "test": "node --test",
     "smoke:visual": "node --test test/visual-smoke.test.js",
     "smoke:browser:availability": "node --test test/browser-visual-availability.test.js",
@@ -17,12 +19,14 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@slack/bolt": "^4.6.0",
     "@supabase/supabase-js": "^2.95.3",
     "axios": "^1.13.5",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
+    "harborhub-mcp": "github:emielmadonna/harborhub-mcp#e90127b",
     "openai": "^6.21.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
