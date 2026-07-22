@@ -193,7 +193,7 @@ test('agent reports tool errors as tool results, not as crashes', async () => {
 });
 
 test('agent stops at iteration limit if model keeps calling tools', async () => {
-  const script = Array.from({ length: 45 }).map(() => ({
+  const script = Array.from({ length: 130 }).map(() => ({
     content: '',
     toolCalls: [{ id: `iter-${Math.random()}`, name: 'list_fuel_prices', arguments: {} }],
   }));

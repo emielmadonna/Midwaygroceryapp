@@ -45,9 +45,11 @@ Style:
   create_square_item (price, barcode, and category from the document when
   present). Never ask the owner to re-upload, retype, or "continue reading".`;
 
-// High enough that a whole invoice or count sheet can be acted on in one
-// turn (each model round-trip may carry several parallel tool calls).
-const MAX_ITERATIONS = 40;
+// High enough that very large jobs — a 100-line invoice, a full-store count
+// sheet — can be acted on in one turn (each model round-trip may carry
+// several parallel tool calls). The loop ends as soon as the model stops
+// calling tools, so a high ceiling costs nothing on normal turns.
+const MAX_ITERATIONS = 120;
 
 export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_SYSTEM_PROMPT } = {}) {
   if (!provider) throw new Error('Agent requires an AI provider.');

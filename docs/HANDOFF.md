@@ -116,9 +116,11 @@ storefront is midwayplain.com (redirects to www).
    Vercel prod env → owner clicks Connect QuickBooks. Then live-test the 7 tools
    and confirm the daily SalesReceipt lands in the right income account (it uses
    ItemRef '1' by default — verify).
-3. **Bullock fuel POS**: it's "basically just a computer that runs the system."
-   Need a photo of the console/brand and whether there's a web portal login for
-   gas reports. Then scope: portal-login connector (like Harbor) vs report ingestion.
+3. **Bullock fuel POS**: per the owner it's literally a Dell PC running Bullock
+   software (local desktop app, not obviously web-based). Still need: whether
+   Bullock offers a web portal / cloud reporting login, or whether reports can
+   be exported/printed from the Dell (then scope report-upload ingestion — the
+   assistant can already read any uploaded document).
 
 ## SHIPPED 2026-07-22 (second pass — was "remaining engineering")
 1. **Documents read fully, automatically.** Text-layer PDFs: full text injected
@@ -148,8 +150,8 @@ storefront is midwayplain.com (redirects to www).
 5. **Full QuickBooks reach (pending creds)** — `qbo_query` (any QBO query) and
    `qbo_api_request` (any entity create/update, approval-gated) join the 7
    typed tools.
-6. Agent turn budget raised (MAX_ITERATIONS 10 → 40) so whole-document actions
-   (e.g. creating dozens of items from one invoice) finish in one turn.
+6. Agent turn budget raised (MAX_ITERATIONS 10 → 120) so whole-document actions
+   (e.g. creating 100+ items from one invoice) finish in one turn.
 
 ## Follow-ups (small)
 - QBO income-account check after the owner connects; auto-mapping-sweep UI
