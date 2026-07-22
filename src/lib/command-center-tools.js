@@ -1,5 +1,8 @@
+import { createVendorMappingSweep } from './vendor-mapping-sweep.js';
+
 export function registerCommandCenterTools(registry, { commandCenter } = {}) {
   if (!registry || !commandCenter) throw new Error('Command center tools require a registry and service.');
+  const mappingSweep = createVendorMappingSweep({ commandCenter });
 
   registry.register({
     name: 'get_command_center_overview',
@@ -101,6 +104,54 @@ export function registerCommandCenterTools(registry, { commandCenter } = {}) {
       },
     },
     handler: ({ input }) => commandCenter.unmapVendorProduct(input),
+  });
+
+  registry.register({
+    name: 'propose_vendor_mappings',
+    description: 'Scan Square items and match them to the vendor\'s catalog by barcode (UPC), returning proposed mappings with pack sizes and per-unit costs for the owner to review. Nothing is saved — pass the reviewed proposals to apply_vendor_mappings to save them.',
+    requiredScope: 'owner',
+    sideEffect: 'read',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        vendorId: { type: 'string', minLength: 1, description: 'The vendor UUID from list_vendors. Optional when only one vendor connection exists.' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'How many items to look up in the vendor catalog this sweep. Defaults to 25.' },
+        onlyUnmapped: { type: 'boolean', description: 'Skip items that already have a vendor mapping. Defaults to true.' },
+      },
+    },
+    handler: ({ input }) => mappingSweep.propose(input),
+  });
+
+  registry.register({
+    name: 'apply_vendor_mappings',
+    description: 'Save vendor mappings the owner has reviewed from propose_vendor_mappings. This writes vendor/SKU/case-pack/cost records for each item and always requires explicit approval.',
+    requiredScope: 'owner',
+    sideEffect: 'destructive',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['vendorId', 'proposals'],
+      properties: {
+        vendorId: { type: 'string', minLength: 1, description: 'The vendor UUID from list_vendors (not the vendor name).' },
+        proposals: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['squareVariationId'],
+            properties: {
+              squareVariationId: { type: 'string', minLength: 1 },
+              vendorItemId: { type: 'string', description: 'The vendor\'s item number, saved as the mapping\'s vendor SKU.' },
+              casePack: { type: ['integer', 'null'], description: 'Individual sellable units per vendor case/carton.' },
+              unitCostCents: { type: ['integer', 'null'], description: 'Cost per individual sellable unit in cents.' },
+            },
+          },
+        },
+      },
+    },
+    handler: ({ input }) => mappingSweep.apply(input),
   });
 
   registry.register({
