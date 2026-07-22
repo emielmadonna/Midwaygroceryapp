@@ -1134,12 +1134,19 @@ function toProviderStatus(connection, definition, env = process.env) {
 
 function openAiStatus(connection, definition, env) {
   const normalized = normalizeProviderConnection(connection);
-  const stored = Boolean(normalized.encryptedCredentials?.apiKeyCiphertext);
+  let stored = Boolean(normalized.encryptedCredentials?.apiKeyCiphertext);
+  // A stored key only counts if THIS server can actually decrypt it — a key
+  // saved under a different encryption secret must surface as disconnected so
+  // the owner knows to paste it again.
+  if (stored) {
+    try { decryptProviderSecret(normalized.encryptedCredentials.apiKeyCiphertext, env); } catch { stored = false; }
+  }
   const envKey = validEnvOpenAiKey(env);
   const status = stored || envKey ? 'connected' : 'not_connected';
   return {
     ...toProviderStatus(normalized, definition),
     status,
+    ...(stored || envKey ? {} : { errorMessage: 'The saved key cannot be read on this server. Paste the API key again to reconnect.' }),
     hasEncryptedCredentials: stored,
     credentialKeys: stored ? ['apiKey'] : [],
     publicConfig: {
