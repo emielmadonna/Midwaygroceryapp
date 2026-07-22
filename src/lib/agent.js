@@ -25,7 +25,12 @@ Style:
   ask which one the number means if unclear, then convert to individual units
   before recording. When checking Harbor products, read the buying options
   (pack size and per-unit price) so orders and costs are stated per individual
-  unit as well as per case.`;
+  unit as well as per case.
+- When the owner says a vendor handles certain items ("Harbor handles my
+  smokes"), look up each item in that vendor's catalog for its pack size and
+  per-unit cost, save the mapping with map_item_to_vendor, and confirm what was
+  saved. When the owner states a stock rule in cases or cartons, convert to
+  individual units before calling set_inventory_rule.`;
 
 const MAX_ITERATIONS = 10;
 

@@ -81,6 +81,82 @@ test('live inventory refreshes Square catalog and counts before returning number
   assert.equal(calls.filter(url => url.includes('/v2/catalog/list')).length, 1, 'nearby live reads should share the short Square cache');
 });
 
+test('vendor mapping saves, replaces, and removes an item-vendor link', async () => {
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({}),
+    now: () => new Date('2026-07-16T12:00:00Z'),
+  });
+
+  await assert.rejects(
+    service.mapVendorProduct({ squareVariationId: 'VAR_COFFEE', vendorId: 'not-a-vendor' }),
+    error => error.code === 'VENDOR_NOT_FOUND',
+    'unknown vendors must be rejected with a friendly error',
+  );
+  await assert.rejects(
+    service.mapVendorProduct({ vendorId: 'whatever' }),
+    error => error.code === 'INVENTORY_ITEM_REQUIRED',
+  );
+
+  const [harbor] = await service.listVendors();
+  const mapping = await service.mapVendorProduct({
+    squareVariationId: 'VAR_COFFEE',
+    vendorId: harbor.id,
+    vendorSku: '123456',
+    casePack: 24,
+    unitCostCents: 55,
+  });
+  assert.equal(mapping.vendorId, harbor.id);
+  assert.equal(mapping.vendorSku, '123456');
+  assert.equal(mapping.casePack, 24);
+  assert.equal(mapping.unitCostCents, 55);
+
+  let coffee = (await service.listInventory()).find(item => item.squareVariationId === 'VAR_COFFEE');
+  assert.equal(coffee.vendorName, 'Harbor Wholesale');
+  assert.equal(coffee.vendorSku, '123456');
+  assert.equal(coffee.casePack, 24);
+  assert.equal(coffee.unitCostCents, 55);
+
+  const northwest = await service.createVendor({ name: 'Northwest Foods' });
+  const replaced = await service.mapVendorProduct({ squareVariationId: 'VAR_COFFEE', vendorId: northwest.id, vendorSku: 'NW-9' });
+  assert.equal(replaced.vendorId, northwest.id);
+  coffee = (await service.listInventory()).find(item => item.squareVariationId === 'VAR_COFFEE');
+  assert.equal(coffee.vendorName, 'Northwest Foods');
+  assert.equal(coffee.vendorSku, 'NW-9');
+  assert.equal(coffee.casePack, null, 'replacing a mapping must not keep stale case-pack data');
+
+  const removal = await service.unmapVendorProduct({ squareVariationId: 'VAR_COFFEE' });
+  assert.equal(removal.removed, true);
+  coffee = (await service.listInventory()).find(item => item.squareVariationId === 'VAR_COFFEE');
+  assert.equal(coffee.vendorId, null);
+  assert.equal(coffee.vendorSku, null);
+});
+
+test('reorder point rules flip low-stock status for counted items', async () => {
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async url => {
+      if (url.includes('/v2/catalog/list')) {
+        return new Response(JSON.stringify({ objects: [{ id: 'ITEM_LIVE', updated_at: '2026-07-16T12:00:00Z', item_data: { name: 'Live Coffee', variations: [{ id: 'VAR_LIVE', item_variation_data: { sku: 'LIVE', price_money: { amount: 500, currency: 'USD' } } }] } }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ counts: [{ catalog_object_id: 'VAR_LIVE', location_id: 'MIDWAY', state: 'IN_STOCK', quantity: '5', calculated_at: '2026-07-16T12:01:00Z' }] }), { status: 200 });
+    },
+  });
+
+  const before = (await service.listInventory({ live: true })).find(item => item.squareVariationId === 'VAR_LIVE');
+  assert.equal(before.quantity, 5);
+  assert.equal(before.isLowStock, false, 'without a rule, only counts of 3 or fewer read as low');
+
+  const rule = await service.updateInventoryRule({ squareVariationId: 'VAR_LIVE', reorderPoint: 8, targetStock: 24 });
+  assert.equal(rule.reorderPoint, 8);
+
+  const after = (await service.listInventory()).find(item => item.squareVariationId === 'VAR_LIVE');
+  assert.equal(after.reorderPoint, 8);
+  assert.equal(after.targetStock, 24);
+  assert.equal(after.isLowStock, true, 'a count at or below the reorder point counts as running low');
+});
+
 test('today sales use the store timezone instead of the server timezone', async () => {
   let paymentUrl = '';
   const service = createCommandCenterService({

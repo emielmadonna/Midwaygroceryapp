@@ -68,6 +68,60 @@ export function registerCommandCenterTools(registry, { commandCenter } = {}) {
   });
 
   registry.register({
+    name: 'map_item_to_vendor',
+    description: 'Record which vendor supplies a store item, with the vendor\'s SKU/item number, case pack, and cost. Each item keeps one vendor mapping, so mapping again replaces the old one. Before mapping a Harbor item, look it up in the live catalog first (call_vendor_read_tool with harbor_get_product or harbor_search_by_item_number) and read its BuyingOptions for the real pack size and per-unit price instead of guessing.',
+    requiredScope: 'write',
+    sideEffect: 'mutation',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['squareVariationId', 'vendorId'],
+      properties: {
+        squareVariationId: { type: 'string', minLength: 1, description: 'The Square variation id of the store item, from list_inventory.' },
+        vendorId: { type: 'string', minLength: 1, description: 'The vendor UUID from list_vendors (not the vendor name).' },
+        vendorSku: { type: 'string', description: 'The vendor\'s own SKU or item number for this product, e.g. a Harbor item number.' },
+        casePack: { type: 'integer', minimum: 1, description: 'How many individual sellable units come in one vendor case/carton — e.g. a cigarette carton is 10 packs. From the vendor catalog BuyingOptions.' },
+        unitCostCents: { type: 'integer', minimum: 0, description: 'Cost per INDIVIDUAL sellable unit in cents, not per case. If the catalog only shows a case price, divide by the case pack first.' },
+      },
+    },
+    handler: ({ input }) => commandCenter.mapVendorProduct(input),
+  });
+
+  registry.register({
+    name: 'unmap_item_from_vendor',
+    description: 'Remove the saved vendor mapping from a store item, e.g. when the store stops buying it from that vendor.',
+    requiredScope: 'write',
+    sideEffect: 'mutation',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['squareVariationId'],
+      properties: {
+        squareVariationId: { type: 'string', minLength: 1, description: 'The Square variation id of the store item, from list_inventory.' },
+      },
+    },
+    handler: ({ input }) => commandCenter.unmapVendorProduct(input),
+  });
+
+  registry.register({
+    name: 'set_inventory_rule',
+    description: 'Set when an item counts as running low (reorderPoint) and how many to stock up to (targetStock), in individual sellable units. If the owner states a rule in cases or cartons, convert to individual units first using the item\'s case pack. Omit a value to leave it unchanged.',
+    requiredScope: 'write',
+    sideEffect: 'mutation',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['squareVariationId'],
+      properties: {
+        squareVariationId: { type: 'string', minLength: 1, description: 'The Square variation id of the store item, from list_inventory.' },
+        reorderPoint: { type: ['integer', 'null'], minimum: 0, description: 'The item shows as running low once on-hand quantity is at or below this many individual units.' },
+        targetStock: { type: ['integer', 'null'], minimum: 0, description: 'How many individual units to stock back up to when reordering.' },
+      },
+    },
+    handler: ({ input }) => commandCenter.updateInventoryRule(input),
+  });
+
+  registry.register({
     name: 'draft_vendor_reorder',
     description: 'Create a draft purchase order for a vendor using low-stock items and saved target quantities. This creates a draft only and does not send the order.',
     requiredScope: 'owner',

@@ -870,14 +870,58 @@ export function createCommandCenterService({
     if (!supabase) return memory.vendorProducts.map(clone);
     const { data, error } = await supabase.from('vendor_products').select('*');
     if (error) throw error;
-    return (data ?? []).map(row => ({
-      id: row.id,
-      vendorId: row.vendor_id,
-      squareVariationId: row.square_variation_id,
-      vendorSku: row.vendor_sku,
-      casePack: row.case_pack,
-      unitCostCents: row.unit_cost_cents,
-    }));
+    return (data ?? []).map(fromVendorProduct);
+  }
+
+  async function mapVendorProduct({ squareVariationId, vendorId, vendorSku = null, casePack = null, unitCostCents = null } = {}) {
+    const variationId = String(squareVariationId || '').trim();
+    const vendorRef = String(vendorId || '').trim();
+    if (!variationId) throw serviceError('INVENTORY_ITEM_REQUIRED', 'Choose an inventory item to map to a vendor.', 400);
+    if (!vendorRef) throw serviceError('VENDOR_REQUIRED', 'Choose which vendor supplies this item.', 400);
+    const vendors = await listVendors();
+    const vendor = vendors.find(item => item.id === vendorRef);
+    if (!vendor) throw serviceError('VENDOR_NOT_FOUND', 'That vendor is not set up yet. List the vendors first and use one of their ids.', 404);
+    const record = {
+      id: crypto.randomUUID(),
+      vendorId: vendor.id,
+      squareVariationId: variationId,
+      vendorSku: String(vendorSku || '').trim() || null,
+      casePack: nullablePositiveInteger(casePack, 'Case pack'),
+      unitCostCents: nullableNonNegativeInteger(unitCostCents, 'Unit cost'),
+    };
+    if (!supabase) {
+      memory.vendorProducts = memory.vendorProducts.filter(item => item.squareVariationId !== variationId);
+      memory.vendorProducts.push(record);
+      return clone(record);
+    }
+    // The table's unique key is (vendor_id, square_variation_id), but the store
+    // wants exactly one supplier per item, so clear any mapping for this
+    // variation before inserting the replacement.
+    const { error: deleteError } = await supabase.from('vendor_products').delete().eq('square_variation_id', variationId);
+    if (deleteError) throw deleteError;
+    const { data, error } = await supabase.from('vendor_products').insert({
+      vendor_id: record.vendorId,
+      square_variation_id: record.squareVariationId,
+      vendor_sku: record.vendorSku,
+      case_pack: record.casePack,
+      unit_cost_cents: record.unitCostCents,
+      updated_at: now().toISOString(),
+    }).select('*').single();
+    if (error) throw error;
+    return fromVendorProduct(data);
+  }
+
+  async function unmapVendorProduct({ squareVariationId } = {}) {
+    const variationId = String(squareVariationId || '').trim();
+    if (!variationId) throw serviceError('INVENTORY_ITEM_REQUIRED', 'Choose an inventory item to unmap.', 400);
+    if (!supabase) {
+      const before = memory.vendorProducts.length;
+      memory.vendorProducts = memory.vendorProducts.filter(item => item.squareVariationId !== variationId);
+      return { squareVariationId: variationId, removed: memory.vendorProducts.length < before };
+    }
+    const { data, error } = await supabase.from('vendor_products').delete().eq('square_variation_id', variationId).select('id');
+    if (error) throw error;
+    return { squareVariationId: variationId, removed: (data ?? []).length > 0 };
   }
 
   async function getConnector(connectorId) {
@@ -985,6 +1029,8 @@ export function createCommandCenterService({
     syncSquare,
     listInventory,
     updateInventoryRule,
+    mapVendorProduct,
+    unmapVendorProduct,
     listVendors,
     createVendor,
     listConnectors,
@@ -1261,6 +1307,31 @@ function toInventorySnapshotRow(record) {
 
 function toBalanceRow(record, date) {
   return { square_variation_id: record.squareVariationId, location_id: record.locationId ?? null, quantity: finiteOrNull(record.quantity) ?? 0, reorder_point: finiteOrNull(record.reorderPoint), target_stock: finiteOrNull(record.targetStock), source: record.source || 'midway', last_counted_at: record.lastCountedAt ?? null, updated_at: date.toISOString() };
+}
+
+function fromVendorProduct(row) {
+  return {
+    id: row.id,
+    vendorId: row.vendor_id,
+    squareVariationId: row.square_variation_id,
+    vendorSku: row.vendor_sku,
+    casePack: row.case_pack,
+    unitCostCents: row.unit_cost_cents,
+  };
+}
+
+function nullablePositiveInteger(value, label) {
+  if (value === undefined || value === null || value === '') return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1) throw serviceError('VENDOR_MAPPING_INVALID', `${label} must be a whole number of 1 or more.`, 400);
+  return number;
+}
+
+function nullableNonNegativeInteger(value, label) {
+  if (value === undefined || value === null || value === '') return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) throw serviceError('VENDOR_MAPPING_INVALID', `${label} must be zero or more.`, 400);
+  return number;
 }
 
 function optionalNonNegativeInteger(value, label) {
