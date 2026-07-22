@@ -39,6 +39,12 @@ export const PROVIDER_DEFINITIONS = [
     requiredFor: ['per_booking_invoices', 'p_and_l_reporting'],
   },
   {
+    providerKey: 'quickbooks',
+    providerKind: 'accounting',
+    displayName: 'QuickBooks',
+    requiredFor: ['per_booking_invoices', 'p_and_l_reporting'],
+  },
+  {
     providerKey: 'openai',
     providerKind: 'ai',
     displayName: 'OpenAI',
