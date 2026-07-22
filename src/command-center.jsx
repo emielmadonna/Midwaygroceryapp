@@ -57,6 +57,81 @@ function App() {
   const [inventorySearch, setInventorySearch] = useState('');
   const [inventoryFilter, setInventoryFilter] = useState('all');
   const [chatOpen, setChatOpen] = useState(false);
+  const [voiceState, setVoiceState] = useState('off');
+  const voiceRef = useRef(null);
+  const conversationIdRef = useRef(null);
+  useEffect(() => { conversationIdRef.current = activeConversationId; }, [activeConversationId]);
+  useEffect(() => () => stopVoice(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stopVoice = () => {
+    const active = voiceRef.current;
+    voiceRef.current = null;
+    try { active?.channel?.close(); } catch { /* already closed */ }
+    try { active?.pc?.close(); } catch { /* already closed */ }
+    try { active?.stream?.getTracks().forEach(track => track.stop()); } catch { /* already stopped */ }
+    try { active?.audio?.remove(); } catch { /* already removed */ }
+    setVoiceState('off');
+  };
+
+  const startVoice = async () => {
+    if (voiceRef.current) { stopVoice(); return; }
+    setVoiceState('connecting'); setError('');
+    try {
+      const session = await api('/admin/agent/voice/session', { method: 'POST', body: {} });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const pc = new RTCPeerConnection();
+      const audio = document.createElement('audio');
+      audio.autoplay = true;
+      document.body.appendChild(audio);
+      pc.ontrack = event => { audio.srcObject = event.streams[0]; };
+      pc.addTrack(stream.getTracks()[0], stream);
+      const channel = pc.createDataChannel('oai-events');
+      channel.onmessage = async event => {
+        let message;
+        try { message = JSON.parse(event.data); } catch { return; }
+        if (message.type === 'response.output_item.done' && message.item?.type === 'function_call' && message.item.name === 'ask_midway') {
+          let args = {};
+          try { args = JSON.parse(message.item.arguments || '{}'); } catch { /* leave empty */ }
+          let answer = '';
+          try {
+            const turn = await api('/admin/agent/turn', {
+              method: 'POST',
+              body: { conversationId: conversationIdRef.current, userMessage: args.question || '' },
+            });
+            answer = turn.pendingConfirmation
+              ? 'I have that ready, but it needs a tap on the approve button on the screen before I do it.'
+              : (turn.message?.content || 'Done.');
+            if (conversationIdRef.current) {
+              api(`/admin/agent/conversations/${encodeURIComponent(conversationIdRef.current)}/messages`).then(setMessages).catch(() => {});
+            }
+            if (turn.pendingConfirmation) setPendingConfirmation(turn.pendingConfirmation);
+          } catch (turnError) {
+            answer = `That did not work: ${turnError.message}`;
+          }
+          try {
+            channel.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: message.item.call_id, output: JSON.stringify({ answer }) } }));
+            channel.send(JSON.stringify({ type: 'response.create' }));
+          } catch { /* channel closed mid-call */ }
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const sdpResponse = await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(session.model)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.clientSecret}`, 'Content-Type': 'application/sdp' },
+        body: offer.sdp,
+      });
+      if (!sdpResponse.ok) throw new Error('The voice connection could not be established.');
+      await pc.setRemoteDescription({ type: 'answer', sdp: await sdpResponse.text() });
+      voiceRef.current = { pc, stream, audio, channel };
+      setVoiceState('live');
+    } catch (voiceError) {
+      stopVoice();
+      setError(/permission|denied|NotAllowed/i.test(voiceError.message || voiceError.name || '')
+        ? 'Midway needs microphone access for voice — allow it in the browser and try again.'
+        : voiceError.message);
+    }
+  };
 
   const api = async (path, options = {}) => {
     const response = await fetch(`${API_ROOT}${path}`, {
@@ -368,6 +443,8 @@ function App() {
               liveActivity={liveActivity}
               overview={overview}
               openAiStatus={openAiStatus}
+              voiceState={voiceState}
+              onVoice={startVoice}
             />
           )}
           {view === 'inventory' && (
@@ -424,6 +501,8 @@ function App() {
                 liveActivity={liveActivity}
                 overview={overview}
                 openAiStatus={openAiStatus}
+                voiceState={voiceState}
+                onVoice={startVoice}
               />
             </div>
           )}
@@ -579,7 +658,7 @@ function Metric({ label, value, detail, icon, tone }) {
   return <article className="cc-metric"><div className={`cc-metric__icon tone-${tone}`}><Icon name={icon} /></div><p>{label}</p><strong>{value}</strong><span>{detail}</span></article>;
 }
 
-function Assistant({ messages, conversations, activeConversationId, onConversation, onNew, text, setText, attachments, setAttachments, onFiles, onSend, busy, pending, liveReply, liveActivity, overview = null, openAiStatus = null, compact = false }) {
+function Assistant({ messages, conversations, activeConversationId, onConversation, onNew, text, setText, attachments, setAttachments, onFiles, onSend, busy, pending, liveReply, liveActivity, overview = null, openAiStatus = null, compact = false, voiceState = 'off', onVoice = null }) {
   const threadRef = useRef(null);
   useEffect(() => { threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, pending, liveReply, liveActivity]);
   const visibleMessages = messages.filter(message => message.role === 'user' || message.role === 'assistant');
@@ -606,7 +685,7 @@ function Assistant({ messages, conversations, activeConversationId, onConversati
         <form className="cc-composer" onSubmit={onSend}>
           {attachments.length > 0 && <div className="cc-attachment-row">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name={file.type.startsWith('image/') ? 'image' : 'file'} /><b>{file.name}</b><button type="button" onClick={() => setAttachments(current => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
           <textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(event); } }} placeholder="Ask about the store, or attach a photo or file…" rows="2" />
-          <div><label className="cc-upload"><Icon name="paperclip" /><span>Attach</span><input type="file" multiple accept="image/*,.pdf,.csv,.tsv,.xlsx,.xls,.docx,.txt,.md,.json" onChange={event => { onFiles(event.target.files); event.target.value = ''; }} /></label><small>Photos, invoices, PDFs, and spreadsheets</small><button className="cc-send" disabled={busy || (!text.trim() && !attachments.length)} aria-label="Send message"><Icon name="arrowUp" /></button></div>
+          <div><label className="cc-upload"><Icon name="paperclip" /><span>Attach</span><input type="file" multiple accept="image/*,.pdf,.csv,.tsv,.xlsx,.xls,.docx,.txt,.md,.json" onChange={event => { onFiles(event.target.files); event.target.value = ''; }} /></label><small>Photos, invoices, PDFs, and spreadsheets</small>{onVoice && <button type="button" className={`cc-voice is-${voiceState}`} onClick={onVoice} aria-label={voiceState === 'off' ? 'Talk to Midway' : 'Stop voice'} title={voiceState === 'off' ? 'Talk to Midway' : voiceState === 'connecting' ? 'Connecting…' : 'Voice is live — click to stop'}><Icon name="mic" />{voiceState === 'live' && <i className="cc-voice-pulse" aria-hidden="true" />}</button>}<button className="cc-send" disabled={busy || (!text.trim() && !attachments.length)} aria-label="Send message"><Icon name="arrowUp" /></button></div>
         </form>
       </section>
     </div>
@@ -1056,6 +1135,7 @@ function Icon({ name, className = '' }) {
   const paths = {
     home: '<path d="M3 10.8 12 3l9 7.8v9.1a1.1 1.1 0 0 1-1.1 1.1H4.1A1.1 1.1 0 0 1 3 19.9z"/><path d="M9 21v-7h6v7"/>',
     spark: '<path d="m12 3 1.4 4.2a5.1 5.1 0 0 0 3.4 3.4L21 12l-4.2 1.4a5.1 5.1 0 0 0-3.4 3.4L12 21l-1.4-4.2a5.1 5.1 0 0 0-3.4-3.4L3 12l4.2-1.4a5.1 5.1 0 0 0 3.4-3.4z"/>',
+    mic: '<rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3.5"/><path d="M8.5 21.5h7"/>',
     boxes: '<path d="m7.5 4.3 4.5 2.6 4.5-2.6L12 1.7zM3 7l4.5 2.6V15L3 12.4zM12 9.6 16.5 7 21 9.6 16.5 12.2zM12 15l4.5 2.6 4.5-2.6v5.3l-4.5 2.6-4.5-2.6z"/>',
     clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5M9 10h6M9 14h6M9 18h4"/>',
     truck: '<path d="M3 6h11v11H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/>',

@@ -17,7 +17,15 @@ Style:
 - Draft orders before sending them. Never place a vendor order without explicit approval.
 - Treat every external vendor MCP call as potentially consequential.
 - For destructive actions (refund, cancel, delete, vendor call) restate the action
-  and exact target before calling the tool, then wait for approval.`;
+  and exact target before calling the tool, then wait for approval.
+- Packs vs cartons matter. Wholesale items often ship in cases, cartons, or sales
+  packs that contain many sellable units (a cigarette carton holds 10 packs; a
+  case of candy may hold 24 bars). Inventory counts and Square always track the
+  INDIVIDUAL sellable unit. When a count or delivery mentions cases or cartons,
+  ask which one the number means if unclear, then convert to individual units
+  before recording. When checking Harbor products, read the buying options
+  (pack size and per-unit price) so orders and costs are stated per individual
+  unit as well as per case.`;
 
 const MAX_ITERATIONS = 10;
 

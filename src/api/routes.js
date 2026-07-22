@@ -1092,6 +1092,59 @@ export function createApiRouter({
       };
   };
 
+  router.post('/admin/agent/voice/session', async (req, res) => {
+    try {
+      resolvedStore.requireFeature?.('ai.command_box', { role: req.adminUser.role });
+      requireAdminRole(req.adminUser);
+      const config = await providerConnections.getProviderConfig('openai');
+      const apiKey = config?.apiKey || String(env.OPENAI_API_KEY || '').trim();
+      if (!apiKey) throw badRequest('Add an OpenAI API key on the Connections page first.', 'OPENAI_NOT_CONNECTED');
+      const model = String(env.OPENAI_REALTIME_MODEL || 'gpt-realtime').trim();
+      const response = await fetchImpl('https://api.openai.com/v1/realtime/client_secrets', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session: {
+            type: 'realtime',
+            model,
+            audio: { output: { voice: String(env.OPENAI_REALTIME_VOICE || 'marin').trim() } },
+            instructions: [
+              'You are the friendly voice of Midway Gas & Grocery’s store assistant, talking with the store owner.',
+              'Speak plainly and briefly, like a helpful longtime employee. No jargon, no IDs, no technical terms.',
+              'For ANY question or request about the store — sales, inventory, vendors, Harbor, orders, bookings, books — call the ask_midway tool with the request in your own words, then relay its answer conversationally.',
+              'Never invent store facts yourself; ask_midway is the source of truth.',
+              'If ask_midway says something needs on-screen approval, tell the owner to tap the approve button on the screen.',
+            ].join(' '),
+            tools: [{
+              type: 'function',
+              name: 'ask_midway',
+              description: 'Ask the Midway store assistant anything about the store or have it do store work (sales, inventory, vendors, Harbor ordering, bookings). Returns the answer to relay aloud.',
+              parameters: {
+                type: 'object',
+                required: ['question'],
+                properties: { question: { type: 'string', description: 'The owner’s request, in plain English.' } },
+              },
+            }],
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw Object.assign(new Error(payload?.error?.message || 'The voice session could not be started.'), { statusCode: 502, code: 'VOICE_SESSION_FAILED' });
+      }
+      res.json({
+        ok: true,
+        data: {
+          clientSecret: payload.value || payload.client_secret?.value,
+          expiresAt: payload.expires_at || payload.client_secret?.expires_at || null,
+          model,
+        },
+      });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'VOICE_SESSION_FAILED', error.statusCode || 500);
+    }
+  });
+
   router.post('/admin/agent/turn', async (req, res) => {
     try {
       const data = await runAdminAgentTurn(req);

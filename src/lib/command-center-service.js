@@ -70,9 +70,12 @@ export function createCommandCenterService({
         const quantity = finiteOrNull(balance.quantity);
         const reorderPoint = finiteOrNull(balance.reorderPoint);
         const targetStock = finiteOrNull(balance.targetStock);
-        const isLowStock = quantity !== null && reorderPoint !== null && quantity <= reorderPoint;
+        // Until the owner sets a reorder point, flag anything at 3 or fewer
+        // on hand so "running low" is useful out of the box.
+        const isLowStock = quantity !== null && (reorderPoint !== null ? quantity <= reorderPoint : quantity <= DEFAULT_LOW_STOCK_THRESHOLD);
         return {
           ...item,
+          name: cleanItemName(item.name),
           quantity,
           reorderPoint,
           targetStock,
@@ -1030,6 +1033,14 @@ function toConnectorRow(record) {
 function publicConnector(record) {
   const { encryptedCredentials: _encryptedCredentials, secretRef: _secretRef, ...safe } = record;
   return { ...safe, secretConfigured: Boolean(record.secretRef || record.encryptedCredentials?.authTokenCiphertext || record.encryptedCredentials?.passwordCiphertext) };
+}
+
+const DEFAULT_LOW_STOCK_THRESHOLD = 3;
+
+// Square names the default variation "Regular", which turns every item into
+// "Thing - Regular" in lists. Drop that noise for display.
+function cleanItemName(value) {
+  return String(value || '').replace(/\s*[-–—]\s*Regular$/i, '').replace(/\s*\(Regular\)$/i, '').trim();
 }
 
 function isUuid(value) {
