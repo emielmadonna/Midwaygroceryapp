@@ -1,0 +1,30 @@
+{
+  "name": "harborhub-mcp",
+  "version": "1.1.0",
+  "description": "MCP server for Harbor Hub wholesale ordering workflows.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "harborhub-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emielmadonna/harborhub-mcp.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  }
+}

@@ -26,7 +26,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
-    "harborhub-mcp": "github:emielmadonna/harborhub-mcp#e90127b",
+    "harborhub-mcp": "file:vendor/harborhub-mcp",
     "openai": "^6.21.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
