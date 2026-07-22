@@ -49,10 +49,23 @@ app.listen(port, host, () => {
 
 function createLocalStore(env) {
   if (env.NODE_ENV === 'production') return null;
-  if (getSupabaseServerConfig(env).configured) return null;
+  if (getSupabaseServerConfig(env).configured && env.MIDWAY_ALLOW_MEMORY_STORE !== 'true') return null;
+
+  const localEnv = env.MIDWAY_ALLOW_MEMORY_STORE === 'true'
+    ? {
+        ...env,
+        SUPABASE_URL: '',
+        NEXT_PUBLIC_SUPABASE_URL: '',
+        VITE_SUPABASE_URL: '',
+        SUPABASE_SERVICE_ROLE_KEY: '',
+        SUPABASE_ANON_KEY: '',
+        VITE_SUPABASE_ANON_KEY: '',
+        SQUARE_ACCESS_TOKEN: '',
+      }
+    : env;
 
   return createMidwayHarness({
-    env,
+    env: localEnv,
     tenantConfig: createTenantConfig({
       tenantId: 'midway',
       locationId: 'plain',

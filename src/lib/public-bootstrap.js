@@ -12,7 +12,7 @@ export function normalizeSquareProducts(products = []) {
           priceCents,
           currency: product.currency ?? 'USD',
           category: product.category ?? 'Store',
-          imageUrl: product.imageUrl ?? product.image_url ?? null,
+          ...((product.imageUrl ?? product.image_url) ? { imageUrl: product.imageUrl ?? product.image_url } : {}),
           active: product.active !== false,
           hidden: product.hidden === true,
           source: product.source ?? 'square',
@@ -45,7 +45,7 @@ export function normalizeSquareProducts(products = []) {
     .map(({ active, hidden, ...product }) => product);
 }
 
-function isBookingCatalogProduct(product = {}) {
+export function isBookingCatalogProduct(product = {}) {
   const sku = String(product.sku || '').trim().toUpperCase();
   return sku === 'MIDWAY-EXTRA-VEHICLE'
     || sku.startsWith('MIDWAY-RV-')

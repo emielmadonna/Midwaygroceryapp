@@ -17,9 +17,9 @@ export const DEFAULT_STORE_HOURS = Object.freeze([
   Object.freeze({ day: 'monday', open: '8:00 AM', close: '5:00 PM' }),
   Object.freeze({ day: 'tuesday', closed: true }),
   Object.freeze({ day: 'wednesday', closed: true }),
-  Object.freeze({ day: 'thursday', open: '7:00 AM', close: '7:00 PM' }),
-  Object.freeze({ day: 'friday', open: '7:00 AM', close: '7:00 PM' }),
-  Object.freeze({ day: 'saturday', open: '7:00 AM', close: '7:00 PM' }),
+  Object.freeze({ day: 'thursday', open: '8:00 AM', close: '7:00 PM' }),
+  Object.freeze({ day: 'friday', open: '8:00 AM', close: '7:00 PM' }),
+  Object.freeze({ day: 'saturday', open: '8:00 AM', close: '7:00 PM' }),
 ]);
 
 // Plain (deep-cloned) copy for callers that need a mutable array.

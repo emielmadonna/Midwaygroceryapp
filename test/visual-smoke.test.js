@@ -89,7 +89,7 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
 
   assert.match(styles, /body\s*\{[\s\S]*overflow-x:\s*hidden;/);
   assert.match(styles, /\.instagram-gallery\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(styles, /\.instagram-card\s*\{[\s\S]*grid-template-rows:\s*auto 1fr;/);
+  assert.match(styles, /\.instagram-card\s*\{[\s\S]*display:\s*block;/);
   assert.match(styles, /\.square-card-host\s*\{[\s\S]*min-height:\s*96px;/);
   assert.match(styles, /\.apple-pay-button\s*\{[\s\S]*-webkit-named-image\(apple-pay-logo-white\)/);
   assert.match(styles, /\.google-pay-host\s*\{[\s\S]*min-height:\s*48px;/);
@@ -110,59 +110,45 @@ test('public page keeps responsive shell, assets, and Instagram embed contract',
   assert.match(styles, /@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*\.instagram-gallery,[\s\S]*\.book-form \.row2/);
 });
 
-test('admin page keeps login shell, session flow, and mobile guardrails', async () => {
+test('command center keeps secure login, chat uploads, operational views, and mobile navigation', async () => {
   const [adminHtml, adminJs, adminCss] = await Promise.all([
     readProjectFile('admin.html'),
-    readProjectFile('src/admin.js'),
-    readProjectFile('src/styles/admin.css'),
+    readProjectFile('src/command-center.jsx'),
+    readProjectFile('src/styles/command-center.css'),
   ]);
 
   assert.match(adminHtml, /<meta\s+name="viewport"\s+content="width=device-width,\s*initial-scale=1\.0"/);
-  assert.match(adminHtml, /<form\s+id="loginForm"/);
-  assert.match(adminHtml, /type="email"\s+id="loginEmail"/);
-  assert.match(adminHtml, /type="password"\s+id="loginPassword"/);
-  assert.match(adminHtml, /id="loginStatus"/);
-  assert.match(adminHtml, /id="adminDashboard"\s+hidden/);
-  assert.match(adminHtml, /id="settingsPanel"/);
-  assert.match(adminHtml, /id="businessSettingsForm"/);
-  assert.doesNotMatch(adminHtml, /name="instagramPosts"/);
-  assert.match(adminHtml, /id="providerStatusGrid"/);
-  assert.match(adminHtml, /type="module"\s+src="\/src\/admin\.js"/);
+  assert.match(adminHtml, /<div\s+id="root"><\/div>/);
+  assert.match(adminHtml, /Midway Command Center/);
+  assert.match(adminHtml, /type="module"\s+src="\/src\/command-center\.jsx"/);
 
-  assert.match(adminJs, /\/api\/admin\/auth\/login/);
-  assert.match(adminJs, /sessionStorage\.setItem\(tokenKey,\s*session\.token\)/);
-  assert.match(adminJs, /Authorization:\s*`Bearer \$\{state\.token\}`/);
-  assert.match(adminJs, /\/api\/admin\/me/);
-  assert.match(adminJs, /document\.body\.dataset\.role/);
-  assert.match(adminJs, /document\.body\.dataset\.manualBooking/);
-  assert.match(adminJs, /document\.body\.dataset\.siteStatus/);
-  assert.match(adminJs, /\/api\/admin\/settings/);
-  assert.match(adminJs, /\/api\/admin\/providers/);
-  assert.match(adminJs, /\/api\/admin\/providers\/square\/oauth\/start/);
-  assert.match(adminJs, /\/api\/admin\/providers\/square\/oauth\/callback/);
-  assert.match(adminJs, /data-provider-action="square-oauth"/);
-  assert.match(adminJs, /method:\s*'PATCH'/);
-  assert.match(adminJs, /document\.body\.dataset\.tenantConfig/);
-  assert.match(adminJs, /document\.body\.dataset\.dynamicSections/);
-  assert.match(adminJs, /document\.body\.dataset\.providerAdapters/);
-  assert.match(adminJs, /state\.user\?\.role !== 'owner'/);
-  assert.match(adminJs, /secret\|token\|password\|key\|credential/i);
-  assert.match(adminJs, /\/api\/admin\/bookings\/\$\{encodeURIComponent\(bookingCode\)\}\/refund/);
-  assert.match(adminJs, /featureEnabled\('payments\.refunds',\s*'refunds'\)/);
+  assert.match(adminJs, /\/admin\/auth\/login/);
+  assert.match(adminJs, /sessionStorage\.setItem\(TOKEN_KEY,\s*payload\.data\.token\)/);
+  assert.match(adminJs, /Authorization:\s*`Bearer \$\{token\}`/);
+  assert.match(adminJs, /\/admin\/me/);
+  assert.match(adminJs, /\/admin\/command-center\/overview/);
+  assert.match(adminJs, /\/admin\/command-center\/inventory/);
+  assert.match(adminJs, /\/admin\/command-center\/square\/sync/);
+  assert.match(adminJs, /\/admin\/command-center\/connectors/);
+  assert.match(adminJs, /\/admin\/command-center\/sales\?days=/);
+  assert.match(adminJs, /data quality/i);
+  assert.match(adminJs, /Planning forecast/);
+  assert.match(adminJs, /\/admin\/agent\/turn\/stream/);
+  assert.match(adminJs, /readEventStream/);
+  assert.match(adminJs, /friendlyToolActivity/);
+  assert.match(adminJs, /pendingConfirmation/);
+  assert.match(adminJs, /accept="image\/\*,\.pdf,\.csv/);
+  assert.match(adminJs, /readAsDataURL/);
+  assert.match(adminJs, /user\?\.role === 'owner'/);
 
-  assert.match(adminCss, /\.admin-main\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(adminCss, /\.settings-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(adminCss, /\.provider-status-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(adminCss, /body\[data-role="employee"\]\s+\.owner-only\s*\{[\s\S]*display:\s*none;/);
-  assert.match(adminCss, /body\[data-manual-booking="off"\]\s+\.manual-booking-panel\s*\{[\s\S]*display:\s*none;/);
-  assert.match(adminCss, /body\[data-tenant-config="off"\]\s+\.feature-tenant-config/);
-  assert.match(adminCss, /body\[data-dynamic-sections="off"\]\s+\.feature-dynamic-sections/);
-  assert.match(adminCss, /body\[data-provider-adapters="off"\]\s+\.feature-provider-adapters/);
-  assert.match(adminCss, /@media\s*\(max-width:\s*980px\)\s*\{[\s\S]*\.admin-main,[\s\S]*\.admin-columns,[\s\S]*\.calendar-layout,[\s\S]*\.property-map-layout\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
-  assert.match(adminCss, /@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*\.admin-stats,[\s\S]*\.admin-form__row,[\s\S]*\.settings-grid,[\s\S]*\.employee-task-grid,[\s\S]*\.site-inspector__facts\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
-  assert.match(adminCss, /@media\s*\(max-width:\s*560px\)\s*\{[\s\S]*\.admin-topbar__actions,[\s\S]*\.admin-button,[\s\S]*\.admin-link\s*\{[\s\S]*width:\s*100%;/);
-  assert.match(adminHtml, /name="bookingAction"/);
-  assert.match(adminJs, /\/api\/admin\/bookings\/checkout/);
+  assert.match(adminCss, /\.cc-app\s*\{[\s\S]*grid-template-columns:\s*248px minmax\(0,\s*1fr\)/);
+  assert.match(adminCss, /\.cc-metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(adminCss, /\.cc-assistant\s*\{[\s\S]*grid-template-columns:\s*225px minmax\(0,\s*1fr\)/);
+  assert.match(adminCss, /\.cc-live-activity/);
+  assert.match(adminCss, /\.cc-stream-cursor/);
+  assert.match(adminCss, /@media\s*\(max-width:\s*900px\)[\s\S]*\.cc-mobile-nav\s*\{[\s\S]*display:\s*grid;/);
+  assert.match(adminCss, /@media\s*\(max-width:\s*620px\)[\s\S]*\.cc-metrics\s*\{[\s\S]*grid-template-columns:\s*1fr 1fr;/);
+  assert.match(adminCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 });
 
 test('public bootstrap and admin login endpoints expose launch-critical flags', async () => {

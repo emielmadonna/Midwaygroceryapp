@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+.env
+.env.*
+!.env.example
 .env*.local
 
 # Claude Code session state
@@ -30,3 +33,6 @@ dist-ssr
 
 # Local backfill state
 scripts/.harbor-tried.json
+
+# Generated store reports
+reports/

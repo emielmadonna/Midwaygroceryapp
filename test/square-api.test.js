@@ -2,17 +2,87 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  batchRetrieveSquareInventoryCounts,
   createRvCheckoutPaymentLink,
   createRvOrderForBooking,
   createRvWebPaymentSession,
   createSquareRefund,
   createSquareWebPayment,
   hasSquareConfig,
+  listSquareCatalogItems,
+  listSquarePayments,
   normalizeSquareCatalogItemsForInventory,
+  searchSquareOrders,
   squareIdempotencyKey,
   squareRequest,
   validateSquareCheckoutConfig,
 } from '../src/lib/square-api.js';
+
+test('Square catalog, payments, and inventory reads consume every result page', async () => {
+  const catalogCursors = [];
+  const catalog = await listSquareCatalogItems({
+    env: { accessToken: 'token', environment: 'sandbox' },
+    fetchImpl: async url => {
+      const cursor = new URL(url).searchParams.get('cursor');
+      catalogCursors.push(cursor);
+      return new Response(JSON.stringify(cursor ? { objects: [{ id: 'ITEM-2' }] } : { objects: [{ id: 'ITEM-1' }], cursor: 'CATALOG-NEXT' }), { status: 200 });
+    },
+  });
+  assert.deepEqual(catalog.map(item => item.id), ['ITEM-1', 'ITEM-2']);
+  assert.deepEqual(catalogCursors, [null, 'CATALOG-NEXT']);
+
+  const paymentCursors = [];
+  const payments = await listSquarePayments({
+    locationId: 'MIDWAY',
+    env: { accessToken: 'token', environment: 'sandbox' },
+    fetchImpl: async url => {
+      const cursor = new URL(url).searchParams.get('cursor');
+      paymentCursors.push(cursor);
+      const payment = cursor
+        ? { id: 'PAY-2', status: 'COMPLETED', amount_money: { amount: 500 } }
+        : { id: 'PAY-1', status: 'COMPLETED', amount_money: { amount: 900 }, refunded_money: { amount: 200 } };
+      return new Response(JSON.stringify(cursor ? { payments: [payment] } : { payments: [payment], cursor: 'PAYMENT-NEXT' }), { status: 200 });
+    },
+  });
+  assert.deepEqual(paymentCursors, [null, 'PAYMENT-NEXT']);
+  assert.equal(payments[0].netAmountCents, 700);
+  assert.equal(payments[1].netAmountCents, 500);
+
+  const inventoryBodies = [];
+  const counts = await batchRetrieveSquareInventoryCounts({
+    catalogObjectIds: ['VAR-1'],
+    locationIds: ['MIDWAY'],
+    env: { accessToken: 'token', environment: 'sandbox' },
+    fetchImpl: async (_url, options) => {
+      const body = JSON.parse(options.body);
+      inventoryBodies.push(body);
+      const count = { catalog_object_id: body.cursor ? 'VAR-2' : 'VAR-1', location_id: 'MIDWAY', state: 'IN_STOCK', quantity: body.cursor ? '4' : '3' };
+      return new Response(JSON.stringify(body.cursor ? { counts: [count] } : { counts: [count], cursor: 'INVENTORY-NEXT' }), { status: 200 });
+    },
+  });
+  assert.equal(counts.length, 2);
+  assert.equal(inventoryBodies[1].cursor, 'INVENTORY-NEXT');
+});
+
+test('Square order history search paginates completed orders with matching closed-at sort', async () => {
+  const requests = [];
+  const pages = [
+    { orders: [{ id: 'ORDER-1' }], cursor: 'NEXT' },
+    { orders: [{ id: 'ORDER-2' }] },
+  ];
+  const orders = await searchSquareOrders({
+    locationIds: ['MIDWAY'], startAt: '2026-01-01T00:00:00Z', endAt: '2026-02-01T00:00:00Z',
+    env: { accessToken: 'token', environment: 'sandbox' },
+    fetchImpl: async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return new Response(JSON.stringify(pages.shift()), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+  assert.deepEqual(orders.map(order => order.id), ['ORDER-1', 'ORDER-2']);
+  assert.equal(requests[0].query.filter.state_filter.states[0], 'COMPLETED');
+  assert.equal(requests[0].query.sort.sort_field, 'CLOSED_AT');
+  assert.equal(requests[1].cursor, 'NEXT');
+});
 
 const hold = {
   id: 'hold-123',

@@ -1,6 +1,6 @@
 const ISO_DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$';
 
-export function registerCoreTools(registry, { store } = {}) {
+export function registerCoreTools(registry, { store, bookingActions = null } = {}) {
   if (!registry) throw new Error('Registry is required.');
   if (!store) throw new Error('Store is required.');
 
@@ -176,6 +176,29 @@ export function registerCoreTools(registry, { store } = {}) {
   });
 
   registry.register({
+    name: 'update_booking',
+    description: 'Update dates, sites, guest count, or vehicle count for an existing confirmed booking. If more payment is required, return the amount and let the owner collect payment in the booking screen.',
+    requiredScope: 'owner',
+    sideEffect: 'mutation',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['bookingCode'],
+      properties: {
+        bookingCode: { type: 'string', minLength: 4 },
+        startDate: { type: 'string', pattern: ISO_DATE_PATTERN },
+        endDate: { type: 'string', pattern: ISO_DATE_PATTERN },
+        siteIds: { type: 'array', items: { type: 'string' } },
+        guests: { type: 'integer', minimum: 1 },
+        vehicles: { type: 'integer', minimum: 0 },
+      },
+    },
+    handler: async ({ input, actor }) => bookingActions?.update
+      ? bookingActions.update({ input, actor })
+      : store.updateBookingDetails({ bookingCode: input.bookingCode, patch: input }),
+  });
+
+  registry.register({
     name: 'cancel_booking',
     description: 'Cancel a booking by code. Does not issue a refund.',
     requiredScope: 'write',
@@ -212,13 +235,15 @@ export function registerCoreTools(registry, { store } = {}) {
         reason: { type: 'string', minLength: 4 },
       },
     },
-    handler: async ({ input, actor }) => store.updateBookingStatus({
-      bookingCode: input.bookingCode,
-      status: 'refunded',
-      reason: input.reason,
-      actor,
-      issueRefund: true,
-    }),
+    handler: async ({ input, actor }) => bookingActions?.refund
+      ? bookingActions.refund({ input, actor })
+      : store.updateBookingStatus({
+        bookingCode: input.bookingCode,
+        status: 'refunded',
+        reason: input.reason,
+        actor,
+        issueRefund: true,
+      }),
   });
 
   registry.register({

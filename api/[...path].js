@@ -6,10 +6,10 @@ import { getSupabaseServerConfig } from '../src/lib/supabase-server.js';
 import { createTenantConfig } from '../src/lib/tenant-config.js';
 
 const app = express();
-const runtimeEnv = {
-  ...process.env,
-  MIDWAY_ALLOW_MEMORY_STORE: process.env.MIDWAY_ALLOW_MEMORY_STORE || 'true',
-};
+// Production must fail loudly if Supabase is ever missing. A serverless
+// in-memory fallback would lose bookings, credentials, and command-center work
+// whenever Vercel starts a new function instance.
+const runtimeEnv = { ...process.env };
 const hasSupabase = getSupabaseServerConfig(runtimeEnv).configured;
 const store = createMidwayHarness({
   env: runtimeEnv,

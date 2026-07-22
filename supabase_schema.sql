@@ -375,7 +375,7 @@ CREATE TABLE provider_connections (
   tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   location_id TEXT,
   provider_key TEXT NOT NULL,
-  provider_kind TEXT NOT NULL CHECK (provider_kind IN ('payment', 'accounting', 'messaging', 'social', 'maps')),
+  provider_kind TEXT NOT NULL CHECK (provider_kind IN ('payment', 'accounting', 'messaging', 'social', 'maps', 'ai')),
   status TEXT NOT NULL DEFAULT 'not_connected' CHECK (status IN ('not_connected', 'connecting', 'connected', 'degraded', 'expired', 'revoked', 'error')),
   public_config JSONB NOT NULL DEFAULT '{}'::jsonb,
   secret_ref TEXT,
@@ -569,14 +569,14 @@ ON CONFLICT (tenant_id, location_id, provider_key) DO UPDATE SET
 
 -- Seed initial data. Fuel prices are intentionally not seeded; the public site
 -- should collapse fuel UI until real prices are available.
-INSERT INTO store_hours (day, open_time, close_time) VALUES 
-('monday', '7:00 AM', '7:00 PM'),
+INSERT INTO store_hours (day, open_time, close_time) VALUES
+('monday', '8:00 AM', '5:00 PM'),
 ('tuesday', '', ''),
 ('wednesday', '', ''),
-('thursday', '7:00 AM', '7:00 PM'),
-('friday', '7:00 AM', '7:00 PM'),
-('saturday', '7:00 AM', '7:00 PM'),
-('sunday', '7:00 AM', '7:00 PM')
+('thursday', '8:00 AM', '7:00 PM'),
+('friday', '8:00 AM', '7:00 PM'),
+('saturday', '8:00 AM', '7:00 PM'),
+('sunday', '8:00 AM', '5:00 PM')
 ON CONFLICT (day) DO UPDATE SET
   open_time = EXCLUDED.open_time,
   close_time = EXCLUDED.close_time,

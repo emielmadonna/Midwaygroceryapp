@@ -30,6 +30,43 @@ test('admin routes require a server-side token', async () => {
   }
 });
 
+test('command center uses valid direct Square environment credentials for live numbers', async () => {
+  const env = {
+    ...baseEnv,
+    SQUARE_ACCESS_TOKEN: 'live-square-token',
+    SQUARE_LOCATION_ID: 'LIVE-LOCATION',
+    SQUARE_ENVIRONMENT: 'production',
+  };
+  const server = await createTestServer({
+    env,
+    fetchImpl: async (url, options = {}) => {
+      assert.match(options.headers.Authorization, /live-square-token/);
+      assert.match(url, /^https:\/\/connect\.squareup\.com/);
+      if (url.includes('/v2/catalog/list')) {
+        return new Response(JSON.stringify({ objects: [{ id: 'ITEM-LIVE', updated_at: '2026-07-18T12:00:00Z', item_data: { name: 'Live Item', variations: [{ id: 'VAR-LIVE', item_variation_data: { sku: 'LIVE', price_money: { amount: 500, currency: 'USD' } } }] } }] }), { status: 200 });
+      }
+      if (url.includes('/v2/inventory/counts/batch-retrieve')) {
+        assert.equal(JSON.parse(options.body).location_ids[0], 'LIVE-LOCATION');
+        return new Response(JSON.stringify({ counts: [{ catalog_object_id: 'VAR-LIVE', location_id: 'LIVE-LOCATION', state: 'IN_STOCK', quantity: '11' }] }), { status: 200 });
+      }
+      assert.match(url, /\/v2\/payments\?/);
+      assert.equal(new URL(url).searchParams.get('location_id'), 'LIVE-LOCATION');
+      return new Response(JSON.stringify({ payments: [{ id: 'PAY-LIVE', status: 'COMPLETED', amount_money: { amount: 1250 }, refunded_money: { amount: 250 }, created_at: '2026-07-18T12:00:00Z' }] }), { status: 200 });
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const response = await api(server, '/api/admin/command-center/overview', { token: owner.token });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.metrics.salesTodayCents, 1000);
+    assert.equal(response.body.data.allInventory[0].quantity, 11);
+    assert.equal(response.body.data.dataSources.squareInventory.status, 'live');
+  } finally {
+    await server.close();
+  }
+});
+
 test('public bootstrap still loads RV booking when Square product sync is unavailable', async () => {
   const env = {
     ...baseEnv,
@@ -922,6 +959,73 @@ test('admin provider status lists business connection state without secrets', as
     assert.equal(JSON.stringify(providers.body.data).includes('square-secret-token'), false);
     assert.equal(JSON.stringify(providers.body.data).includes('email.example/secret'), false);
     assert.equal(JSON.stringify(providers.body.data).includes('slack.example/secret'), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test('owner can securely add, test, and remove the OpenAI key from store settings', async () => {
+  const env = { ...baseEnv, OPENAI_MODEL: 'gpt-5.6-terra', OPENAI_REASONING_EFFORT: 'low' };
+  const store = createMidwayHarness({ env, tenantConfig: createTestTenantConfig() });
+  const apiKey = 'sk-proj-midway-test-key-1234567890abcd';
+  const requests = [];
+  const server = await createTestServer({
+    env,
+    store,
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url: String(url), authorization: options.headers?.Authorization });
+      return new Response(JSON.stringify({ id: 'gpt-5.6-terra', object: 'model' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+  });
+
+  try {
+    const owner = await login(server, 'owner@midway.local', 'owner-pass');
+    const employee = await login(server, 'employee@midway.local', 'employee-pass');
+    const initial = await api(server, '/api/admin/providers/openai', { token: owner.token });
+    assert.equal(initial.status, 200);
+    assert.equal(initial.body.data.status, 'not_connected');
+
+    const denied = await api(server, '/api/admin/providers/openai', {
+      method: 'PUT',
+      token: employee.token,
+      body: { apiKey },
+    });
+    assert.equal(denied.status, 403);
+
+    const saved = await api(server, '/api/admin/providers/openai', {
+      method: 'PUT',
+      token: owner.token,
+      body: { apiKey, model: 'gpt-5.6-terra', reasoningEffort: 'low' },
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.data.status, 'connected');
+    assert.equal(saved.body.data.publicConfig.keyEnding, 'abcd');
+    assert.equal(JSON.stringify(saved.body).includes(apiKey), false);
+
+    const records = await store.listProviderConnections({ tenantId: 'midway', locationId: 'plain' });
+    const stored = records.find(record => record.providerKey === 'openai');
+    assert.match(stored.encryptedCredentials.apiKeyCiphertext, /^v1\./);
+    assert.equal(JSON.stringify(stored).includes(apiKey), false);
+
+    const checked = await api(server, '/api/admin/providers/openai/test', {
+      method: 'POST',
+      token: owner.token,
+      body: {},
+    });
+    assert.equal(checked.status, 200);
+    assert.equal(checked.body.data.connected, true);
+    assert.equal(requests.at(-1).url.endsWith('/models/gpt-5.6-terra'), true);
+    assert.equal(requests.at(-1).authorization, `Bearer ${apiKey}`);
+
+    const removed = await api(server, '/api/admin/providers/openai', {
+      method: 'DELETE',
+      token: owner.token,
+    });
+    assert.equal(removed.status, 200);
+    assert.equal(removed.body.data.status, 'not_connected');
   } finally {
     await server.close();
   }
