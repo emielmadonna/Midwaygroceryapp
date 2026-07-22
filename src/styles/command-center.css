@@ -144,7 +144,8 @@ svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .cc-page-intro > div:last-child { display: flex; gap: 10px; }
 
 .cc-assistant { min-height: calc(100vh - 196px); display: grid; grid-template-columns: 225px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 20px; background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
-.cc-chat-history { padding: 19px 14px; background: #ede8dc; border-right: 1px solid var(--line); overflow-y: auto; }
+.cc-chat-history { padding: 19px 14px; background: #ede8dc; border-right: 1px solid var(--line); overflow-y: auto; overflow-x: hidden; min-width: 0; }
+.cc-chat-history > button:not(.cc-button) > span { min-width: 0; }
 .cc-chat-history > .cc-button { width: 100%; }
 .cc-chat-history > .cc-kicker { margin: 24px 9px 9px; color: var(--ink-soft); }
 .cc-chat-history > button:not(.cc-button) { width: 100%; display: grid; grid-template-columns: 28px 1fr; gap: 9px; border: 0; border-radius: 11px; padding: 11px 9px; background: transparent; text-align: left; cursor: pointer; }
