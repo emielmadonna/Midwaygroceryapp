@@ -2889,6 +2889,9 @@ async function parseAgentAttachments(attachments = [], { commandCenter } = {}) {
       // storage and we pull the bytes back here.
       const stored = await commandCenter.readUploadContent(attachment.uploadId, { pageStart: attachment?.pageStart || null });
       dataUrl = stored.dataUrl;
+      if (stored.fullText) {
+        content.push({ type: 'input_text', text: `Full text of ${fileName} (all ${stored.totalPages || ''} pages), extracted so you have the complete document:\n\n${stored.fullText}` });
+      }
       if (stored.note) content.push({ type: 'input_text', text: stored.note });
       if (stored.lastPage) pageInfo = { lastPageRead: stored.lastPage, totalPages: stored.totalPages };
     }

@@ -889,15 +889,28 @@ export function createCommandCenterService({
     let note = null;
     let lastPage = null;
     let totalPages = null;
-    if (record.contentType === 'application/pdf' && (pageStart || buffer.length > 28 * 1024 * 1024)) {
-      const shrunk = await shrinkPdfBuffer(buffer, { pageStart: pageStart || 1 });
-      buffer = shrunk.buffer;
-      lastPage = shrunk.lastPage;
-      totalPages = shrunk.totalPages;
-      if (shrunk.keptPages !== null && shrunk.lastPage !== null && shrunk.lastPage < shrunk.totalPages) {
-        note = `This is pages ${shrunk.firstPage}-${shrunk.lastPage} of ${shrunk.totalPages} in ${record.fileName}. Nothing is lost: when the owner says "keep reading", the next pages (from page ${shrunk.lastPage + 1}) are attached automatically. Offer that.`;
-      } else if (pageStart && shrunk.firstPage > 1) {
-        note = `This is pages ${shrunk.firstPage}-${shrunk.lastPage ?? shrunk.totalPages} of ${shrunk.totalPages} in ${record.fileName}.`;
+    let fullText = null;
+    if (record.contentType === 'application/pdf') {
+      // Pull the text of EVERY page up front (tiny, no size limit) so the
+      // assistant understands the whole document without paging or asking.
+      const extracted = await extractPdfText(buffer);
+      totalPages = extracted.totalPages;
+      if (extracted.text && extracted.text.trim().length > 40) {
+        fullText = extracted.text;
+      }
+      // Still provide the pages visually (for layout / scanned images), trimmed
+      // to fit the model when the file is very large.
+      if (pageStart || buffer.length > 28 * 1024 * 1024) {
+        const shrunk = await shrinkPdfBuffer(buffer, { pageStart: pageStart || 1 });
+        buffer = shrunk.buffer;
+        lastPage = shrunk.lastPage;
+        totalPages = shrunk.totalPages ?? totalPages;
+        const hasFullText = Boolean(fullText);
+        if (shrunk.keptPages !== null && shrunk.lastPage !== null && shrunk.lastPage < shrunk.totalPages) {
+          note = hasFullText
+            ? `The full text of all ${shrunk.totalPages} pages of ${record.fileName} is included above, so you already have the entire document — answer from it directly. The images are only pages ${shrunk.firstPage}-${shrunk.lastPage}, for layout reference.`
+            : `${record.fileName} is a ${shrunk.totalPages}-page scan with no text layer. Pages ${shrunk.firstPage}-${shrunk.lastPage} are shown here; the remaining pages will be attached automatically in the same turn — read all of them before answering, and do not ask the owner to continue.`;
+        }
       }
     }
     if (buffer.length > 28 * 1024 * 1024) {
@@ -911,6 +924,7 @@ export function createCommandCenterService({
       note,
       lastPage,
       totalPages,
+      fullText,
     };
   }
 
@@ -1382,6 +1396,29 @@ function toSquareSyncJobRow(record) {
 
 // Re-save (and if needed, page-trim) a PDF that is too large to hand to the
 // AI model. Loaded lazily so the dependency only costs when actually needed.
+// Extract the text of every page of a PDF (tiny vs. the raw file, no size
+// limit), so the assistant can understand the whole document at once instead
+// of paging through images. Returns empty text for scanned PDFs with no text
+// layer (those still fall back to visual pages).
+export async function extractPdfText(buffer) {
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true, isEvalSupported: false }).promise;
+    const totalPages = doc.numPages;
+    const parts = [];
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+      const page = await doc.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const text = content.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+      if (text) parts.push(`--- Page ${pageNumber} of ${totalPages} ---\n${text}`);
+    }
+    await doc.cleanup?.();
+    return { totalPages, text: parts.join('\n\n') };
+  } catch {
+    return { totalPages: null, text: '' };
+  }
+}
+
 export async function shrinkPdfBuffer(buffer, { pageStart = 1 } = {}) {
   try {
     const { PDFDocument } = await import('pdf-lib');
