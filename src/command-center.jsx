@@ -56,6 +56,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [inventorySearch, setInventorySearch] = useState('');
   const [inventoryFilter, setInventoryFilter] = useState('all');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const api = async (path, options = {}) => {
     const response = await fetch(`${API_ROOT}${path}`, {
@@ -285,8 +286,11 @@ function App() {
   const handleFiles = async fileList => {
     try {
       const selected = [...fileList].slice(0, 3);
-      const loaded = await Promise.all(selected.map(async file => {
-        if (file.size > 6 * 1024 * 1024) throw new Error(`${file.name} is larger than 6 MB.`);
+      const loaded = await Promise.all(selected.map(async original => {
+        const file = await shrinkImageForUpload(original) || original;
+        if (file.size > 4 * 1024 * 1024) {
+          throw new Error(`${original.name} is still ${(file.size / (1024 * 1024)).toFixed(1)} MB after shrinking. Photos of any size work (they are shrunk automatically) — other files need to stay under 4 MB.`);
+        }
         const attachment = { name: file.name, type: file.type || guessMime(file.name), size: file.size, dataUrl: await readDataUrl(file) };
         const saved = await api('/admin/command-center/uploads', {
           method: 'POST',
@@ -341,7 +345,7 @@ function App() {
       <main className="cc-main">
         <Topbar view={view} overview={overview} user={user} onRefresh={() => refresh()} loading={loading} />
         {(error || notice) && <Toast tone={error ? 'danger' : 'success'} onClose={() => { setError(''); setNotice(''); }}>{error || notice}</Toast>}
-        <div className="cc-content">
+        <div className={view === 'assistant' ? 'cc-content cc-content--assistant' : 'cc-content'}>
           {loading && !overview ? <LoadingScreen /> : null}
           {!loading && view === 'home' && <Dashboard overview={overview} onAsk={openAssistant} onView={setView} onSync={syncSquare} />}
           {view === 'sales' && <SalesView analytics={salesAnalytics} api={api} onSync={syncSales} busy={busy} onAsk={openAssistant} />}
@@ -362,6 +366,8 @@ function App() {
               pending={pendingConfirmation}
               liveReply={liveReply}
               liveActivity={liveActivity}
+              overview={overview}
+              openAiStatus={openAiStatus}
             />
           )}
           {view === 'inventory' && (
@@ -388,6 +394,41 @@ function App() {
           {view === 'settings' && <StoreSettingsView status={openAiStatus} api={api} onRefresh={() => refresh({ quiet: true })} user={user} onOpenAssistant={() => setView('assistant')} />}
         </div>
       </main>
+      {view !== 'assistant' && !loading && (
+        <>
+          <button className="cc-chat-fab" onClick={() => setChatOpen(open => !open)} aria-label={chatOpen ? 'Close Midway chat' : 'Chat with Midway'}>
+            {chatOpen ? <span aria-hidden="true">×</span> : <Icon name="message" />}
+          </button>
+          {chatOpen && (
+            <div className="cc-chat-widget">
+              <header>
+                <span><Icon name="spark" /> Ask Midway</span>
+                <button type="button" onClick={() => { setChatOpen(false); setView('assistant'); }}>Full screen</button>
+              </header>
+              <Assistant
+                compact
+                messages={messages}
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                onConversation={loadConversation}
+                onNew={newConversation}
+                text={composerText}
+                setText={setComposerText}
+                attachments={attachments}
+                setAttachments={setAttachments}
+                onFiles={handleFiles}
+                onSend={sendMessage}
+                busy={busy}
+                pending={pendingConfirmation}
+                liveReply={liveReply}
+                liveActivity={liveActivity}
+                overview={overview}
+                openAiStatus={openAiStatus}
+              />
+            </div>
+          )}
+        </>
+      )}
       <MobileNav view={view} setView={setView} />
     </div>
   );
@@ -538,14 +579,24 @@ function Metric({ label, value, detail, icon, tone }) {
   return <article className="cc-metric"><div className={`cc-metric__icon tone-${tone}`}><Icon name={icon} /></div><p>{label}</p><strong>{value}</strong><span>{detail}</span></article>;
 }
 
-function Assistant({ messages, conversations, activeConversationId, onConversation, onNew, text, setText, attachments, setAttachments, onFiles, onSend, busy, pending, liveReply, liveActivity }) {
+function Assistant({ messages, conversations, activeConversationId, onConversation, onNew, text, setText, attachments, setAttachments, onFiles, onSend, busy, pending, liveReply, liveActivity, overview = null, openAiStatus = null, compact = false }) {
   const threadRef = useRef(null);
   useEffect(() => { threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, pending, liveReply, liveActivity]);
   const visibleMessages = messages.filter(message => message.role === 'user' || message.role === 'assistant');
+  const connectorChips = [
+    ...(overview?.square ? [{ label: 'Square', ok: Boolean(overview.square.connected) }] : []),
+    ...(openAiStatus ? [{ label: 'Assistant', ok: openAiStatus.status === 'connected' }] : []),
+    ...(overview?.connectors || []).map(connection => ({ label: connection.displayName, ok: connection.status === 'connected' })),
+  ];
   return (
-    <div className="cc-assistant">
-      <aside className="cc-chat-history"><button className="cc-button cc-button--dark" onClick={onNew}><Icon name="plus" /> New conversation</button><p className="cc-kicker">Recent</p>{conversations.map(conversation => <button key={conversation.id} className={conversation.id === activeConversationId ? 'active' : ''} onClick={() => onConversation(conversation.id)}><Icon name="message" /><span><strong>{conversation.title || 'Conversation'}</strong><small>{shortDate(conversation.updatedAt)}</small></span></button>)}</aside>
+    <div className={compact ? 'cc-assistant cc-assistant--compact' : 'cc-assistant'}>
+      {!compact && <aside className="cc-chat-history"><button className="cc-button cc-button--dark" onClick={onNew}><Icon name="plus" /> New conversation</button><p className="cc-kicker">Recent</p>{conversations.map(conversation => <button key={conversation.id} className={conversation.id === activeConversationId ? 'active' : ''} onClick={() => onConversation(conversation.id)}><Icon name="message" /><span><strong>{conversation.title || 'Conversation'}</strong><small>{shortDate(conversation.updatedAt)}</small></span></button>)}</aside>}
       <section className="cc-chat-pane">
+        {connectorChips.length > 0 && (
+          <div className="cc-connector-chips" aria-label="Connected systems">
+            {connectorChips.map(chip => <span key={chip.label} className={chip.ok ? 'is-on' : 'is-off'}><i />{chip.label}</span>)}
+          </div>
+        )}
         <div className="cc-chat-thread" ref={threadRef}>
           {!visibleMessages.length && <div className="cc-chat-empty"><div className="cc-assistant-mark"><Icon name="spark" /></div><p className="cc-kicker">Midway assistant</p><h2>What can I take care of?</h2><p>Ask about sales, inventory, orders, vendors, bookings—or attach a shelf photo, invoice, PDF, or spreadsheet.</p><div>{QUICK_PROMPTS.map(([label, prompt]) => <button key={label} onClick={() => setText(prompt)}>{label}<Icon name="arrow" /></button>)}</div></div>}
           {visibleMessages.map(message => <ChatMessage key={message.id || `${message.role}-${message.createdAt}`} message={message} />)}
@@ -1038,6 +1089,25 @@ function isoDateOffset(days) { const date = new Date(); date.setDate(date.getDat
 function initials(value = '') { return String(value).split(/\s+|@/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'M'; }
 function safeJson(value) { try { return value ? JSON.parse(value) : null; } catch { return null; } }
 function readDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error(`Could not read ${file.name}.`)); reader.readAsDataURL(file); }); }
+
+// Phone photos are often 8-15 MB; hosting caps request bodies around 4.5 MB.
+// Downscale big images in the browser so any photo uploads cleanly.
+async function shrinkImageForUpload(file, { maxDimension = 2200, quality = 0.85 } = {}) {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.size <= 1.5 * 1024 * 1024) return null;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return null;
+    return new File([blob], file.name.replace(/\.[a-z0-9]+$/i, '') + '.jpg', { type: 'image/jpeg' });
+  } catch {
+    return null;
+  }
+}
 function guessMime(name) { const extension = name.split('.').pop()?.toLowerCase(); return ({ pdf: 'application/pdf', csv: 'text/csv', tsv: 'text/tab-separated-values', txt: 'text/plain', md: 'text/markdown', json: 'application/json', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })[extension] || 'application/octet-stream'; }
 async function readEventStream(response, onEvent) {
   if (!response.body) throw new Error('Live responses are not supported by this browser.');

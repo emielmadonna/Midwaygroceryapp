@@ -2543,7 +2543,7 @@ function parseCommandCenterUpload(body = {}) {
   const match = dataUrl.match(/^data:([^;,]+);base64,([a-z0-9+/=]+)$/i);
   if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'COMMAND_CENTER_UPLOAD_DATA');
   const buffer = Buffer.from(match[2], 'base64');
-  if (!buffer.length || buffer.length > 6 * 1024 * 1024) throw badRequest('Files must be under 6 MB.', 'COMMAND_CENTER_UPLOAD_SIZE');
+  if (!buffer.length || buffer.length > 20 * 1024 * 1024) throw badRequest('Files must be under 20 MB.', 'COMMAND_CENTER_UPLOAD_SIZE');
   return { fileName, contentType, buffer, sizeBytes: buffer.length };
 }
 
@@ -2643,8 +2643,8 @@ function parseAgentAttachments(attachments = []) {
     if (!match || match[1].toLowerCase() !== contentType) throw badRequest(`${fileName} could not be read.`, 'AGENT_ATTACHMENT_DATA');
     const sizeBytes = Math.floor(match[2].length * 0.75);
     totalBytes += sizeBytes;
-    if (sizeBytes > 6 * 1024 * 1024 || totalBytes > 7 * 1024 * 1024) {
-      throw badRequest('Attachments must be under 6 MB each and 7 MB total.', 'AGENT_ATTACHMENT_SIZE');
+    if (sizeBytes > 20 * 1024 * 1024 || totalBytes > 25 * 1024 * 1024) {
+      throw badRequest('Attachments must be under 20 MB each and 25 MB total.', 'AGENT_ATTACHMENT_SIZE');
     }
     metadata.push({ name: fileName, type: contentType, sizeBytes, uploadId: attachment?.uploadId || null });
     if (contentType.startsWith('image/')) {
