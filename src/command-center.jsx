@@ -322,6 +322,9 @@ function App() {
       }
       let completed = null;
       let streamError = null;
+      // Per-tool run counters so bulk work reads as one clean line
+      // ("Creating the new register item — 12 of 35 done") instead of a blur.
+      const toolRuns = {};
       await readEventStream(response, streamEvent => {
         if (streamEvent.type === 'text_delta') {
           setLiveReply(current => current + (streamEvent.delta || ''));
@@ -351,13 +354,23 @@ function App() {
             status: 'active',
           }));
         } else if (streamEvent.type === 'tool_started') {
+          const run = toolRuns[streamEvent.toolName] = toolRuns[streamEvent.toolName] || { started: 0, done: 0, failed: 0, label: '' };
+          run.started += 1;
+          run.label = friendlyToolActivity(streamEvent.toolName, streamEvent);
           setLiveActivity(current => upsertActivity(completeActivity(current, 'thinking'), {
-            id: streamEvent.toolCallId || streamEvent.toolName,
-            label: friendlyToolActivity(streamEvent.toolName, streamEvent),
+            id: `tool-${streamEvent.toolName}`,
+            label: run.started > 1 ? `${run.label} — ${run.done} of ${run.started} done` : run.label,
             status: 'active',
           }));
         } else if (streamEvent.type === 'tool_completed' || streamEvent.type === 'tool_denied') {
-          setLiveActivity(current => completeActivity(current, streamEvent.toolCallId || streamEvent.toolName, streamEvent.ok === false ? 'error' : 'done'));
+          const run = toolRuns[streamEvent.toolName] = toolRuns[streamEvent.toolName] || { started: 1, done: 0, failed: 0, label: friendlyToolActivity(streamEvent.toolName, streamEvent) };
+          run.done += 1;
+          if (streamEvent.ok === false) run.failed += 1;
+          setLiveActivity(current => upsertActivity(current, {
+            id: `tool-${streamEvent.toolName}`,
+            label: run.started > 1 ? `${run.label} — ${run.done} of ${run.started} done` : run.label,
+            status: run.done >= run.started ? (run.failed ? 'error' : 'done') : 'active',
+          }));
         } else if (streamEvent.type === 'approval_required') {
           setLiveActivity(current => upsertActivity(completeActivity(current, 'thinking'), {
             id: streamEvent.toolCallId || 'approval',
@@ -374,6 +387,7 @@ function App() {
       if (!completed) throw new Error('The live response ended before Midway finished.');
       setPendingConfirmation(completed.pendingConfirmation || null);
       setMessages(await api(`/admin/agent/conversations/${encodeURIComponent(activeConversationId)}/messages`));
+      api('/admin/agent/conversations').then(list => setConversations(list || [])).catch(() => {});
       setLiveReply('');
       setLiveActivity([]);
       if (!completed.pendingConfirmation) refresh({ quiet: true });
@@ -716,7 +730,10 @@ function Metric({ label, value, detail, icon, tone }) {
 function Assistant({ messages, conversations, activeConversationId, onConversation, onNew, text, setText, attachments, setAttachments, onFiles, onSend, busy, pending, liveReply, liveActivity, overview = null, openAiStatus = null, compact = false, voiceState = 'off', onVoice = null }) {
   const threadRef = useRef(null);
   useEffect(() => { threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, pending, liveReply, liveActivity]);
-  const visibleMessages = messages.filter(message => message.role === 'user' || message.role === 'assistant');
+  // Turns interrupted mid-approval persist an assistant message with tool
+  // calls but no text — don't render those as empty bubbles.
+  const visibleMessages = messages.filter(message => (message.role === 'user' || message.role === 'assistant')
+    && (String(message.content || '').trim() || (message.metadata?.attachments || []).length));
   const connectorChips = [
     ...(overview?.square ? [{ label: 'Square', ok: Boolean(overview.square.connected) }] : []),
     ...(openAiStatus ? [{ label: 'Assistant', ok: openAiStatus.status === 'connected' }] : []),
@@ -725,7 +742,11 @@ function Assistant({ messages, conversations, activeConversationId, onConversati
   return (
     <div className={compact ? 'cc-assistant cc-assistant--compact' : 'cc-assistant'}>
       {!compact && <aside className="cc-chat-history"><button className="cc-button cc-button--dark" onClick={onNew}><Icon name="plus" /> New conversation</button><p className="cc-kicker">Recent</p>{conversations.map(conversation => <button key={conversation.id} className={conversation.id === activeConversationId ? 'active' : ''} onClick={() => onConversation(conversation.id)}><Icon name="message" /><span><strong>{conversation.title || 'Conversation'}</strong><small>{shortDate(conversation.updatedAt)}</small></span></button>)}</aside>}
-      <section className="cc-chat-pane">
+      <section
+        className="cc-chat-pane"
+        onDragOver={event => { event.preventDefault(); }}
+        onDrop={event => { event.preventDefault(); if (event.dataTransfer?.files?.length) onFiles(event.dataTransfer.files); }}
+      >
         {connectorChips.length > 0 && (
           <div className="cc-connector-chips" aria-label="Connected systems">
             {connectorChips.map(chip => <span key={chip.label} className={chip.ok ? 'is-on' : 'is-off'}><i />{chip.label}</span>)}
@@ -739,7 +760,7 @@ function Assistant({ messages, conversations, activeConversationId, onConversati
         {pending && <div className="cc-approval"><div><Icon name="shield" /><span><strong>Please confirm this action</strong><small>{friendlyConfirmation(pending)}</small></span></div><div><button className="cc-button cc-button--ghost" onClick={event => onSend(event, false)} disabled={busy}>Not now</button><button className="cc-button cc-button--primary" onClick={event => onSend(event, true)} disabled={busy}>Yes, go ahead</button></div></div>}
         <form className="cc-composer" onSubmit={onSend}>
           {attachments.length > 0 && <div className="cc-attachment-row">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name={file.type.startsWith('image/') ? 'image' : 'file'} /><b>{file.name}</b><button type="button" onClick={() => setAttachments(current => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
-          <textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(event); } }} placeholder="Ask about the store, or attach a photo or file…" rows="2" />
+          <textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(event); } }} onPaste={event => { const files = [...(event.clipboardData?.files || [])]; if (files.length) { event.preventDefault(); onFiles(files); } }} placeholder="Ask about the store, or attach, paste, or drop a photo or file…" rows="2" />
           <div><label className="cc-upload"><Icon name="paperclip" /><span>Attach</span><input type="file" multiple accept="image/*,.pdf,.csv,.tsv,.xlsx,.xls,.docx,.txt,.md,.json" onChange={event => { onFiles(event.target.files); event.target.value = ''; }} /></label><small>Photos, invoices, PDFs, and spreadsheets</small>{onVoice && <button type="button" className={`cc-voice is-${voiceState}`} onClick={onVoice} aria-label={voiceState === 'off' ? 'Talk to Midway' : 'Stop voice'} title={voiceState === 'off' ? 'Talk to Midway' : voiceState === 'connecting' ? 'Connecting…' : 'Voice is live — click to stop'}><Icon name="mic" />{voiceState === 'live' && <i className="cc-voice-pulse" aria-hidden="true" />}</button>}<button className="cc-send" disabled={busy || (!text.trim() && !attachments.length)} aria-label="Send message"><Icon name="arrowUp" /></button></div>
         </form>
       </section>

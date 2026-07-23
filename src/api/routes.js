@@ -1158,6 +1158,19 @@ export function createApiRouter({
         });
       }
 
+      // Name the conversation after its first real message so the sidebar
+      // reads like a to-do list instead of "New conversation" ×10.
+      if (!persisted.some(message => message.role === 'user') && newMessages.length) {
+        const firstText = String(userMessage || '').trim();
+        const firstAttachment = parsedAttachments.metadata[0]?.name;
+        const title = firstText
+          ? firstText.replace(/\s+/g, ' ').slice(0, 60)
+          : (firstAttachment ? `Review ${firstAttachment}` : '');
+        if (title) {
+          try { await agentStore.setTitle?.({ conversationId, title }); } catch { /* cosmetic only */ }
+        }
+      }
+
       const result = await agent.runTurn({
         messages: conversationMessages,
         actor: req.adminUser,

@@ -89,6 +89,17 @@ export function createAgentConversationStore({ supabase } = {}) {
       if (error) throw error;
       return { id: conversationId, archived: true };
     },
+
+    async setTitle({ conversationId, title }) {
+      const clean = String(title || '').trim().slice(0, 80);
+      if (!clean) return null;
+      const { error } = await supabase
+        .from(CONVERSATIONS_TABLE)
+        .update({ title: clean })
+        .eq('id', conversationId);
+      if (error) throw error;
+      return { id: conversationId, title: clean };
+    },
   };
 }
 
@@ -125,6 +136,13 @@ function createMemoryConversationStore() {
       conversations.delete(conversationId);
       messages.delete(conversationId);
       return { id: conversationId, archived: true };
+    },
+    async setTitle({ conversationId, title }) {
+      const conv = conversations.get(conversationId);
+      const clean = String(title || '').trim().slice(0, 80);
+      if (!conv || !clean) return null;
+      conv.title = clean;
+      return { id: conversationId, title: clean };
     },
   };
 }
