@@ -205,3 +205,69 @@ test('agent stops at iteration limit if model keeps calling tools', async () => 
   });
   assert.equal(result.finishReason, 'iteration_limit');
 });
+
+test('multiple destructive calls in one response become a single batch approval that runs together', async () => {
+  const canceled = [];
+  const provider = scriptedProvider([
+    {
+      content: '',
+      toolCalls: [
+        { id: 'read-1', name: 'list_fuel_prices', arguments: {} },
+        { id: 'kill-1', name: 'cancel_booking', arguments: { bookingCode: 'MW-1' } },
+        { id: 'kill-2', name: 'cancel_booking', arguments: { bookingCode: 'MW-2' } },
+      ],
+    },
+    { content: 'Both bookings are canceled.' },
+  ]);
+  const registry = buildRegistry({
+    cancel_booking: async ({ input }) => { canceled.push(input.bookingCode); return { canceled: input.bookingCode }; },
+  });
+  const agent = createAgent({ provider, registry, store: makeStubStore() });
+
+  const first = await agent.runTurn({ messages: [{ role: 'user', content: 'cancel both' }], actor: owner });
+  assert.equal(first.finishReason, 'awaiting_confirmation');
+  assert.equal(first.pendingConfirmation.count, 2, 'both destructive calls share one approval');
+  assert.equal(first.pendingConfirmation.batch.length, 2);
+  assert.deepEqual(canceled, [], 'nothing runs before approval');
+  const readResult = first.trace.find(t => t.type === 'tool_result' && t.toolName === 'list_fuel_prices');
+  assert.ok(readResult?.ok, 'the read-only call in the same response already ran');
+  assert.ok(readResult.result, 'trace keeps the tool result data');
+
+  const second = await agent.runTurn({
+    messages: [{ role: 'user', content: 'cancel both' }],
+    actor: owner,
+    pendingConfirmation: first.pendingConfirmation,
+    confirmations: { [first.pendingConfirmation.toolCallId]: true },
+  });
+  assert.deepEqual(canceled, ['MW-1', 'MW-2'], 'one approval executes the whole batch');
+  assert.equal(second.finishReason, 'stop');
+});
+
+test('denying a batch refuses every call in it', async () => {
+  const canceled = [];
+  const provider = scriptedProvider([
+    { content: 'Understood, nothing was changed.' },
+  ]);
+  const registry = buildRegistry({
+    cancel_booking: async ({ input }) => { canceled.push(input.bookingCode); return {}; },
+  });
+  const agent = createAgent({ provider, registry, store: makeStubStore() });
+  const pending = {
+    toolCallId: 'kill-1',
+    toolName: 'cancel_booking',
+    arguments: { bookingCode: 'MW-1' },
+    batch: [
+      { toolCallId: 'kill-1', toolName: 'cancel_booking', arguments: { bookingCode: 'MW-1' } },
+      { toolCallId: 'kill-2', toolName: 'cancel_booking', arguments: { bookingCode: 'MW-2' } },
+    ],
+    count: 2,
+  };
+  const result = await agent.runTurn({
+    messages: [{ role: 'user', content: 'cancel both' }],
+    actor: owner,
+    pendingConfirmation: pending,
+    confirmations: { 'kill-1': false },
+  });
+  assert.deepEqual(canceled, []);
+  assert.equal(result.trace.filter(t => t.type === 'tool_denied').length, 2, 'every batched call records a denial');
+});

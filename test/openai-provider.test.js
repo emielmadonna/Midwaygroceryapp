@@ -143,3 +143,26 @@ test('Responses API completes streamed function calls for the agent loop', async
     arguments: { lowStockOnly: true },
   });
 });
+
+test('toResponsesInput synthesizes outputs for interrupted (orphaned) tool calls', async () => {
+  const { toResponsesInput } = await import('../src/lib/ai-providers/openai-provider.js');
+  const input = toResponsesInput([
+    { role: 'user', content: 'add the items' },
+    {
+      role: 'assistant',
+      content: '',
+      toolCalls: [
+        { id: 'call-answered', name: 'list_inventory', arguments: {} },
+        { id: 'call-orphan', name: 'create_square_item', arguments: { name: 'Snickers' } },
+      ],
+    },
+    { role: 'tool', toolCallId: 'call-answered', content: '{"ok":true}' },
+    { role: 'user', content: 'proceed' },
+  ]);
+  const outputs = input.filter(item => item.type === 'function_call_output');
+  assert.equal(outputs.length, 2, 'the orphaned call gets a synthesized output');
+  const orphanOutput = outputs.find(item => item.call_id === 'call-orphan');
+  assert.match(orphanOutput.output, /Not executed/);
+  const calls = input.filter(item => item.type === 'function_call');
+  assert.equal(calls.length, 2);
+});

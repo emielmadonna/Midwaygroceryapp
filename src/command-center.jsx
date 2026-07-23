@@ -361,7 +361,7 @@ function App() {
         } else if (streamEvent.type === 'approval_required') {
           setLiveActivity(current => upsertActivity(completeActivity(current, 'thinking'), {
             id: streamEvent.toolCallId || 'approval',
-            label: 'Waiting for your approval',
+            label: streamEvent.count > 1 ? `Waiting for your approval (${streamEvent.count} actions ready)` : 'Waiting for your approval',
             status: 'waiting',
           }));
         } else if (streamEvent.type === 'done') {
@@ -1309,7 +1309,19 @@ function Icon({ name, className = '' }) {
 
 function routePriority(id, onView, onAsk) { if (id === 'low-stock') onView('inventory'); else if (id === 'draft-orders') onView('orders'); else if (id === 'vendor-errors' || id === 'square-sync') onView('connections'); else if (id === 'arrivals') onView('bookings'); else onAsk('What should I take care of next?'); }
 function priorityIcon(id) { return ({ 'low-stock': 'boxes', 'draft-orders': 'clipboard', 'vendor-errors': 'link', 'square-sync': 'alert', arrivals: 'calendar', 'all-clear': 'check' })[id] || 'spark'; }
-function friendlyConfirmation(pending) { const name = String(pending?.toolName || '').replaceAll('_', ' '); const args = pending?.arguments || {}; const target = args.bookingCode || args.toolName || args.name || ''; return `${name}${target ? ` for ${target}` : ''}. Midway will record this in the activity log.`; }
+function friendlyConfirmation(pending) {
+  const name = String(pending?.toolName || '').replaceAll('_', ' ');
+  const batch = Array.isArray(pending?.batch) ? pending.batch : [];
+  const count = pending?.count || batch.length || 1;
+  if (count > 1) {
+    const named = batch.map(entry => entry?.arguments?.name || entry?.arguments?.bookingCode || entry?.arguments?.toolName).filter(Boolean);
+    const preview = named.slice(0, 3).join(', ');
+    return `${count} actions at once — ${name}${preview ? `: ${preview}${named.length > 3 ? `, +${named.length - 3} more` : ''}` : ''}. One approval runs them all and records everything in the activity log.`;
+  }
+  const args = pending?.arguments || {};
+  const target = args.bookingCode || args.toolName || args.name || '';
+  return `${name}${target ? ` for ${target}` : ''}. Midway will record this in the activity log.`;
+}
 function friendlyStatus(value) { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase()); }
 function changeLabel(percent, suffix) { if (percent === null || percent === undefined) return 'New sales in this period'; const direction = Number(percent) > 0 ? 'up' : Number(percent) < 0 ? 'down' : 'flat'; return direction === 'flat' ? `No change vs ${suffix}` : `${Math.abs(Number(percent)).toFixed(1)}% ${direction} vs ${suffix}`; }
 function formatNumber(value) { return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(Number(value || 0)); }

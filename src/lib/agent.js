@@ -81,32 +81,41 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
 
     if (pendingConfirmation) {
       const decision = confirmations[pendingConfirmation.toolCallId];
+      // A confirmation may cover a whole batch of destructive calls the model
+      // issued together (e.g. "create these 35 items") — one approval runs all.
+      const confirmationBatch = Array.isArray(pendingConfirmation.batch) && pendingConfirmation.batch.length
+        ? pendingConfirmation.batch
+        : [{ toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName, arguments: pendingConfirmation.arguments }];
       if (decision === false) {
-        const refusal = `Tool call ${pendingConfirmation.toolName} was not approved by the user.`;
-        conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: false, error: refusal }));
-        trace.push({ type: 'tool_denied', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName });
-        await emitAgentEvent(onEvent, { type: 'tool_denied', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName });
+        for (const entry of confirmationBatch) {
+          const refusal = `Tool call ${entry.toolName} was not approved by the user.`;
+          conversation.push(toolResultMessage(entry.toolCallId, { ok: false, error: refusal }));
+          trace.push({ type: 'tool_denied', toolCallId: entry.toolCallId, toolName: entry.toolName });
+          await emitAgentEvent(onEvent, { type: 'tool_denied', toolCallId: entry.toolCallId, toolName: entry.toolName });
+        }
         pendingConfirmation = null;
       } else if (decision === true) {
-        const tool = registry.get(pendingConfirmation.toolName);
-        if (!tool) {
-          conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: false, error: `Unknown tool: ${pendingConfirmation.toolName}` }));
-          trace.push({ type: 'tool_error', toolCallId: pendingConfirmation.toolCallId, toolName: pendingConfirmation.toolName, error: 'unknown_tool' });
-        } else {
+        for (const entry of confirmationBatch) {
+          const tool = registry.get(entry.toolName);
+          if (!tool) {
+            conversation.push(toolResultMessage(entry.toolCallId, { ok: false, error: `Unknown tool: ${entry.toolName}` }));
+            trace.push({ type: 'tool_error', toolCallId: entry.toolCallId, toolName: entry.toolName, error: 'unknown_tool' });
+            continue;
+          }
           try {
-            await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ...toolActivityDetail(pendingConfirmation.arguments) });
-            const result = await registry.execute(pendingConfirmation.toolName, {
-              input: pendingConfirmation.arguments ?? {},
+            await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: entry.toolCallId, toolName: tool.name, ...toolActivityDetail(entry.arguments) });
+            const result = await registry.execute(entry.toolName, {
+              input: entry.arguments ?? {},
               actor,
               store,
             });
-            conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: true, data: result }));
-            trace.push({ type: 'tool_result', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: true });
-            await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: true });
+            conversation.push(toolResultMessage(entry.toolCallId, { ok: true, data: result }));
+            trace.push({ type: 'tool_result', toolCallId: entry.toolCallId, toolName: tool.name, ok: true, result });
+            await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: entry.toolCallId, toolName: tool.name, ok: true });
           } catch (error) {
-            conversation.push(toolResultMessage(pendingConfirmation.toolCallId, { ok: false, error: error.message, code: error.code }));
-            trace.push({ type: 'tool_result', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: false, error: error.message });
-            await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: pendingConfirmation.toolCallId, toolName: tool.name, ok: false });
+            conversation.push(toolResultMessage(entry.toolCallId, { ok: false, error: error.message, code: error.code }));
+            trace.push({ type: 'tool_result', toolCallId: entry.toolCallId, toolName: tool.name, ok: false, error: error.message });
+            await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: entry.toolCallId, toolName: tool.name, ok: false });
           }
         }
         pendingConfirmation = null;
@@ -143,7 +152,10 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
         };
       }
 
-      let requestedConfirmation = null;
+      // Run every non-destructive call right away; gather ALL destructive
+      // calls from this response into ONE approval so the owner taps once
+      // (not once per item on a 35-item invoice).
+      const destructiveBatch = [];
       for (const toolCall of turn.toolCalls) {
         const tool = registry.get(toolCall.name);
         if (!tool) {
@@ -152,14 +164,13 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
           continue;
         }
         if (tool.sideEffect === 'destructive' && confirmations[toolCall.id] !== true) {
-          requestedConfirmation = {
+          destructiveBatch.push({
             toolCallId: toolCall.id,
             toolName: tool.name,
             arguments: toolCall.arguments ?? {},
-            sideEffect: tool.sideEffect,
             description: tool.description,
-          };
-          break;
+          });
+          continue;
         }
         try {
           await emitAgentEvent(onEvent, { type: 'tool_started', toolCallId: toolCall.id, toolName: tool.name, ...toolActivityDetail(toolCall.arguments) });
@@ -169,7 +180,7 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
             store,
           });
           conversation.push(toolResultMessage(toolCall.id, { ok: true, data: result }));
-          trace.push({ type: 'tool_result', toolCallId: toolCall.id, toolName: tool.name, ok: true });
+          trace.push({ type: 'tool_result', toolCallId: toolCall.id, toolName: tool.name, ok: true, result });
           await emitAgentEvent(onEvent, { type: 'tool_completed', toolCallId: toolCall.id, toolName: tool.name, ok: true });
         } catch (error) {
           conversation.push(toolResultMessage(toolCall.id, {
@@ -188,10 +199,16 @@ export function createAgent({ provider, registry, store, systemPrompt = DEFAULT_
         }
       }
 
-      if (requestedConfirmation) {
+      if (destructiveBatch.length) {
+        const requestedConfirmation = {
+          ...destructiveBatch[0],
+          sideEffect: 'destructive',
+          batch: destructiveBatch,
+          count: destructiveBatch.length,
+        };
         pendingConfirmation = requestedConfirmation;
         trace.push({ type: 'awaiting_confirmation', ...requestedConfirmation });
-        await emitAgentEvent(onEvent, { type: 'approval_required', toolCallId: requestedConfirmation.toolCallId, toolName: requestedConfirmation.toolName });
+        await emitAgentEvent(onEvent, { type: 'approval_required', toolCallId: requestedConfirmation.toolCallId, toolName: requestedConfirmation.toolName, count: requestedConfirmation.count });
         return {
           message: null,
           pendingConfirmation,

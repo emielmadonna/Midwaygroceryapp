@@ -2905,11 +2905,27 @@ function traceToPersistedMessages(trace = []) {
         role: 'tool',
         toolCallId: entry.toolCallId,
         toolName: entry.toolName,
-        content: JSON.stringify({ ok: entry.ok ?? false, error: entry.error ?? null }),
+        // Keep (truncated) result data so the model still knows what its tools
+        // returned on LATER turns — losing it made follow-ups act blind.
+        content: JSON.stringify({
+          ok: entry.ok ?? false,
+          ...(entry.ok && entry.result !== undefined ? { data: compactToolResult(entry.result) } : {}),
+          error: entry.error ?? null,
+        }),
       });
     }
   }
   return messages;
+}
+
+function compactToolResult(result) {
+  try {
+    const text = JSON.stringify(result);
+    if (text.length <= 6000) return result;
+    return `${text.slice(0, 6000)}…[truncated — call the tool again for full data]`;
+  } catch {
+    return null;
+  }
 }
 
 function toAgentMessage(persisted) {

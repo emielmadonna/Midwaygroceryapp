@@ -161,11 +161,16 @@ export function toResponsesInput(messages = []) {
   const input = [];
   // Tool outputs are only valid when their originating function_call is also in
   // the input; older persisted conversations stored orphans, so skip those.
+  // The reverse also holds: every function_call needs an output, and a turn
+  // interrupted mid-approval persists calls with no results — synthesize an
+  // output for those so the whole conversation stays valid.
   const knownCallIds = new Set();
+  const answeredCallIds = new Set();
   for (const message of messages) {
     if (message.role === 'assistant' && Array.isArray(message.toolCalls)) {
       for (const call of message.toolCalls) knownCallIds.add(call.id);
     }
+    if (message.role === 'tool' && message.toolCallId) answeredCallIds.add(message.toolCallId);
   }
   for (const message of messages) {
     if (message.role === 'system') continue;
@@ -187,6 +192,13 @@ export function toResponsesInput(messages = []) {
           name: call.name,
           arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {}),
         });
+        if (!answeredCallIds.has(call.id)) {
+          input.push({
+            type: 'function_call_output',
+            call_id: call.id,
+            output: JSON.stringify({ ok: false, error: 'Not executed: this action was interrupted before it could run. Call the tool again if it is still needed.' }),
+          });
+        }
       }
       continue;
     }
