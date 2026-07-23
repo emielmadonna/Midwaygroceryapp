@@ -210,6 +210,14 @@ svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .cc-chat-bubble { max-width: min(680px, 82%); padding: 13px 16px 9px; border: 1px solid var(--line); border-radius: 5px 16px 16px 16px; background: white; }
 .is-user .cc-chat-bubble { border-color: var(--green); border-radius: 16px 5px 16px 16px; background: var(--green); color: white; }
 .cc-chat-bubble p { margin: 0; white-space: pre-wrap; font-size: 13px; line-height: 1.58; }
+.cc-md { font-size: 13px; line-height: 1.58; display: grid; gap: 8px; }
+.cc-md p { margin: 0; white-space: pre-wrap; }
+.cc-md h3, .cc-md h4, .cc-md h5 { margin: 4px 0 0; font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+.cc-md ul, .cc-md ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.cc-md li { font-size: 13px; }
+.cc-md strong { font-weight: 700; }
+.cc-md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: rgba(15, 40, 30, 0.07); padding: 1px 5px; border-radius: 5px; }
+.cc-md .cc-stream-cursor { display: inline-block; }
 .cc-chat-bubble time { display: block; margin-top: 7px; color: var(--ink-soft); font-size: 9px; text-align: right; }
 .is-user .cc-chat-bubble time { color: rgba(255,255,255,.55); }
 .cc-message-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }

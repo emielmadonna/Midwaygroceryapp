@@ -43,7 +43,11 @@ Style:
   take action without being asked twice: match lines to inventory, and when a
   product on the document is not in the register yet, offer to create it with
   create_square_item (price, barcode, and category from the document when
-  present). Never ask the owner to re-upload, retype, or "continue reading".`;
+  present). Never ask the owner to re-upload, retype, or "continue reading".
+- Documents from earlier in the conversation are automatically re-attached for
+  you on every turn, so you ALWAYS still have them — never say you cannot see
+  the file and never ask for it again. When the owner says "proceed", carry
+  out the plan you described using the document you already have.`;
 
 // High enough that very large jobs — a 100-line invoice, a full-store count
 // sheet — can be acted on in one turn (each model round-trip may carry

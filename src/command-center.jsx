@@ -748,13 +748,69 @@ function Assistant({ messages, conversations, activeConversationId, onConversati
 }
 
 function LiveAssistant({ reply, activity }) {
-  return <div className="cc-chat-message is-assistant cc-live-assistant" aria-live="polite" aria-label="Midway is working"><div className="cc-assistant-mark"><Icon name="spark" /></div><div className="cc-chat-bubble">{activity.length > 0 && <div className="cc-live-activity">{activity.slice(-4).map(item => <div key={item.id} className={`is-${item.status}`}><i>{item.status === 'done' ? <Icon name="check" /> : item.status === 'error' ? <Icon name="alert" /> : <span />}</i><span>{item.label}</span></div>)}</div>}{reply && <p className="cc-streaming-text">{reply}<span className="cc-stream-cursor" aria-hidden="true" /></p>}{!reply && !activity.length && <div className="is-thinking"><span /><span /><span /></div>}</div></div>;
+  return <div className="cc-chat-message is-assistant cc-live-assistant" aria-live="polite" aria-label="Midway is working"><div className="cc-assistant-mark"><Icon name="spark" /></div><div className="cc-chat-bubble">{activity.length > 0 && <div className="cc-live-activity">{activity.slice(-4).map(item => <div key={item.id} className={`is-${item.status}`}><i>{item.status === 'done' ? <Icon name="check" /> : item.status === 'error' ? <Icon name="alert" /> : <span />}</i><span>{item.label}</span></div>)}</div>}{reply && <div className="cc-md cc-streaming-text">{renderMarkdown(reply)}<span className="cc-stream-cursor" aria-hidden="true" /></div>}{!reply && !activity.length && <div className="is-thinking"><span /><span /><span /></div>}</div></div>;
 }
 
 function ChatMessage({ message }) {
   const isUser = message.role === 'user';
   const files = message.metadata?.attachments || [];
-  return <div className={`cc-chat-message ${isUser ? 'is-user' : 'is-assistant'}`}>{!isUser && <div className="cc-assistant-mark"><Icon name="spark" /></div>}<div className="cc-chat-bubble">{files.length > 0 && <div className="cc-message-files">{files.map(file => <span key={file.name}><Icon name={file.type?.startsWith('image/') ? 'image' : 'file'} />{file.name}</span>)}</div>}<p>{message.content}</p><time>{shortTime(message.createdAt)}</time></div></div>;
+  return <div className={`cc-chat-message ${isUser ? 'is-user' : 'is-assistant'}`}>{!isUser && <div className="cc-assistant-mark"><Icon name="spark" /></div>}<div className="cc-chat-bubble">{files.length > 0 && <div className="cc-message-files">{files.map(file => <span key={file.name}><Icon name={file.type?.startsWith('image/') ? 'image' : 'file'} />{file.name}</span>)}</div>}{isUser ? <p>{message.content}</p> : <div className="cc-md">{renderMarkdown(message.content)}</div>}<time>{shortTime(message.createdAt)}</time></div></div>;
+}
+
+// Lightweight markdown → React renderer for assistant replies (headings,
+// bold/italic, inline code, bullet and numbered lists). Builds React elements
+// only — no HTML injection.
+function renderInlineMarkdown(text, keyPrefix = 'i') {
+  const parts = [];
+  const pattern = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  let cursor = 0;
+  let index = 0;
+  for (const match of String(text || '').matchAll(pattern)) {
+    if (match.index > cursor) parts.push(text.slice(cursor, match.index));
+    const token = match[0];
+    if (token.startsWith('**')) parts.push(<strong key={`${keyPrefix}-${index}`}>{token.slice(2, -2)}</strong>);
+    else if (token.startsWith('`')) parts.push(<code key={`${keyPrefix}-${index}`}>{token.slice(1, -1)}</code>);
+    else parts.push(<em key={`${keyPrefix}-${index}`}>{token.slice(1, -1)}</em>);
+    cursor = match.index + token.length;
+    index += 1;
+  }
+  if (cursor < String(text || '').length) parts.push(text.slice(cursor));
+  return parts;
+}
+function renderMarkdown(raw) {
+  const lines = String(raw || '').split('\n');
+  const blocks = [];
+  let list = null;
+  const flushList = () => {
+    if (!list) return;
+    const ListTag = list.ordered ? 'ol' : 'ul';
+    blocks.push(<ListTag key={`b-${blocks.length}`}>{list.items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item, `li-${blocks.length}-${itemIndex}`)}</li>)}</ListTag>);
+    list = null;
+  };
+  lines.forEach((line, lineIndex) => {
+    const heading = line.match(/^(#{1,6})\s*(.+)$/);
+    const bullet = line.match(/^\s*[-*•]\s+(.+)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (heading) {
+      flushList();
+      const level = Math.min(heading[1].length, 4);
+      const HeadingTag = `h${Math.max(3, level + 1)}`;
+      blocks.push(<HeadingTag key={`b-${blocks.length}`}>{renderInlineMarkdown(heading[2], `h-${lineIndex}`)}</HeadingTag>);
+    } else if (bullet) {
+      if (!list || list.ordered) { flushList(); list = { ordered: false, items: [] }; }
+      list.items.push(bullet[1]);
+    } else if (numbered) {
+      if (!list || !list.ordered) { flushList(); list = { ordered: true, items: [] }; }
+      list.items.push(numbered[1]);
+    } else if (!line.trim()) {
+      flushList();
+    } else {
+      flushList();
+      blocks.push(<p key={`b-${blocks.length}`}>{renderInlineMarkdown(line, `p-${lineIndex}`)}</p>);
+    }
+  });
+  flushList();
+  return blocks;
 }
 
 function InventoryView({ items, total, search, setSearch, filter, setFilter, onSync, syncProgress, busy, onAsk, api, onRefresh, reconciliations = [], user }) {

@@ -1115,6 +1115,36 @@ export function createApiRouter({
         }
       };
       const parsedAttachments = await parseAgentAttachments(resolvedAttachments, { commandCenter, onEvent, transcribeChunk });
+
+      // Follow-up turns ("proceed", corrections, approvals) must still SEE the
+      // document: persisted history only keeps the text, so re-hydrate the most
+      // recent attachment-bearing user message from storage into this replay.
+      if (!parsedAttachments.content.length) {
+        for (let index = persisted.length - 1; index >= 0; index -= 1) {
+          const message = persisted[index];
+          if (message.role !== 'user') continue;
+          const storedAttachments = (message.metadata?.attachments || []).filter(item => item.uploadId);
+          if (!storedAttachments.length) continue;
+          try {
+            const rehydrated = await parseAgentAttachments(
+              storedAttachments.map(item => ({ name: item.name, type: item.type, uploadId: item.uploadId })),
+              { commandCenter, onEvent, transcribeChunk },
+            );
+            if (rehydrated.content.length) {
+              conversationMessages[index] = {
+                role: 'user',
+                content: [
+                  { type: 'input_text', text: message.content || 'See the attached file.' },
+                  ...rehydrated.content,
+                ],
+              };
+            }
+          } catch {
+            // If the stored file is gone, leave the plain-text history as is.
+          }
+          break;
+        }
+      }
       if ((userMessage && userMessage.trim()) || parsedAttachments.content.length) {
         const text = userMessage.trim() || 'Please review the attached file and tell me what needs attention.';
         const content = parsedAttachments.content.length
