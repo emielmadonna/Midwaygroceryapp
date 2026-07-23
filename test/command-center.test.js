@@ -25,6 +25,15 @@ function makeStore() {
   return {
     async listStoreInventory() { return inventory; },
     async upsertStoreInventory(rows) { inventory.splice(0, inventory.length, ...rows); return rows; },
+    async removeStoreInventory({ squareItemId = null, squareVariationIds = [] } = {}) {
+      const varSet = new Set((squareVariationIds ?? []).filter(Boolean));
+      let removed = 0;
+      for (let i = inventory.length - 1; i >= 0; i -= 1) {
+        const item = inventory[i];
+        if ((squareItemId && item.squareItemId === squareItemId) || varSet.has(item.squareVariationId)) { inventory.splice(i, 1); removed += 1; }
+      }
+      return { removed };
+    },
     async adminDashboard() { return { arrivals: [] }; },
     async listFuelInventory() { return []; },
     async listFuelPrices() { return []; },
@@ -640,4 +649,27 @@ test('create_square_item still creates a genuinely new product', async () => {
   assert.ok(!result.alreadyExisted, 'a brand-new product should be created, not deduped');
   assert.equal(result.squareItemId, 'ITEM_NEW');
   assert.ok(posted.some(object => object?.id === '#new-item'), 'a new item object must be posted to Square');
+});
+
+test('deleting a Square item scrubs the local mirror so no phantom row remains', async () => {
+  const store = makeStore();
+  const service = createCommandCenterService({
+    store,
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async (url, options = {}) => {
+      if (options.method === 'DELETE' && url.includes('/v2/catalog/object/ITEM_COFFEE')) {
+        return new Response(JSON.stringify({ deleted_object_ids: ['ITEM_COFFEE', 'VAR_COFFEE'] }), { status: 200 });
+      }
+      throw new Error(`unexpected ${options.method} ${url}`);
+    },
+  });
+  // Give the item an on-hand balance so we can prove the count is cleared too.
+  await service.updateInventoryRule({ squareVariationId: 'VAR_COFFEE', reorderPoint: 5 });
+  assert.ok((await service.listInventory()).some(item => item.squareVariationId === 'VAR_COFFEE'));
+
+  const result = await service.deleteCatalogItem({ squareItemId: 'ITEM_COFFEE' });
+
+  assert.deepEqual(result.deletedObjectIds, ['ITEM_COFFEE', 'VAR_COFFEE']);
+  const after = await service.listInventory();
+  assert.ok(!after.some(item => item.squareVariationId === 'VAR_COFFEE'), 'the deleted item must not linger in the mirror');
 });

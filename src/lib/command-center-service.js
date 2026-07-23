@@ -702,15 +702,33 @@ export function createCommandCenterService({
     const objectId = String(squareItemId || '').trim();
     if (!objectId) throw serviceError('INVENTORY_ITEM_REQUIRED', 'Choose which item to remove (use its Square item id).', 400);
     const config = await requireSquareInventoryConfig();
+
+    // Capture the item's variation ids from the local mirror before deleting, so
+    // we can scrub every trace even if Square's response omits them.
+    const localVariationIds = (await store.listStoreInventory?.({ activeOnly: false }) ?? [])
+      .filter(item => item.squareItemId === objectId)
+      .map(item => item.squareVariationId);
+
     const { deletedObjectIds } = await deleteSquareCatalogObject({ objectId, env: config, fetchImpl });
+
+    // The Square catalog sync is upsert-only and never prunes, so a deleted item
+    // would otherwise linger in the local mirror as a phantom row. Clean up after
+    // ourselves: remove its inventory rows, on-hand counts, and vendor mapping.
+    const variationIds = [...new Set([...localVariationIds, ...(deletedObjectIds ?? [])].filter(Boolean))];
+    await store.removeStoreInventory?.({ squareItemId: objectId, squareVariationIds: variationIds });
+    await removeBalances(variationIds).catch(() => {});
+    for (const variationId of variationIds) {
+      await unmapVendorProduct({ squareVariationId: variationId }).catch(() => {});
+    }
+
     await store.recordAuditLog?.({
       action: 'command_center.square_item_delete',
       actor: actor || { id: 'command-center', role: 'system' },
       targetType: 'square_catalog_item',
       targetId: objectId,
-      metadata: { deletedObjectIds },
+      metadata: { deletedObjectIds, purgedVariationIds: variationIds },
     });
-    return { deletedObjectIds };
+    return { deletedObjectIds, purgedVariationIds: variationIds };
   }
 
   // Full Square API pass-through so the assistant can reach every Square
@@ -1429,6 +1447,17 @@ export function createCommandCenterService({
     const { data, error } = await supabase.from('inventory_balances').upsert(rows, { onConflict: 'square_variation_id' }).select('*');
     if (error) throw error;
     return (data ?? []).map(fromBalance);
+  }
+
+  async function removeBalances(variationIds = []) {
+    const ids = [...new Set((variationIds ?? []).filter(Boolean))];
+    if (!ids.length) return;
+    if (!supabase) {
+      for (const id of ids) memory.balances.delete(id);
+      return;
+    }
+    const { error } = await supabase.from('inventory_balances').delete().in('square_variation_id', ids);
+    if (error) throw error;
   }
 
   async function listVendorProducts() {

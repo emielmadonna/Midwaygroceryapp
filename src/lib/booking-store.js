@@ -405,6 +405,18 @@ export function createMemoryBookingStore({
       }
       return updated.sort(compareInventoryItems);
     },
+    async removeStoreInventory({ squareItemId = null, squareVariationIds = [] } = {}) {
+      const varSet = new Set((squareVariationIds ?? []).filter(Boolean));
+      let removed = 0;
+      for (let i = state.storeInventory.length - 1; i >= 0; i -= 1) {
+        const item = state.storeInventory[i];
+        if ((squareItemId && item.squareItemId === squareItemId) || varSet.has(item.squareVariationId)) {
+          state.storeInventory.splice(i, 1);
+          removed += 1;
+        }
+      }
+      return { removed };
+    },
     async findStoreInventoryByVariationId(variationId) {
       if (!variationId) return null;
       const item = state.storeInventory.find(candidate => candidate.squareVariationId === variationId);
@@ -1099,6 +1111,21 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
         .select('*');
       if (error) throw error;
       return (data ?? []).map(fromSupabaseInventory).sort(compareInventoryItems);
+    },
+    async removeStoreInventory({ squareItemId = null, squareVariationIds = [] } = {}) {
+      const varIds = [...new Set((squareVariationIds ?? []).filter(Boolean))];
+      let removed = 0;
+      if (squareItemId) {
+        const { count, error } = await supabase.from('store_inventory').delete({ count: 'exact' }).eq('square_item_id', squareItemId);
+        if (error) throw error;
+        removed += count ?? 0;
+      }
+      if (varIds.length) {
+        const { count, error } = await supabase.from('store_inventory').delete({ count: 'exact' }).in('square_variation_id', varIds);
+        if (error) throw error;
+        removed += count ?? 0;
+      }
+      return { removed };
     },
     async findStoreInventoryByVariationId(variationId) {
       if (!variationId) return null;
