@@ -63,7 +63,7 @@ export function registerCommandCenterTools(registry, { commandCenter } = {}) {
 
   registry.register({
     name: 'create_square_item',
-    description: 'Create a brand-new sellable item in the live Square register, with a new item number (SKU) assigned automatically when none is given. Use this when a delivery, invoice, or the owner mentions a product the store does not carry yet. Provide the price in cents and the starting on-hand quantity in individual sellable units when known.',
+    description: 'Add a product to the live Square register — but ONLY for a product the store does not already carry. This tool first checks whether the item already exists (same barcode/UPC, or the same name); if it does, it UPDATES that existing item in place instead of creating a duplicate, and returns alreadyExisted: true. So use it for every product line on a delivery or invoice: brand-new products get a new record (a new item number is auto-assigned when none is given), and products already in the register are updated. Provide the barcode (upc) whenever you have it — it is the most reliable way to recognize an existing item. Give the price in cents and the starting on-hand quantity in individual sellable units when known.',
     requiredScope: 'owner',
     sideEffect: 'destructive',
     inputSchema: {
@@ -75,9 +75,10 @@ export function registerCommandCenterTools(registry, { commandCenter } = {}) {
         description: { type: 'string' },
         priceCents: { type: ['integer', 'null'], minimum: 0, description: 'Selling price per individual unit in cents. Omit only if the price is genuinely unknown.' },
         sku: { type: 'string', description: 'Item number. Leave blank to auto-assign the next free number.' },
-        upc: { type: 'string', description: 'The barcode (UPC/GTIN) if known, e.g. from an invoice or the vendor catalog.' },
+        upc: { type: 'string', description: 'The barcode (UPC/GTIN) if known, e.g. from an invoice or the vendor catalog. Strongly recommended — used to detect an item already in the register and avoid duplicates.' },
         categoryName: { type: 'string', description: 'Register category, e.g. Snacks, Beverages, Tobacco. Created automatically if it does not exist yet.' },
         initialQuantity: { type: ['integer', 'null'], minimum: 0, description: 'Starting on-hand stock in individual sellable units.' },
+        forceCreate: { type: 'boolean', description: 'Leave unset for normal use. Set true ONLY to force a brand-new record when you are certain this is a distinct product that happens to share a name with an existing one (e.g. a different size or pack) and it has no matching barcode.' },
       },
     },
     handler: ({ input, actor }) => commandCenter.createCatalogItem({ ...input, actor }),

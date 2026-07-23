@@ -433,6 +433,78 @@ export function createCommandCenterService({
     return normalized;
   }
 
+  function localCatalogMatch(item, matchedBy) {
+    return {
+      squareItemId: item.squareItemId ?? null,
+      squareVariationId: item.squareVariationId ?? null,
+      name: cleanItemName(item.name),
+      sku: item.sku ?? '',
+      matchedBy,
+    };
+  }
+
+  // Find an item already in the register that matches the one we are about to
+  // create, so it can be updated in place instead of duplicated. Priority:
+  // exact barcode (SKU or UPC, in either field), then exact product name.
+  // Returns { squareItemId, squareVariationId, name, sku, matchedBy } or null.
+  async function findExistingCatalogItem({ name, sku = '', upc = '', config } = {}) {
+    const incoming = barcodeKeys(sku, upc);
+
+    // 1) Match the locally-synced catalog. Callers refresh it first, so this
+    //    reflects live Square — and any item created earlier in the same batch,
+    //    which stops one delivery from spawning its own duplicates.
+    const catalog = await store.listStoreInventory?.({ activeOnly: false }) ?? [];
+    if (incoming.size) {
+      const hit = catalog.find(item => {
+        for (const key of barcodeKeys(item.sku, item.upc)) if (incoming.has(key)) return true;
+        return false;
+      });
+      if (hit) return localCatalogMatch(hit, 'barcode');
+    }
+    const wantedName = dedupeNameKey(name);
+    if (wantedName) {
+      const hit = catalog.find(item => dedupeNameKey(item.name) === wantedName);
+      if (hit) return localCatalogMatch(hit, 'name');
+    }
+
+    // 2) Best-effort barcode lookup straight from Square, to catch a match the
+    //    local mirror doesn't carry yet — e.g. a barcode stored only in Square's
+    //    upc field, which normalized local rows drop.
+    if (config && incoming.size) {
+      for (const value of new Set([String(sku || '').trim(), String(upc || '').trim()].filter(Boolean))) {
+        for (const attribute of ['sku', 'upc']) {
+          let objects = [];
+          try {
+            objects = await searchSquareCatalogObjects({
+              objectTypes: ['ITEM_VARIATION'],
+              exactAttribute: { name: attribute, value },
+              limit: 5,
+              env: config,
+              fetchImpl,
+            });
+          } catch {
+            continue; // attribute unsupported or a transient error — keep going
+          }
+          for (const variation of objects) {
+            if (variation?.type !== 'ITEM_VARIATION') continue;
+            const data = variation.item_variation_data ?? {};
+            const candidate = barcodeKeys(data.sku, data.upc);
+            if ([...incoming].some(key => candidate.has(key))) {
+              return {
+                squareItemId: data.item_id ?? null,
+                squareVariationId: variation.id,
+                name: data.name ?? name,
+                sku: data.sku ?? '',
+                matchedBy: 'barcode',
+              };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   async function createCatalogItem({
     name,
     description = '',
@@ -441,10 +513,49 @@ export function createCommandCenterService({
     upc = '',
     categoryName = '',
     initialQuantity = null,
+    forceCreate = false,
     actor = null,
   } = {}) {
     const config = await requireSquareInventoryConfig();
     const locationId = config.locationId || config.externalLocationId;
+
+    // Guard against duplicates. Unless the owner explicitly forces a new record,
+    // an item already in the register (same barcode or name) is updated in place
+    // so the same product never becomes two items.
+    if (!forceCreate) {
+      await syncSquare({ force: false }).catch(() => {});
+      const existing = await findExistingCatalogItem({ name, sku, upc, config });
+      if (existing?.squareVariationId) {
+        const updated = await updateCatalogItem({
+          squareVariationId: existing.squareVariationId,
+          description: String(description || '').trim() ? description : undefined,
+          priceCents: Number.isFinite(Number(priceCents)) ? priceCents : undefined,
+          upc: String(upc || '').trim() ? upc : undefined,
+          categoryName: String(categoryName || '').trim() ? categoryName : undefined,
+          actor,
+        });
+        await store.recordAuditLog?.({
+          action: 'command_center.square_item_create_deduped',
+          actor: actor || { id: 'command-center', role: 'system' },
+          targetType: 'square_catalog_item',
+          targetId: existing.squareItemId,
+          metadata: { requestedName: name, matchedBy: existing.matchedBy, matchedName: existing.name, initialQuantity },
+        });
+        return {
+          ...updated,
+          alreadyExisted: true,
+          matchedBy: existing.matchedBy,
+          action: 'updated_existing',
+          message: existing.matchedBy === 'barcode'
+            ? `That barcode is already in the register as "${existing.name}", so it was updated instead of creating a duplicate.`
+            : `An item named "${existing.name}" is already in the register, so it was updated instead of creating a duplicate.`,
+          stockNote: Number.isFinite(Number(initialQuantity))
+            ? 'On-hand count was left unchanged to avoid overwriting an existing count — set it explicitly if this delivery added stock.'
+            : null,
+        };
+      }
+    }
+
     const resolvedSku = String(sku || '').trim() || await nextItemNumber();
     const categoryId = await resolveSquareCategoryId(categoryName, config);
     const { object } = await upsertSquareCatalogObject({
@@ -1699,6 +1810,27 @@ export async function shrinkPdfBuffer(buffer, { pageStart = 1 } = {}) {
 // "Thing - Regular" in lists. Drop that noise for display.
 function cleanItemName(value) {
   return String(value || '').replace(/\s*[-–—]\s*Regular$/i, '').replace(/\s*\(Regular\)$/i, '').trim();
+}
+
+// Normalize a product name for duplicate detection: case-insensitive,
+// whitespace-collapsed, with a trailing "- Regular" variation label removed.
+function dedupeNameKey(value) {
+  return cleanItemName(value).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Barcodes travel with inconsistent leading zeros and live in the SKU field on
+// some items and the UPC field on others. Reduce every candidate to comparable
+// keys: the trimmed raw string plus its 8–14 digit core.
+function barcodeKeys(...values) {
+  const keys = new Set();
+  for (const value of values) {
+    const raw = String(value || '').trim();
+    if (!raw) continue;
+    keys.add(raw.toLowerCase());
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length >= 8 && digits.length <= 14) keys.add(digits);
+  }
+  return keys;
 }
 
 function isUuid(value) {

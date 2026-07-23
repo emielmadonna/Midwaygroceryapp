@@ -576,3 +576,68 @@ test('square API pass-through guards paths and read-only mode', async () => {
   await assert.rejects(service.callSquareApi({ method: 'GET', path: 'https://evil.example/v2/x' }), error => error.code === 'SQUARE_PATH_INVALID');
   await assert.rejects(service.callSquareApi({ method: 'PATCH', path: '/v2/payments' }), error => error.code === 'SQUARE_METHOD_INVALID');
 });
+
+test('create_square_item updates an existing item instead of duplicating when the barcode matches', async () => {
+  // The register already carries this item with the barcode in the SKU field.
+  // The delivery presents the SAME barcode in the UPC field under a shorter name
+  // — the exact shape that previously spawned duplicates.
+  const existingItem = {
+    id: 'ITEM_TAKIS', type: 'ITEM', updated_at: '2026-07-01T00:00:00Z',
+    item_data: {
+      name: 'Takis 3.25z Fuego 20 3.25z',
+      variations: [{
+        id: 'VAR_TAKIS', type: 'ITEM_VARIATION',
+        item_variation_data: { item_id: 'ITEM_TAKIS', name: 'Regular', sku: '5840763', upc: '757528048075', price_money: { amount: 349, currency: 'USD' } },
+      }],
+    },
+  };
+  const variation = { id: 'VAR_TAKIS', type: 'ITEM_VARIATION', item_variation_data: { item_id: 'ITEM_TAKIS', name: 'Regular', sku: '5840763', upc: '757528048075' } };
+  const posted = [];
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async (url, options = {}) => {
+      const body = options.body ? JSON.parse(options.body) : {};
+      if (url.includes('/v2/catalog/list')) return new Response(JSON.stringify({ objects: [existingItem] }), { status: 200 });
+      if (url.includes('/v2/inventory/counts/batch-retrieve')) return new Response(JSON.stringify({ counts: [{ catalog_object_id: 'VAR_TAKIS', location_id: 'MIDWAY', state: 'IN_STOCK', quantity: '1' }] }), { status: 200 });
+      if (url.includes('/v2/catalog/search')) return new Response(JSON.stringify({ objects: [variation] }), { status: 200 });
+      if (url.includes('/v2/catalog/object/VAR_TAKIS')) return new Response(JSON.stringify({ object: variation, related_objects: [existingItem] }), { status: 200 });
+      if (url.includes('/v2/catalog/object')) { posted.push(body.object); return new Response(JSON.stringify({ catalog_object: existingItem }), { status: 200 }); }
+      if (url.includes('/v2/inventory/changes/batch-create')) return new Response(JSON.stringify({ counts: [] }), { status: 200 });
+      throw new Error(`unexpected url ${url}`);
+    },
+  });
+
+  const result = await service.createCatalogItem({ name: 'Takis Fuego', upc: '757528048075', priceCents: 389, initialQuantity: 20 });
+
+  assert.equal(result.alreadyExisted, true, 'a matching barcode must not create a new item');
+  assert.equal(result.matchedBy, 'barcode');
+  assert.equal(result.squareItemId, 'ITEM_TAKIS');
+  assert.ok(!posted.some(object => object?.id === '#new-item'), 'no brand-new item object should be posted to Square');
+});
+
+test('create_square_item still creates a genuinely new product', async () => {
+  const posted = [];
+  const service = createCommandCenterService({
+    store: makeStore(),
+    squareConfig: async () => ({ accessToken: 'square-token', locationId: 'MIDWAY', environment: 'sandbox' }),
+    fetchImpl: async (url, options = {}) => {
+      const body = options.body ? JSON.parse(options.body) : {};
+      if (url.includes('/v2/catalog/list')) return new Response(JSON.stringify({ objects: [] }), { status: 200 });
+      if (url.includes('/v2/inventory/counts/batch-retrieve')) return new Response(JSON.stringify({ counts: [] }), { status: 200 });
+      if (url.includes('/v2/inventory/changes/batch-create')) return new Response(JSON.stringify({ counts: [] }), { status: 200 });
+      if (url.includes('/v2/catalog/search')) return new Response(JSON.stringify({ objects: [] }), { status: 200 });
+      if (url.includes('/v2/catalog/object')) {
+        posted.push(body.object);
+        return new Response(JSON.stringify({ catalog_object: { id: 'ITEM_NEW', type: 'ITEM', item_data: { name: 'Zebra Gum', variations: [{ id: 'VAR_NEW', type: 'ITEM_VARIATION', item_variation_data: { sku: '1001', upc: '111122223333', price_money: { amount: 150, currency: 'USD' } } }] } } }), { status: 200 });
+      }
+      throw new Error(`unexpected url ${url}`);
+    },
+  });
+
+  const result = await service.createCatalogItem({ name: 'Zebra Gum', upc: '111122223333', priceCents: 150 });
+
+  assert.ok(!result.alreadyExisted, 'a brand-new product should be created, not deduped');
+  assert.equal(result.squareItemId, 'ITEM_NEW');
+  assert.ok(posted.some(object => object?.id === '#new-item'), 'a new item object must be posted to Square');
+});
