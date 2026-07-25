@@ -2456,6 +2456,9 @@ export function createApiRouter({
       requireAdminRole(req.adminUser, ['owner']);
 
       customerSessionId = `admin-${req.adminUser.id}`;
+      // Admin payment links are sent to the guest to pay later, so the site
+      // needs to stay held long enough for that — not the 15 min a live
+      // self-checkout gets. The owner can Release the hold early any time.
       hold = await resolvedStore.hold({
         siteId: req.body.siteId,
         siteIds: req.body.siteIds,
@@ -2464,6 +2467,7 @@ export function createApiRouter({
         guests: req.body.guests,
         vehicles: req.body.vehicles,
         customerSessionId,
+        ttlMinutes: 24 * 60,
       });
       const bookingCode = `MW-${hold.id.slice(0, 6).toUpperCase()}`;
       const squareConfig = await squareProviderConfig();

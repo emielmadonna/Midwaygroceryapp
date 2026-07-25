@@ -940,6 +940,7 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
   const [editing, setEditing] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [confirming, setConfirming] = useState(null);
+  const [linkResult, setLinkResult] = useState(null);
   const [localError, setLocalError] = useState('');
   const [working, setWorking] = useState(false);
   const visible = bookings.filter(booking => {
@@ -966,6 +967,9 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
     setLocalError('');
     try {
       const form = new FormData(event.currentTarget);
+      // Which submit button was pressed: 'link' (create + send payment link),
+      // 'confirm' (record as already paid), or 'block'.
+      const intent = event.nativeEvent?.submitter?.value || (createMode === 'block' ? 'block' : 'link');
       const siteIds = form.getAll('siteIds').filter(Boolean);
       if (!siteIds.length) throw new Error('Choose at least one site.');
       const payload = {
@@ -974,19 +978,29 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
         customer: { name: form.get('customerName'), phone: form.get('customerPhone'), email: form.get('customerEmail') },
         notes: form.get('notes'),
       };
-      if (createMode === 'block') {
+      if (intent === 'block') {
         // Block each selected site over the same window (one blocked booking per site).
         for (const siteId of siteIds) {
           await api(`/admin/rv-sites/${encodeURIComponent(siteId)}/block`, { method: 'POST', body: { startDate: payload.startDate, endDate: payload.endDate, reason: form.get('reason') } });
         }
-      } else if (createMode === 'payment') {
-        const result = await api('/admin/bookings/checkout', { method: 'POST', body: payload });
-        if (!result.checkout?.checkoutUrl) throw new Error('Square did not return a payment link.');
-        window.open(result.checkout.checkoutUrl, '_blank', 'noopener,noreferrer');
-      } else {
+        setCreateMode('');
+      } else if (intent === 'confirm') {
         await api('/admin/bookings', { method: 'POST', body: { ...payload, status: 'confirmed' } });
+        setCreateMode('');
+      } else {
+        // Create the held booking and hand the owner a shareable Square link —
+        // do NOT open it here (that would look like the owner is checking out).
+        const result = await api('/admin/bookings/checkout', { method: 'POST', body: payload });
+        const url = result.checkout?.checkoutUrl;
+        if (!url) throw new Error('Square did not return a payment link.');
+        setCreateMode('');
+        setLinkResult({
+          bookingCode: result.bookingCode,
+          url,
+          amountCents: result.hold?.quote?.totalCents ?? null,
+          customer: payload.customer,
+        });
       }
-      setCreateMode('');
       await onRefresh();
     } catch (bookingError) {
       setLocalError(bookingError.message);
@@ -1013,12 +1027,13 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
     catch (siteError) { setLocalError(siteError.message); }
   };
   return <div className="cc-page">
-    <div className="cc-page-intro"><div><p className="cc-kicker">RV park</p><h2>Today’s guests, at a glance.</h2><p>Create stays, collect payment, manage sites, and review guest documents in one calm view.</p></div><div>{user?.role === 'owner' && <button className="cc-button cc-button--soft" onClick={() => setCreateMode('manual')}><Icon name="plus" /> New booking</button>}<button className="cc-button cc-button--dark" onClick={() => onAsk('Summarize today’s RV arrivals and departures. Flag anything unusual.')}><Icon name="spark" /> Ask about bookings</button></div></div>
+    <div className="cc-page-intro"><div><p className="cc-kicker">RV park</p><h2>Today’s guests, at a glance.</h2><p>Create stays, collect payment, manage sites, and review guest documents in one calm view.</p></div><div>{user?.role === 'owner' && <button className="cc-button cc-button--soft" onClick={() => setCreateMode('booking')}><Icon name="plus" /> New booking</button>}<button className="cc-button cc-button--dark" onClick={() => onAsk('Summarize today’s RV arrivals and departures. Flag anything unusual.')}><Icon name="spark" /> Ask about bookings</button></div></div>
     {localError && <div className="cc-inline-alert"><Icon name="alert" />{localError}<button onClick={() => setLocalError('')}>×</button></div>}
     <div className="cc-booking-summary"><Metric label="Arriving today" value={overview?.dashboard?.arrivals?.length || 0} detail="Guests to welcome" icon="arrowDown" tone="green" /><Metric label="Leaving today" value={overview?.dashboard?.departures?.length || 0} detail="Sites turning over" icon="arrowUp" tone="blue" /><Metric label="Upcoming stays" value={bookings.filter(item => ['confirmed', 'paid', 'hold'].includes(item.status)).length} detail="Active reservations" icon="calendar" tone="violet" /></div>
-    <div className="cc-booking-layout"><section className="cc-panel"><div className="cc-panel__heading"><div><p className="cc-kicker">Reservations</p><h3>Find a booking</h3></div>{user?.role === 'owner' && <button className="cc-row-action" onClick={() => setCreateMode('payment')}>Send payment link</button>}</div><div className="cc-booking-tools"><label><Icon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Guest, booking code, phone, or site" /></label><select value={status} onChange={event => setStatus(event.target.value)}><option value="active">Active stays</option><option value="all">All bookings</option><option value="confirmed">Confirmed</option><option value="paid">Paid</option><option value="pending">Pending payment</option><option value="canceled">Canceled</option><option value="refunded">Refunded</option><option value="blocked">Blocked dates</option></select></div><div className="cc-booking-list">{visible.length ? visible.slice(0, 100).map(booking => <button key={booking.id || booking.bookingCode} onClick={() => openBooking(booking)}><div className="cc-date-block"><strong>{shortMonth(booking.startDate)}</strong><span>{dayNumber(booking.startDate)}</span></div><div><strong>{booking.customerName || booking.customer?.name || (booking.status === 'blocked' ? 'Blocked dates' : 'Guest')}</strong><span>{siteLabel(booking, sites)} · {shortDate(booking.startDate)}–{shortDate(booking.endDate)}</span><small>{booking.bookingCode} {booking.totalCents !== undefined ? `· ${money(booking.totalCents)}` : ''}</small></div><StatusPill tone={bookingTone(booking.status)}>{friendlyStatus(booking.status)}</StatusPill><Icon name="arrow" /></button>) : <EmptyState icon="calendar" title="No bookings found" text="Try another search or status." />}</div></section>
+    <div className="cc-booking-layout"><section className="cc-panel"><div className="cc-panel__heading"><div><p className="cc-kicker">Reservations</p><h3>Find a booking</h3></div>{user?.role === 'owner' && <button className="cc-row-action" onClick={() => setCreateMode('booking')}>New booking + link</button>}</div><div className="cc-booking-tools"><label><Icon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Guest, booking code, phone, or site" /></label><select value={status} onChange={event => setStatus(event.target.value)}><option value="active">Active stays</option><option value="all">All bookings</option><option value="confirmed">Confirmed</option><option value="paid">Paid</option><option value="pending">Pending payment</option><option value="canceled">Canceled</option><option value="refunded">Refunded</option><option value="blocked">Blocked dates</option></select></div><div className="cc-booking-list">{visible.length ? visible.slice(0, 100).map(booking => <button key={booking.id || booking.bookingCode} onClick={() => openBooking(booking)}><div className="cc-date-block"><strong>{shortMonth(booking.startDate)}</strong><span>{dayNumber(booking.startDate)}</span></div><div><strong>{booking.customerName || booking.customer?.name || (booking.status === 'blocked' ? 'Blocked dates' : 'Guest')}</strong><span>{siteLabel(booking, sites)} · {shortDate(booking.startDate)}–{shortDate(booking.endDate)}</span><small>{booking.bookingCode} {booking.totalCents !== undefined ? `· ${money(booking.totalCents)}` : ''}</small></div><StatusPill tone={bookingTone(booking.status)}>{friendlyStatus(booking.status)}</StatusPill><Icon name="arrow" /></button>) : <EmptyState icon="calendar" title="No bookings found" text="Try another search or status." />}</div></section>
     <section className="cc-panel cc-site-panel"><div className="cc-panel__heading"><div><p className="cc-kicker">RV sites</p><h3>Site availability</h3></div>{user?.role === 'owner' && <button className="cc-row-action" onClick={() => setCreateMode('block')}>Block dates</button>}</div><div className="cc-site-grid">{sites.map(site => <article key={site.id}><span><strong>{site.name || site.siteNumber || site.id}</strong><small>{[site.type, site.shade].filter(Boolean).join(' · ') || 'RV site'}</small></span><StatusPill tone={site.status === 'active' || site.status === 'available' ? 'success' : 'warning'}>{friendlyStatus(site.status || 'active')}</StatusPill>{user?.role === 'owner' && <select aria-label={`Change ${site.name || site.id} status`} value={site.status || 'active'} onChange={event => changeSiteStatus(site, event.target.value)}><option value="active">Open</option><option value="maintenance">Maintenance</option><option value="inactive">Closed</option></select>}</article>)}</div></section></div>
-    {createMode && <Modal title={createMode === 'block' ? 'Block a site' : createMode === 'payment' ? 'Create booking and payment link' : 'Create a booking'} onClose={() => { setCreateMode(''); setLocalError(''); }}><BookingCreateForm mode={createMode} sites={sites} onSubmit={createBooking} onClose={() => setCreateMode('')} working={working} error={localError} /></Modal>}
+    {createMode && <Modal title={createMode === 'block' ? 'Block a site' : 'New booking'} onClose={() => { setCreateMode(''); setLocalError(''); }}><BookingCreateForm mode={createMode} sites={sites} onSubmit={createBooking} onClose={() => setCreateMode('')} working={working} error={localError} /></Modal>}
+    {linkResult && <Modal title="Payment link ready" onClose={() => setLinkResult(null)}><PaymentLinkShare result={linkResult} onClose={() => setLinkResult(null)} /></Modal>}
     {selected && <Modal title={`Booking ${selected.bookingCode}`} onClose={() => setSelected(null)}><div className="cc-booking-detail"><div className="cc-booking-detail__hero"><div className="cc-date-block"><strong>{shortMonth(selected.startDate)}</strong><span>{dayNumber(selected.startDate)}</span></div><span><StatusPill tone={bookingTone(selected.status)}>{friendlyStatus(selected.status)}</StatusPill><h3>{selected.customerName || selected.customer?.name || 'Guest'}</h3><p>{siteLabel(selected, sites)} · {shortDate(selected.startDate)} to {shortDate(selected.endDate)}</p></span></div><dl><div><dt>Total</dt><dd>{money(selected.totalCents)}</dd></div><div><dt>Guests</dt><dd>{selected.guests || 1}</dd></div><div><dt>Vehicles</dt><dd>{selected.vehicles ?? 1}</dd></div><div><dt>Contact</dt><dd>{selected.customerPhone || selected.customer?.phone || selected.customerEmail || selected.customer?.email || 'Not provided'}</dd></div></dl><section><h4>Guest documents</h4>{documents.length ? documents.map(document => <article className="cc-document" key={document.id}><span><Icon name="file" /><b>{document.fileName || document.type || 'Driver license'}<small>{friendlyStatus(document.status || 'pending')}</small></b></span><div>{(document.signedUrl || document.url) && <a className="cc-row-action" href={document.signedUrl || document.url} target="_blank" rel="noreferrer">View</a>}<button className="cc-row-action" onClick={() => reviewDocument(document.id, 'verified')}>Verify</button><button className="cc-row-action is-danger" onClick={() => reviewDocument(document.id, 'rejected')}>Reject</button></div></article>) : <p className="cc-muted">No guest documents uploaded.</p>}</section>{user?.role === 'owner' && <footer>{['hold', 'pending', 'draft'].includes(selected.status) && <button className="cc-button cc-button--primary" onClick={() => setConfirming({ action: 'release', booking: selected, reason: '' })}>Release hold</button>}{['confirmed', 'paid'].includes(selected.status) && <button className="cc-button cc-button--soft" onClick={() => { setEditing(selected); setSelected(null); }}>Edit stay</button>}{['confirmed', 'paid'].includes(selected.status) && <button className="cc-button cc-button--ghost" onClick={() => setConfirming({ action: 'cancel', booking: selected, reason: '' })}>Cancel booking</button>}{['confirmed', 'paid'].includes(selected.status) && selected.squarePaymentId && <button className="cc-button cc-button--danger" onClick={() => setConfirming({ action: 'refund', booking: selected, reason: '' })}>Issue refund</button>}</footer>}</div></Modal>}
     {editing && <BookingEditModal booking={editing} sites={sites} api={api} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await onRefresh(); }} />}
     {confirming && <Modal title={confirming.action === 'refund' ? 'Confirm Square refund' : confirming.action === 'release' ? 'Release this hold?' : 'Cancel this booking?'} onClose={() => setConfirming(null)}><div className="cc-confirm-action"><Icon name="shield" /><h3>{confirming.action === 'refund' ? `Refund ${money(confirming.booking.totalCents)}?` : confirming.action === 'release' ? `Release ${confirming.booking.bookingCode}?` : `Cancel ${confirming.booking.bookingCode}?`}</h3><p>{confirming.action === 'refund' ? 'This sends money back through Square and records the result. It cannot be undone here.' : confirming.action === 'release' ? 'The site opens back up right away. Use this for an abandoned or unpaid hold — no payment was taken.' : 'The site dates will become available again. This does not automatically issue a refund.'}</p>{localError && <div className="cc-form-error">{localError}</div>}<label>Reason<textarea value={confirming.reason} onChange={event => setConfirming(current => ({ ...current, reason: event.target.value }))} rows="2" placeholder="Why is this happening?" /></label><div><button className="cc-button cc-button--ghost" onClick={() => setConfirming(null)}>Go back</button><button className={`cc-button ${confirming.action === 'refund' ? 'cc-button--danger' : 'cc-button--primary'}`} onClick={runBookingAction} disabled={working}>{working ? 'Working…' : confirming.action === 'refund' ? 'Yes, issue refund' : confirming.action === 'release' ? 'Yes, release hold' : 'Yes, cancel booking'}</button></div></div></Modal>}
@@ -1037,9 +1052,41 @@ function BookingCreateForm({ mode, sites, onSubmit, onClose, working, error }) {
     const openSite = site.status === 'active' || site.status === 'available' || !site.status;
     return <label key={site.id} className={`cc-site-chip${isOn ? ' is-on' : ''}${openSite ? '' : ' is-closed'}`}><input type="checkbox" name="siteIds" value={site.id} checked={isOn} onChange={() => toggle(site.id)} /><strong>{site.name || site.siteNumber || site.id}</strong><small>{openSite ? (site.nightlyPriceCents ? money(site.nightlyPriceCents) + '/night' : friendlyStatus(site.status || 'active')) : friendlyStatus(site.status || 'closed')}</small></label>;
   })}</div></div> : null;
-  return <form className="cc-simple-form" onSubmit={onSubmit}>{mode === 'payment' && <p>Midway will hold the selected sites and open a secure Square payment link you can send to the guest.</p>}{mode === 'block' && <p>Use this for maintenance, owner stays, or any dates that should not be bookable.</p>}{error && <div className="cc-form-error">{error}</div>}
+  return <form className="cc-simple-form" onSubmit={onSubmit}>{mode !== 'block' && <p>Pick the sites, add the guest, then create a payment link to text or email them. The site is held for 24 hours (or until they pay). Already paid at the counter? Use “Already paid.”</p>}{mode === 'block' && <p>Use this for maintenance, owner stays, or any dates that should not be bookable.</p>}{error && <div className="cc-form-error">{error}</div>}
     <div className="cc-site-picker"><div className="cc-site-picker__head"><span>{mode === 'block' ? 'Sites to block' : 'Sites for this booking'}</span><span className="cc-site-picker__count">{selected.size ? `${selected.size} selected${nightlyCents ? ` · ${money(nightlyCents)}/night` : ''}` : 'Pick one or more'}</span></div>{renderGroup('RV sites', rvSites)}{renderGroup('Tent sites', tentSites)}{!sites.length && <p className="cc-muted">No sites available.</p>}</div>
-    <div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={tomorrow} required /></label><label>Departure<input type="date" name="endDate" defaultValue={nextDay} required /></label></div>{mode === 'block' ? <label>Reason<input name="reason" required placeholder="Example: electrical repair" /></label> : <><label>Guest name<input name="customerName" required placeholder="Full name" /></label><div className="cc-form-pair"><label>Phone<input name="customerPhone" type="tel" /></label><label>Email<input name="customerEmail" type="email" /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue="1" /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue="1" /></label></div><label>Notes<textarea name="notes" rows="2" /></label></>}<div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button className="cc-button cc-button--primary" disabled={working || !selected.size}>{working ? 'Saving…' : mode === 'payment' ? 'Create payment link' : mode === 'block' ? `Block ${selected.size || ''} site${selected.size === 1 ? '' : 's'}`.trim() : 'Create booking'}</button></div></form>;
+    <div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={tomorrow} required /></label><label>Departure<input type="date" name="endDate" defaultValue={nextDay} required /></label></div>{mode === 'block' ? <label>Reason<input name="reason" required placeholder="Example: electrical repair" /></label> : <><label>Guest name<input name="customerName" required placeholder="Full name" /></label><div className="cc-form-pair"><label>Phone<input name="customerPhone" type="tel" placeholder="For texting the link" /></label><label>Email<input name="customerEmail" type="email" placeholder="For emailing the link" /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue="1" /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue="1" /></label></div><label>Notes<textarea name="notes" rows="2" /></label></>}
+    {mode === 'block'
+      ? <div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button type="submit" value="block" className="cc-button cc-button--primary" disabled={working || !selected.size}>{working ? 'Saving…' : `Block ${selected.size || ''} site${selected.size === 1 ? '' : 's'}`.trim()}</button></div>
+      : <div className="cc-create-actions"><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button type="submit" value="confirm" className="cc-button cc-button--soft" disabled={working || !selected.size}>{working ? 'Working…' : 'Already paid'}</button><button type="submit" value="link" className="cc-button cc-button--primary" disabled={working || !selected.size}>{working ? 'Working…' : 'Create & get payment link'}</button></div>}
+  </form>;
+}
+
+function PaymentLinkShare({ result, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const { url, bookingCode, amountCents, customer = {} } = result;
+  const amount = amountCents != null ? money(amountCents) : '';
+  const firstName = String(customer.name || '').trim().split(/\s+/)[0];
+  const message = `Hi${firstName ? ` ${firstName}` : ''}, here's your Midway reservation${amount ? ` (${amount})` : ''}. Tap to pay and lock in your site: ${url}`;
+  const phone = String(customer.phone || '').replace(/[^\d+]/g, '');
+  const smsHref = phone ? `sms:${phone}?&body=${encodeURIComponent(message)}` : null;
+  const emailHref = customer.email ? `mailto:${customer.email}?subject=${encodeURIComponent('Your Midway reservation')}&body=${encodeURIComponent(message)}` : null;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { const field = document.getElementById('cc-link-field'); field?.select?.(); document.execCommand?.('copy'); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+  };
+  return <div className="cc-link-share">
+    <div className="cc-link-share__mark"><Icon name="check" /></div>
+    <h3>Booking {bookingCode} is holding{amount ? ` · ${amount}` : ''}</h3>
+    <p>Send this secure Square link to the guest — don’t open it yourself. The site stays held for 24 hours or until they pay, then the booking confirms automatically.</p>
+    <div className="cc-link-share__url"><input id="cc-link-field" readOnly value={url} onFocus={event => event.target.select()} /><button type="button" className="cc-button cc-button--primary" onClick={copy}>{copied ? 'Copied!' : 'Copy link'}</button></div>
+    <div className="cc-link-share__actions">
+      {smsHref && <a className="cc-button cc-button--soft" href={smsHref}><Icon name="message" /> Text to guest</a>}
+      {emailHref && <a className="cc-button cc-button--soft" href={emailHref}><Icon name="file" /> Email to guest</a>}
+      <a className="cc-button cc-button--ghost" href={url} target="_blank" rel="noreferrer">Preview</a>
+    </div>
+    {!smsHref && !emailHref && <p className="cc-muted">Add a phone or email next time to text or email the link in one tap.</p>}
+    <button type="button" className="cc-button cc-button--ghost cc-link-share__done" onClick={onClose}>Done</button>
+  </div>;
 }
 
 function BookingEditModal({ booking, sites, api, onClose, onSaved }) {

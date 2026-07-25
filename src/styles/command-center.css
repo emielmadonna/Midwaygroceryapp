@@ -349,6 +349,22 @@ svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .cc-site-chip:hover { border-color: #b9c9bf; }
 .cc-site-chip.is-on { border-color: var(--green); background: rgba(74,148,110,.1); box-shadow: inset 0 0 0 1px var(--green); }
 .cc-site-chip.is-closed { opacity: .55; }
+
+/* New booking: two submit actions (already paid / create + send link) */
+.cc-create-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.cc-create-actions .cc-button--primary { margin-left: auto; }
+
+/* Payment link share panel */
+.cc-link-share { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.cc-link-share__mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: rgba(74,148,110,.14); color: var(--green); }
+.cc-link-share__mark svg { width: 24px; height: 24px; }
+.cc-link-share h3 { margin: 2px 0 0; font-size: 18px; color: var(--ink); }
+.cc-link-share p { margin: 0; max-width: 420px; color: var(--ink-soft); font-size: 13px; line-height: 1.5; }
+.cc-link-share__url { display: flex; width: 100%; gap: 8px; margin-top: 4px; }
+.cc-link-share__url input { flex: 1; min-width: 0; height: 44px; padding: 0 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper-deep); color: var(--ink); font-size: 12px; font-family: var(--mono, monospace); }
+.cc-link-share__url .cc-button { flex: 0 0 auto; }
+.cc-link-share__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; }
+.cc-link-share__done { margin-top: 4px; }
 .cc-mobile-nav { display: none; }
 
 .cc-login { min-height: 100vh; display: grid; grid-template-columns: 1.1fr .9fr; background: var(--green); }
