@@ -166,6 +166,37 @@ test('memory booking store expires abandoned pending bookings', async () => {
   assert.deepEqual(available.map(site => site.id), ['site-1', 'site-2']);
 });
 
+test('memory booking store frees a stale hold even when its hold row is gone', async () => {
+  const store = createMemoryBookingStore({ sites, now: () => now });
+  const hold = await store.createHold({
+    siteId: 'site-1',
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    customerSessionId: 'browser-1',
+    ttlMinutes: 1,
+  });
+  const booking = await store.createPendingBooking({
+    holdId: hold.id,
+    customer: { name: 'Guest One', phone: '555-0100' },
+    bookingCode: 'MW-STALE1',
+  });
+  assert.equal(booking.status, 'hold');
+
+  // Simulate an orphaned pending booking: the hold row that linked it is gone,
+  // so only the booking's own expires_at can release the site.
+  const snapshot = await store.listAvailability({ startDate: '2026-05-15', endDate: '2026-05-18', now });
+  assert.ok(!snapshot.some(site => site.id === 'site-1'), 'site is held before expiry');
+  store.state?.holds?.splice(0, store.state.holds.length);
+
+  await store.expireHolds({ now: '2026-05-12T12:05:00.000Z' });
+  const available = await store.listAvailability({
+    startDate: '2026-05-15',
+    endDate: '2026-05-18',
+    now: '2026-05-12T12:05:00.000Z',
+  });
+  assert.deepEqual(available.map(site => site.id), ['site-1', 'site-2']);
+});
+
 test('memory booking store records Square webhook events idempotently', async () => {
   const store = createMemoryBookingStore({ sites, now: () => now });
   const first = await store.recordSquareEvent({

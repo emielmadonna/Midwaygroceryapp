@@ -1305,6 +1305,7 @@ export function createSupabaseBookingStore({ supabase, now = () => new Date(), e
 function expireMemoryRecords(state, now) {
   const expiredHolds = [];
   const expiredBookings = [];
+  const expiredBookingIds = new Set();
 
   for (const hold of state.holds) {
     if (hold.status === 'active' && !isActiveHold(hold, now)) {
@@ -1320,8 +1321,21 @@ function expireMemoryRecords(state, now) {
         booking.status = 'expired';
         booking.updatedAt = now.toISOString();
         expiredBookings.push(clone(booking));
+        expiredBookingIds.add(booking.id);
       }
     }
+  }
+
+  // Belt-and-suspenders: release any pending booking whose own hold window has
+  // lapsed, even if its hold row is missing or the link was lost. A stale
+  // 'hold' booking keeps blocking its site until this flips it to 'expired'.
+  for (const booking of state.bookings) {
+    if (booking.status !== 'hold' || expiredBookingIds.has(booking.id)) continue;
+    if (!booking.expiresAt || new Date(booking.expiresAt) > now) continue;
+    booking.status = 'expired';
+    booking.updatedAt = now.toISOString();
+    expiredBookings.push(clone(booking));
+    expiredBookingIds.add(booking.id);
   }
 
   return { holds: expiredHolds, bookings: expiredBookings };
@@ -1346,7 +1360,7 @@ async function expireSupabaseRecords(supabase, now) {
   if (convertedHoldError) throw convertedHoldError;
 
   const bookingIds = (convertedHolds ?? []).map(hold => hold.converted_booking_id);
-  let expiredBookings = [];
+  const expiredBookingsById = new Map();
   if (bookingIds.length > 0) {
     const { data, error } = await supabase
       .from('rv_bookings')
@@ -1355,7 +1369,7 @@ async function expireSupabaseRecords(supabase, now) {
       .in('id', bookingIds)
       .select('*');
     if (error) throw error;
-    expiredBookings = data ?? [];
+    for (const row of data ?? []) expiredBookingsById.set(row.id, row);
 
     const { error: holdError } = await supabase
       .from('rv_booking_holds')
@@ -1364,9 +1378,23 @@ async function expireSupabaseRecords(supabase, now) {
     if (holdError) throw holdError;
   }
 
+  // Belt-and-suspenders: release any pending booking whose own hold window has
+  // lapsed, independent of its hold row. This is what actually frees a site
+  // after an abandoned or failed checkout and is backed by the
+  // rv_bookings (status, expires_at) WHERE status='hold' index.
+  const { data: staleBookings, error: staleError } = await supabase
+    .from('rv_bookings')
+    .update({ status: 'expired', updated_at: isoNow })
+    .eq('status', 'hold')
+    .not('expires_at', 'is', null)
+    .lte('expires_at', isoNow)
+    .select('*');
+  if (staleError) throw staleError;
+  for (const row of staleBookings ?? []) expiredBookingsById.set(row.id, row);
+
   return {
     holds: [...(activeHolds ?? []), ...(convertedHolds ?? [])].map(fromSupabaseHold),
-    bookings: expiredBookings.map(fromSupabaseBooking),
+    bookings: [...expiredBookingsById.values()].map(fromSupabaseBooking),
   };
 }
 

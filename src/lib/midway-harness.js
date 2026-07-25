@@ -363,6 +363,9 @@ export function createMidwayHarness({
     async createAdminBooking(input) {
       return resolvedBookingStore.createAdminBooking(input);
     },
+    async expireHolds(input) {
+      return resolvedBookingStore.expireHolds(input);
+    },
     async updateBookingStatus(input) {
       return resolvedBookingStore.updateBookingStatus(input);
     },

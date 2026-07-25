@@ -245,6 +245,35 @@ export function createApiRouter({
   router.get('/cron/qbo-daily-sales', runQuickBooksDailySalesCron);
   router.post('/cron/qbo-daily-sales', runQuickBooksDailySalesCron);
 
+  const runExpireHoldsCron = async (req, res) => {
+    try {
+      requireCronAuth(req, env);
+      // Release sites from abandoned or failed checkouts. Availability reads
+      // already do this on demand; this backstop clears stale holds even when
+      // nobody is looking at the command center.
+      const result = await resolvedStore.expireHolds?.() ?? { holds: [], bookings: [] };
+      const releasedBookings = result.bookings?.length ?? 0;
+      if (releasedBookings > 0) {
+        await resolvedStore.recordAuditLog?.({
+          action: 'booking.holds_expired',
+          actor: { id: 'cron', role: 'system' },
+          targetType: 'rv_booking',
+          targetId: 'expire-holds',
+          metadata: {
+            releasedBookings,
+            expiredHolds: result.holds?.length ?? 0,
+            bookingCodes: (result.bookings ?? []).map(booking => booking.bookingCode).filter(Boolean),
+          },
+        });
+      }
+      res.json({ ok: true, data: { releasedBookings, expiredHolds: result.holds?.length ?? 0 } });
+    } catch (error) {
+      sendApiError(res, error, error.code || 'EXPIRE_HOLDS_CRON_FAILED', error.statusCode || 502);
+    }
+  };
+  router.get('/cron/expire-holds', runExpireHoldsCron);
+  router.post('/cron/expire-holds', runExpireHoldsCron);
+
   router.post('/admin/auth/login', async (req, res) => {
     try {
       resolvedStore.requireFeature?.('admin.auth.sessions');

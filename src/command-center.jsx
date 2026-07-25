@@ -51,6 +51,7 @@ function App() {
   const [composerText, setComposerText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(Boolean(token));
+  const [overviewSyncing, setOverviewSyncing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [syncProgress, setSyncProgress] = useState(null);
   const [error, setError] = useState('');
@@ -155,6 +156,18 @@ function App() {
     return payload.data;
   };
 
+  const refreshOverviewLive = async () => {
+    // Pull live Square numbers without blocking first paint. The initial overview
+    // renders from stored data (fast); this swaps in fresh figures when ready.
+    setOverviewSyncing(true);
+    try {
+      const fresh = await api('/admin/command-center/overview');
+      setOverview(fresh);
+      setInventory(fresh?.allInventory || fresh?.inventory || []);
+    } catch { /* keep the stored snapshot on a live-sync hiccup */ }
+    finally { setOverviewSyncing(false); }
+  };
+
   const refresh = async ({ quiet = false } = {}) => {
     if (!token) return;
     if (!quiet) setLoading(true);
@@ -162,7 +175,7 @@ function App() {
     try {
       const [me, commandData, conversationData, bookingData, siteData, reconciliationData, salesData, aiStatus] = await Promise.all([
         api('/admin/me'),
-        api('/admin/command-center/overview'),
+        api('/admin/command-center/overview?refreshSquare=false'),
         api('/admin/agent/conversations'),
         api('/admin/bookings'),
         api('/admin/rv-sites'),
@@ -194,6 +207,7 @@ function App() {
     } finally {
       setLoading(false);
     }
+    refreshOverviewLive();
   };
 
   useEffect(() => { if (token) refresh(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -483,7 +497,7 @@ function App() {
     <div className="cc-app">
       <Sidebar view={view} setView={setView} user={user} onLogout={logout} />
       <main className="cc-main">
-        <Topbar view={view} overview={overview} user={user} onRefresh={() => refresh()} loading={loading} />
+        <Topbar view={view} overview={overview} user={user} onRefresh={() => refresh()} loading={loading} syncing={overviewSyncing} />
         {(error || notice) && <Toast tone={error ? 'danger' : 'success'} onClose={() => { setError(''); setNotice(''); }}>{error || notice}</Toast>}
         <div className={view === 'assistant' ? 'cc-content cc-content--assistant' : 'cc-content'}>
           {loading && !overview ? <LoadingScreen /> : null}
@@ -620,15 +634,16 @@ function Sidebar({ view, setView, user, onLogout }) {
   );
 }
 
-function Topbar({ view, overview, onRefresh, loading }) {
+function Topbar({ view, overview, onRefresh, loading, syncing }) {
   const title = NAV_ITEMS.find(item => item[0] === view)?.[1] || 'Command center';
   const square = overview?.square;
   return (
     <header className="cc-topbar">
       <div><p>{formatLongDate(new Date())}</p><h1>{title}</h1></div>
       <div className="cc-topbar__actions">
+        {syncing && <span className="cc-live-status is-syncing"><i />Syncing live data…</span>}
         <span className={`cc-live-status ${square?.connected ? 'is-live' : ''}`}><i />{square?.connected ? 'Square live' : 'Square offline'}</span>
-        <button className="cc-icon-button" onClick={onRefresh} aria-label="Refresh command center"><Icon name="refresh" className={loading ? 'spin' : ''} /></button>
+        <button className="cc-icon-button" onClick={onRefresh} aria-label="Refresh command center"><Icon name="refresh" className={loading || syncing ? 'spin' : ''} /></button>
       </div>
     </header>
   );
@@ -930,7 +945,13 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
   const visible = bookings.filter(booking => {
     const needle = search.toLowerCase();
     const matchesSearch = !needle || [booking.bookingCode, booking.customerName, booking.customer?.name, booking.customerEmail, booking.customerPhone, booking.rvSiteId, booking.siteNumber].some(value => String(value || '').toLowerCase().includes(needle));
-    const matchesStatus = status === 'all' || (status === 'active' ? ['confirmed', 'paid', 'hold', 'pending'].includes(booking.status) : booking.status === status);
+    const matchesStatus = status === 'all'
+      ? true
+      : status === 'active'
+        ? ['confirmed', 'paid', 'hold', 'pending'].includes(booking.status)
+        : status === 'pending'
+          ? ['hold', 'pending', 'draft'].includes(booking.status)
+          : booking.status === status;
     return matchesSearch && matchesStatus;
   });
   const openBooking = async booking => {
@@ -945,14 +966,19 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
     setLocalError('');
     try {
       const form = new FormData(event.currentTarget);
+      const siteIds = form.getAll('siteIds').filter(Boolean);
+      if (!siteIds.length) throw new Error('Choose at least one site.');
       const payload = {
-        siteId: form.get('siteId'), startDate: form.get('startDate'), endDate: form.get('endDate'),
+        siteId: siteIds[0], siteIds, startDate: form.get('startDate'), endDate: form.get('endDate'),
         guests: Number(form.get('guests') || 1), vehicles: Number(form.get('vehicles') || 1),
         customer: { name: form.get('customerName'), phone: form.get('customerPhone'), email: form.get('customerEmail') },
         notes: form.get('notes'),
       };
       if (createMode === 'block') {
-        await api(`/admin/rv-sites/${encodeURIComponent(payload.siteId)}/block`, { method: 'POST', body: { startDate: payload.startDate, endDate: payload.endDate, reason: form.get('reason') } });
+        // Block each selected site over the same window (one blocked booking per site).
+        for (const siteId of siteIds) {
+          await api(`/admin/rv-sites/${encodeURIComponent(siteId)}/block`, { method: 'POST', body: { startDate: payload.startDate, endDate: payload.endDate, reason: form.get('reason') } });
+        }
       } else if (createMode === 'payment') {
         const result = await api('/admin/bookings/checkout', { method: 'POST', body: payload });
         if (!result.checkout?.checkoutUrl) throw new Error('Square did not return a payment link.');
@@ -971,7 +997,7 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
     setLocalError('');
     try {
       const path = confirming.action === 'refund' ? 'refund' : 'cancel';
-      await api(`/admin/bookings/${encodeURIComponent(confirming.booking.bookingCode)}/${path}`, { method: 'POST', body: { reason: confirming.reason || `${friendlyStatus(path)} from command center` } });
+      await api(`/admin/bookings/${encodeURIComponent(confirming.booking.bookingCode)}/${path}`, { method: 'POST', body: { reason: confirming.reason || `${friendlyStatus(confirming.action)} from command center` } });
       setConfirming(null); setSelected(null); await onRefresh();
     } catch (bookingError) { setLocalError(bookingError.message); }
     finally { setWorking(false); }
@@ -993,15 +1019,27 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
     <div className="cc-booking-layout"><section className="cc-panel"><div className="cc-panel__heading"><div><p className="cc-kicker">Reservations</p><h3>Find a booking</h3></div>{user?.role === 'owner' && <button className="cc-row-action" onClick={() => setCreateMode('payment')}>Send payment link</button>}</div><div className="cc-booking-tools"><label><Icon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Guest, booking code, phone, or site" /></label><select value={status} onChange={event => setStatus(event.target.value)}><option value="active">Active stays</option><option value="all">All bookings</option><option value="confirmed">Confirmed</option><option value="paid">Paid</option><option value="pending">Pending payment</option><option value="canceled">Canceled</option><option value="refunded">Refunded</option><option value="blocked">Blocked dates</option></select></div><div className="cc-booking-list">{visible.length ? visible.slice(0, 100).map(booking => <button key={booking.id || booking.bookingCode} onClick={() => openBooking(booking)}><div className="cc-date-block"><strong>{shortMonth(booking.startDate)}</strong><span>{dayNumber(booking.startDate)}</span></div><div><strong>{booking.customerName || booking.customer?.name || (booking.status === 'blocked' ? 'Blocked dates' : 'Guest')}</strong><span>{siteLabel(booking, sites)} · {shortDate(booking.startDate)}–{shortDate(booking.endDate)}</span><small>{booking.bookingCode} {booking.totalCents !== undefined ? `· ${money(booking.totalCents)}` : ''}</small></div><StatusPill tone={bookingTone(booking.status)}>{friendlyStatus(booking.status)}</StatusPill><Icon name="arrow" /></button>) : <EmptyState icon="calendar" title="No bookings found" text="Try another search or status." />}</div></section>
     <section className="cc-panel cc-site-panel"><div className="cc-panel__heading"><div><p className="cc-kicker">RV sites</p><h3>Site availability</h3></div>{user?.role === 'owner' && <button className="cc-row-action" onClick={() => setCreateMode('block')}>Block dates</button>}</div><div className="cc-site-grid">{sites.map(site => <article key={site.id}><span><strong>{site.name || site.siteNumber || site.id}</strong><small>{[site.type, site.shade].filter(Boolean).join(' · ') || 'RV site'}</small></span><StatusPill tone={site.status === 'active' || site.status === 'available' ? 'success' : 'warning'}>{friendlyStatus(site.status || 'active')}</StatusPill>{user?.role === 'owner' && <select aria-label={`Change ${site.name || site.id} status`} value={site.status || 'active'} onChange={event => changeSiteStatus(site, event.target.value)}><option value="active">Open</option><option value="maintenance">Maintenance</option><option value="inactive">Closed</option></select>}</article>)}</div></section></div>
     {createMode && <Modal title={createMode === 'block' ? 'Block a site' : createMode === 'payment' ? 'Create booking and payment link' : 'Create a booking'} onClose={() => { setCreateMode(''); setLocalError(''); }}><BookingCreateForm mode={createMode} sites={sites} onSubmit={createBooking} onClose={() => setCreateMode('')} working={working} error={localError} /></Modal>}
-    {selected && <Modal title={`Booking ${selected.bookingCode}`} onClose={() => setSelected(null)}><div className="cc-booking-detail"><div className="cc-booking-detail__hero"><div className="cc-date-block"><strong>{shortMonth(selected.startDate)}</strong><span>{dayNumber(selected.startDate)}</span></div><span><StatusPill tone={bookingTone(selected.status)}>{friendlyStatus(selected.status)}</StatusPill><h3>{selected.customerName || selected.customer?.name || 'Guest'}</h3><p>{siteLabel(selected, sites)} · {shortDate(selected.startDate)} to {shortDate(selected.endDate)}</p></span></div><dl><div><dt>Total</dt><dd>{money(selected.totalCents)}</dd></div><div><dt>Guests</dt><dd>{selected.guests || 1}</dd></div><div><dt>Vehicles</dt><dd>{selected.vehicles ?? 1}</dd></div><div><dt>Contact</dt><dd>{selected.customerPhone || selected.customer?.phone || selected.customerEmail || selected.customer?.email || 'Not provided'}</dd></div></dl><section><h4>Guest documents</h4>{documents.length ? documents.map(document => <article className="cc-document" key={document.id}><span><Icon name="file" /><b>{document.fileName || document.type || 'Driver license'}<small>{friendlyStatus(document.status || 'pending')}</small></b></span><div>{(document.signedUrl || document.url) && <a className="cc-row-action" href={document.signedUrl || document.url} target="_blank" rel="noreferrer">View</a>}<button className="cc-row-action" onClick={() => reviewDocument(document.id, 'verified')}>Verify</button><button className="cc-row-action is-danger" onClick={() => reviewDocument(document.id, 'rejected')}>Reject</button></div></article>) : <p className="cc-muted">No guest documents uploaded.</p>}</section>{user?.role === 'owner' && <footer>{['confirmed', 'paid'].includes(selected.status) && <button className="cc-button cc-button--soft" onClick={() => { setEditing(selected); setSelected(null); }}>Edit stay</button>}{['confirmed', 'paid'].includes(selected.status) && <button className="cc-button cc-button--ghost" onClick={() => setConfirming({ action: 'cancel', booking: selected, reason: '' })}>Cancel booking</button>}{['confirmed', 'paid'].includes(selected.status) && selected.squarePaymentId && <button className="cc-button cc-button--danger" onClick={() => setConfirming({ action: 'refund', booking: selected, reason: '' })}>Issue refund</button>}</footer>}</div></Modal>}
+    {selected && <Modal title={`Booking ${selected.bookingCode}`} onClose={() => setSelected(null)}><div className="cc-booking-detail"><div className="cc-booking-detail__hero"><div className="cc-date-block"><strong>{shortMonth(selected.startDate)}</strong><span>{dayNumber(selected.startDate)}</span></div><span><StatusPill tone={bookingTone(selected.status)}>{friendlyStatus(selected.status)}</StatusPill><h3>{selected.customerName || selected.customer?.name || 'Guest'}</h3><p>{siteLabel(selected, sites)} · {shortDate(selected.startDate)} to {shortDate(selected.endDate)}</p></span></div><dl><div><dt>Total</dt><dd>{money(selected.totalCents)}</dd></div><div><dt>Guests</dt><dd>{selected.guests || 1}</dd></div><div><dt>Vehicles</dt><dd>{selected.vehicles ?? 1}</dd></div><div><dt>Contact</dt><dd>{selected.customerPhone || selected.customer?.phone || selected.customerEmail || selected.customer?.email || 'Not provided'}</dd></div></dl><section><h4>Guest documents</h4>{documents.length ? documents.map(document => <article className="cc-document" key={document.id}><span><Icon name="file" /><b>{document.fileName || document.type || 'Driver license'}<small>{friendlyStatus(document.status || 'pending')}</small></b></span><div>{(document.signedUrl || document.url) && <a className="cc-row-action" href={document.signedUrl || document.url} target="_blank" rel="noreferrer">View</a>}<button className="cc-row-action" onClick={() => reviewDocument(document.id, 'verified')}>Verify</button><button className="cc-row-action is-danger" onClick={() => reviewDocument(document.id, 'rejected')}>Reject</button></div></article>) : <p className="cc-muted">No guest documents uploaded.</p>}</section>{user?.role === 'owner' && <footer>{['hold', 'pending', 'draft'].includes(selected.status) && <button className="cc-button cc-button--primary" onClick={() => setConfirming({ action: 'release', booking: selected, reason: '' })}>Release hold</button>}{['confirmed', 'paid'].includes(selected.status) && <button className="cc-button cc-button--soft" onClick={() => { setEditing(selected); setSelected(null); }}>Edit stay</button>}{['confirmed', 'paid'].includes(selected.status) && <button className="cc-button cc-button--ghost" onClick={() => setConfirming({ action: 'cancel', booking: selected, reason: '' })}>Cancel booking</button>}{['confirmed', 'paid'].includes(selected.status) && selected.squarePaymentId && <button className="cc-button cc-button--danger" onClick={() => setConfirming({ action: 'refund', booking: selected, reason: '' })}>Issue refund</button>}</footer>}</div></Modal>}
     {editing && <BookingEditModal booking={editing} sites={sites} api={api} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await onRefresh(); }} />}
-    {confirming && <Modal title={confirming.action === 'refund' ? 'Confirm Square refund' : 'Cancel this booking?'} onClose={() => setConfirming(null)}><div className="cc-confirm-action"><Icon name="shield" /><h3>{confirming.action === 'refund' ? `Refund ${money(confirming.booking.totalCents)}?` : `Cancel ${confirming.booking.bookingCode}?`}</h3><p>{confirming.action === 'refund' ? 'This sends money back through Square and records the result. It cannot be undone here.' : 'The site dates will become available again. This does not automatically issue a refund.'}</p>{localError && <div className="cc-form-error">{localError}</div>}<label>Reason<textarea value={confirming.reason} onChange={event => setConfirming(current => ({ ...current, reason: event.target.value }))} rows="2" placeholder="Why is this happening?" /></label><div><button className="cc-button cc-button--ghost" onClick={() => setConfirming(null)}>Go back</button><button className={`cc-button ${confirming.action === 'refund' ? 'cc-button--danger' : 'cc-button--primary'}`} onClick={runBookingAction} disabled={working}>{working ? 'Working…' : confirming.action === 'refund' ? 'Yes, issue refund' : 'Yes, cancel booking'}</button></div></div></Modal>}
+    {confirming && <Modal title={confirming.action === 'refund' ? 'Confirm Square refund' : confirming.action === 'release' ? 'Release this hold?' : 'Cancel this booking?'} onClose={() => setConfirming(null)}><div className="cc-confirm-action"><Icon name="shield" /><h3>{confirming.action === 'refund' ? `Refund ${money(confirming.booking.totalCents)}?` : confirming.action === 'release' ? `Release ${confirming.booking.bookingCode}?` : `Cancel ${confirming.booking.bookingCode}?`}</h3><p>{confirming.action === 'refund' ? 'This sends money back through Square and records the result. It cannot be undone here.' : confirming.action === 'release' ? 'The site opens back up right away. Use this for an abandoned or unpaid hold — no payment was taken.' : 'The site dates will become available again. This does not automatically issue a refund.'}</p>{localError && <div className="cc-form-error">{localError}</div>}<label>Reason<textarea value={confirming.reason} onChange={event => setConfirming(current => ({ ...current, reason: event.target.value }))} rows="2" placeholder="Why is this happening?" /></label><div><button className="cc-button cc-button--ghost" onClick={() => setConfirming(null)}>Go back</button><button className={`cc-button ${confirming.action === 'refund' ? 'cc-button--danger' : 'cc-button--primary'}`} onClick={runBookingAction} disabled={working}>{working ? 'Working…' : confirming.action === 'refund' ? 'Yes, issue refund' : confirming.action === 'release' ? 'Yes, release hold' : 'Yes, cancel booking'}</button></div></div></Modal>}
   </div>;
 }
 
 function BookingCreateForm({ mode, sites, onSubmit, onClose, working, error }) {
   const tomorrow = isoDateOffset(1); const nextDay = isoDateOffset(2);
-  return <form className="cc-simple-form" onSubmit={onSubmit}>{mode === 'payment' && <p>Midway will hold the site and open a secure Square payment link you can send to the guest.</p>}{mode === 'block' && <p>Use this for maintenance, owner stays, or any dates that should not be bookable.</p>}{error && <div className="cc-form-error">{error}</div>}<label>RV site<select name="siteId" required autoFocus><option value="">Choose a site</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name || site.siteNumber || site.id} · {friendlyStatus(site.status || 'active')}</option>)}</select></label><div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={tomorrow} required /></label><label>Departure<input type="date" name="endDate" defaultValue={nextDay} required /></label></div>{mode === 'block' ? <label>Reason<input name="reason" required placeholder="Example: electrical repair" /></label> : <><label>Guest name<input name="customerName" required placeholder="Full name" /></label><div className="cc-form-pair"><label>Phone<input name="customerPhone" type="tel" /></label><label>Email<input name="customerEmail" type="email" /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue="1" /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue="1" /></label></div><label>Notes<textarea name="notes" rows="2" /></label></>}<div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button className="cc-button cc-button--primary" disabled={working}>{working ? 'Saving…' : mode === 'payment' ? 'Create payment link' : mode === 'block' ? 'Block these dates' : 'Create booking'}</button></div></form>;
+  const [selected, setSelected] = useState(() => new Set());
+  const toggle = id => setSelected(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const rvSites = sites.filter(site => (site.type || '').toLowerCase() !== 'tent');
+  const tentSites = sites.filter(site => (site.type || '').toLowerCase() === 'tent');
+  const nightlyCents = sites.filter(site => selected.has(site.id)).reduce((sum, site) => sum + Number(site.nightlyPriceCents || 0), 0);
+  const renderGroup = (label, list) => list.length ? <div className="cc-site-picker__group"><span className="cc-site-picker__label">{label}</span><div className="cc-site-picker__chips">{list.map(site => {
+    const isOn = selected.has(site.id);
+    const openSite = site.status === 'active' || site.status === 'available' || !site.status;
+    return <label key={site.id} className={`cc-site-chip${isOn ? ' is-on' : ''}${openSite ? '' : ' is-closed'}`}><input type="checkbox" name="siteIds" value={site.id} checked={isOn} onChange={() => toggle(site.id)} /><strong>{site.name || site.siteNumber || site.id}</strong><small>{openSite ? (site.nightlyPriceCents ? money(site.nightlyPriceCents) + '/night' : friendlyStatus(site.status || 'active')) : friendlyStatus(site.status || 'closed')}</small></label>;
+  })}</div></div> : null;
+  return <form className="cc-simple-form" onSubmit={onSubmit}>{mode === 'payment' && <p>Midway will hold the selected sites and open a secure Square payment link you can send to the guest.</p>}{mode === 'block' && <p>Use this for maintenance, owner stays, or any dates that should not be bookable.</p>}{error && <div className="cc-form-error">{error}</div>}
+    <div className="cc-site-picker"><div className="cc-site-picker__head"><span>{mode === 'block' ? 'Sites to block' : 'Sites for this booking'}</span><span className="cc-site-picker__count">{selected.size ? `${selected.size} selected${nightlyCents ? ` · ${money(nightlyCents)}/night` : ''}` : 'Pick one or more'}</span></div>{renderGroup('RV sites', rvSites)}{renderGroup('Tent sites', tentSites)}{!sites.length && <p className="cc-muted">No sites available.</p>}</div>
+    <div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={tomorrow} required /></label><label>Departure<input type="date" name="endDate" defaultValue={nextDay} required /></label></div>{mode === 'block' ? <label>Reason<input name="reason" required placeholder="Example: electrical repair" /></label> : <><label>Guest name<input name="customerName" required placeholder="Full name" /></label><div className="cc-form-pair"><label>Phone<input name="customerPhone" type="tel" /></label><label>Email<input name="customerEmail" type="email" /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue="1" /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue="1" /></label></div><label>Notes<textarea name="notes" rows="2" /></label></>}<div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button className="cc-button cc-button--primary" disabled={working || !selected.size}>{working ? 'Saving…' : mode === 'payment' ? 'Create payment link' : mode === 'block' ? `Block ${selected.size || ''} site${selected.size === 1 ? '' : 's'}`.trim() : 'Create booking'}</button></div></form>;
 }
 
 function BookingEditModal({ booking, sites, api, onClose, onSaved }) {
@@ -1303,7 +1341,23 @@ function Modal({ title, onClose, children }) {
 function EmptyState({ icon, title, text }) { return <div className="cc-empty"><Icon name={icon} /><strong>{title}</strong><p>{text}</p></div>; }
 function StatusPill({ tone = 'neutral', children }) { return <span className={`cc-status tone-${tone}`}><i />{children}</span>; }
 function Toast({ tone, onClose, children }) { return <div className={`cc-toast tone-${tone}`}><Icon name={tone === 'danger' ? 'alert' : 'check'} /><span>{children}</span><button onClick={onClose}>×</button></div>; }
-function LoadingScreen() { return <div className="cc-loading"><div className="cc-assistant-mark"><Icon name="spark" /></div><p>Bringing the store into focus…</p></div>; }
+function LoadingScreen() {
+  return (
+    <div className="cc-skeleton" aria-busy="true" aria-label="Loading command center">
+      <div className="cc-skeleton__metrics">{Array.from({ length: 4 }).map((_, index) => (
+        <div className="cc-skeleton__card" key={index}><span className="cc-sk cc-sk--pill" /><span className="cc-sk cc-sk--value" /><span className="cc-sk cc-sk--line" /></div>
+      ))}</div>
+      <div className="cc-skeleton__panels">
+        <div className="cc-skeleton__panel">{Array.from({ length: 5 }).map((_, index) => (
+          <div className="cc-skeleton__row" key={index}><span className="cc-sk cc-sk--avatar" /><span className="cc-sk cc-sk--rowline" /><span className="cc-sk cc-sk--tag" /></div>
+        ))}</div>
+        <div className="cc-skeleton__panel">{Array.from({ length: 5 }).map((_, index) => (
+          <div className="cc-skeleton__row" key={index}><span className="cc-sk cc-sk--avatar" /><span className="cc-sk cc-sk--rowline" /><span className="cc-sk cc-sk--tag" /></div>
+        ))}</div>
+      </div>
+    </div>
+  );
+}
 
 function MobileNav({ view, setView }) {
   return <nav className="cc-mobile-nav">{NAV_ITEMS.map(([id, label, icon]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon name={icon} /><span>{label === 'Command center' ? 'Home' : label}</span></button>)}</nav>;
