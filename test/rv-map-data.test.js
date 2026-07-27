@@ -81,26 +81,38 @@ test('every bookable site has normalized map coordinates', () => {
 });
 
 test('RV site rates and hookup types match the published inventory plan', () => {
-  const site03 = getRvMapSiteByNumber(3);
-  const site11 = getRvMapSiteByNumber(11);
   const site15 = getRvMapSiteByNumber(15);
   const site16 = getRvMapSiteByNumber(16);
 
-  // Sites 03-10: WATER + ELECTRIC only (partial). $40, no septic, renders yellow.
-  assert.equal(site03.nightlyPriceCents, 4000);
-  assert.equal(site03.hookup, 'partial');
-  assert.ok(site03.amenities.includes('Water'));
-  assert.ok(site03.amenities.includes('Electricity'));
-  assert.equal(site03.amenities.includes('Septic'), false);
-  assert.equal(site03.amenities.includes('Full hookup'), false);
+  // Sites 03-10 (the right row) are the FULL HOOKUP pads: water/electric/septic,
+  // $45, 40 ft, rendered blue. Sites 11-14 (lower left row) are PARTIAL:
+  // water + electric only, $40, 30 ft, rendered yellow. This matches the live
+  // Supabase rv_sites rows, which are the source of truth for price/amenities.
+  for (const siteNumber of [3, 4, 5, 6, 7, 8, 9, 10]) {
+    const site = getRvMapSiteByNumber(siteNumber);
+    assert.equal(site.hookup, 'full', `site ${siteNumber} is full hookup`);
+    assert.equal(site.nightlyPriceCents, 4500, `site ${siteNumber} is $45`);
+    assert.equal(site.maxRvLengthFeet, 40, `site ${siteNumber} allows 40 ft`);
+    assert.ok(site.amenities.includes('Full hookup'), `site ${siteNumber} lists full hookup`);
+    assert.ok(site.amenities.includes('Septic'), `site ${siteNumber} lists septic`);
+    assert.ok(site.amenities.includes('Water'), `site ${siteNumber} lists water`);
+  }
 
-  // Sites 11-16: FULL HOOKUP water/electric/septic. $45, renders blue.
-  assert.equal(site11.nightlyPriceCents, 4500);
-  assert.equal(site11.hookup, 'full');
-  assert.ok(site11.amenities.includes('Full hookup'));
-  assert.ok(site11.amenities.includes('Septic'));
+  for (const siteNumber of [11, 12, 13, 14]) {
+    const site = getRvMapSiteByNumber(siteNumber);
+    assert.equal(site.hookup, 'partial', `site ${siteNumber} is partial hookup`);
+    assert.equal(site.nightlyPriceCents, 4000, `site ${siteNumber} is $40`);
+    assert.equal(site.maxRvLengthFeet, 30, `site ${siteNumber} allows 30 ft`);
+    assert.ok(site.amenities.includes('Partial hookup'), `site ${siteNumber} lists partial hookup`);
+    assert.ok(site.amenities.includes('Water'), `site ${siteNumber} lists water`);
+    assert.ok(site.amenities.includes('Electricity'), `site ${siteNumber} lists electricity`);
+    assert.equal(site.amenities.includes('Septic'), false, `site ${siteNumber} has no septic`);
+    assert.equal(site.amenities.includes('Full hookup'), false, `site ${siteNumber} is not full hookup`);
+  }
 
+  // 15 (park mobile, inactive) and 16 stay full hookup at $45.
   assert.equal(site15.status, 'inactive');
+  assert.equal(site15.hookup, 'full');
   assert.equal(site16.hookup, 'full');
   assert.equal(site16.nightlyPriceCents, 4500);
   assert.equal(tentMapSites[0].nightlyPriceCents, 2000);

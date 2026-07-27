@@ -1040,20 +1040,42 @@ function BookingsView({ bookings, sites, overview, onAsk, api, onRefresh, user }
   </div>;
 }
 
-function BookingCreateForm({ mode, sites, onSubmit, onClose, working, error }) {
-  const tomorrow = isoDateOffset(1); const nextDay = isoDateOffset(2);
-  const [selected, setSelected] = useState(() => new Set());
-  const toggle = id => setSelected(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+// Shared multi-site chip picker. Both "New booking" and "Edit stay" use this so a
+// booking that spans several pads can be created AND edited as a set — the edit
+// modal used to render a single <select>, which silently collapsed a multi-site
+// stay down to one pad on save.
+function SitePicker({ sites, selected, onToggle, heading, emptyHint = 'Pick one or more' }) {
   const rvSites = sites.filter(site => (site.type || '').toLowerCase() !== 'tent');
   const tentSites = sites.filter(site => (site.type || '').toLowerCase() === 'tent');
   const nightlyCents = sites.filter(site => selected.has(site.id)).reduce((sum, site) => sum + Number(site.nightlyPriceCents || 0), 0);
   const renderGroup = (label, list) => list.length ? <div className="cc-site-picker__group"><span className="cc-site-picker__label">{label}</span><div className="cc-site-picker__chips">{list.map(site => {
     const isOn = selected.has(site.id);
     const openSite = site.status === 'active' || site.status === 'available' || !site.status;
-    return <label key={site.id} className={`cc-site-chip${isOn ? ' is-on' : ''}${openSite ? '' : ' is-closed'}`}><input type="checkbox" name="siteIds" value={site.id} checked={isOn} onChange={() => toggle(site.id)} /><strong>{site.name || site.siteNumber || site.id}</strong><small>{openSite ? (site.nightlyPriceCents ? money(site.nightlyPriceCents) + '/night' : friendlyStatus(site.status || 'active')) : friendlyStatus(site.status || 'closed')}</small></label>;
+    return <label key={site.id} className={`cc-site-chip${isOn ? ' is-on' : ''}${openSite ? '' : ' is-closed'}`}><input type="checkbox" name="siteIds" value={site.id} checked={isOn} onChange={() => onToggle(site.id)} /><strong>{site.name || site.siteNumber || site.id}</strong><small>{openSite ? (site.nightlyPriceCents ? money(site.nightlyPriceCents) + '/night' : friendlyStatus(site.status || 'active')) : friendlyStatus(site.status || 'closed')}</small></label>;
   })}</div></div> : null;
+  return <div className="cc-site-picker"><div className="cc-site-picker__head"><span>{heading}</span><span className="cc-site-picker__count">{selected.size ? `${selected.size} selected${nightlyCents ? ` · ${money(nightlyCents)}/night` : ''}` : emptyHint}</span></div>{renderGroup('RV sites', rvSites)}{renderGroup('Tent sites', tentSites)}{!sites.length && <p className="cc-muted">No sites available.</p>}</div>;
+}
+
+function useSiteSelection(initialIds = []) {
+  const [selected, setSelected] = useState(() => new Set(initialIds.filter(Boolean)));
+  const toggle = id => setSelected(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  return [selected, toggle];
+}
+
+// A booking's pads live under any of these keys depending on which API shaped it.
+function bookingSiteIds(booking = {}) {
+  const ids = Array.isArray(booking.siteIds) && booking.siteIds.length ? booking.siteIds
+    : Array.isArray(booking.rvSiteIds) && booking.rvSiteIds.length ? booking.rvSiteIds
+    : Array.isArray(booking.siteLines) && booking.siteLines.length ? booking.siteLines.map(line => line.siteId)
+    : [booking.rvSiteId];
+  return [...new Set(ids.filter(Boolean))];
+}
+
+function BookingCreateForm({ mode, sites, onSubmit, onClose, working, error }) {
+  const tomorrow = isoDateOffset(1); const nextDay = isoDateOffset(2);
+  const [selected, toggle] = useSiteSelection();
   return <form className="cc-simple-form" onSubmit={onSubmit}>{mode !== 'block' && <p>Pick the sites, add the guest, then create a payment link to text or email them. The site is held for 24 hours (or until they pay). Already paid at the counter? Use “Already paid.”</p>}{mode === 'block' && <p>Use this for maintenance, owner stays, or any dates that should not be bookable.</p>}{error && <div className="cc-form-error">{error}</div>}
-    <div className="cc-site-picker"><div className="cc-site-picker__head"><span>{mode === 'block' ? 'Sites to block' : 'Sites for this booking'}</span><span className="cc-site-picker__count">{selected.size ? `${selected.size} selected${nightlyCents ? ` · ${money(nightlyCents)}/night` : ''}` : 'Pick one or more'}</span></div>{renderGroup('RV sites', rvSites)}{renderGroup('Tent sites', tentSites)}{!sites.length && <p className="cc-muted">No sites available.</p>}</div>
+    <SitePicker sites={sites} selected={selected} onToggle={toggle} heading={mode === 'block' ? 'Sites to block' : 'Sites for this booking'} />
     <div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={tomorrow} required /></label><label>Departure<input type="date" name="endDate" defaultValue={nextDay} required /></label></div>{mode === 'block' ? <label>Reason<input name="reason" required placeholder="Example: electrical repair" /></label> : <><label>Guest name<input name="customerName" required placeholder="Full name" /></label><div className="cc-form-pair"><label>Phone<input name="customerPhone" type="tel" placeholder="For texting the link" /></label><label>Email<input name="customerEmail" type="email" placeholder="For emailing the link" /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue="1" /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue="1" /></label></div><label>Notes<textarea name="notes" rows="2" /></label></>}
     {mode === 'block'
       ? <div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button type="submit" value="block" className="cc-button cc-button--primary" disabled={working || !selected.size}>{working ? 'Saving…' : `Block ${selected.size || ''} site${selected.size === 1 ? '' : 's'}`.trim()}</button></div>
@@ -1091,6 +1113,7 @@ function PaymentLinkShare({ result, onClose }) {
 
 function BookingEditModal({ booking, sites, api, onClose, onSaved }) {
   const [payment, setPayment] = useState(null); const [card, setCard] = useState(null); const [error, setError] = useState(''); const [working, setWorking] = useState(false); const formRef = useRef(null);
+  const [selected, toggle] = useSiteSelection(bookingSiteIds(booking));
   useEffect(() => {
     if (!payment?.checkoutConfig) return undefined;
     let disposed = false; let mountedCard;
@@ -1110,7 +1133,9 @@ function BookingEditModal({ booking, sites, api, onClose, onSaved }) {
     event.preventDefault(); setWorking(true); setError('');
     try {
       const form = new FormData(formRef.current);
-      const body = { startDate: form.get('startDate'), endDate: form.get('endDate'), siteIds: [form.get('siteId')], guests: Number(form.get('guests') || 1), vehicles: Number(form.get('vehicles') || 0) };
+      const siteIds = [...selected];
+      if (!siteIds.length) throw new Error('Pick at least one site for this stay.');
+      const body = { startDate: form.get('startDate'), endDate: form.get('endDate'), siteIds, guests: Number(form.get('guests') || 1), vehicles: Number(form.get('vehicles') || 0) };
       if (payment) {
         if (!card) throw new Error('Wait for the secure Square card form to finish loading.');
         const token = await card.tokenize();
@@ -1124,7 +1149,7 @@ function BookingEditModal({ booking, sites, api, onClose, onSaved }) {
       else setError(editError.message);
     } finally { setWorking(false); }
   };
-  return <Modal title={`Edit ${booking.bookingCode}`} onClose={onClose}><form className="cc-simple-form" ref={formRef} onSubmit={submit}><p>Midway checks site availability and recalculates the stay before saving.</p>{error && <div className="cc-form-error">{error}</div>}<label>RV site<select name="siteId" defaultValue={booking.rvSiteId || booking.siteIds?.[0]} required>{sites.map(site => <option key={site.id} value={site.id}>{site.name || site.siteNumber || site.id}</option>)}</select></label><div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={booking.startDate} required /></label><label>Departure<input type="date" name="endDate" defaultValue={booking.endDate} required /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue={booking.guests || 1} /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue={booking.vehicles ?? 1} /></label></div>{payment && <section className="cc-square-payment"><StatusPill tone="warning">Additional payment</StatusPill><h4>{money(payment.diffCents)} is due for this change</h4><p>Enter a card below. Square processes the payment securely before the booking is updated.</p><div id="cc-square-card" /></section>}<div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button className="cc-button cc-button--primary" disabled={working || (payment && !card)}>{working ? 'Saving…' : payment ? `Pay ${money(payment.diffCents)} and save` : 'Review and save'}</button></div></form></Modal>;
+  return <Modal title={`Edit ${booking.bookingCode}`} onClose={onClose}><form className="cc-simple-form" ref={formRef} onSubmit={submit}><p>Add or remove pads, or change the dates — Midway checks availability for every site and recalculates the stay before saving.</p>{error && <div className="cc-form-error">{error}</div>}<SitePicker sites={sites} selected={selected} onToggle={toggle} heading="Sites for this stay" emptyHint="Pick one or more" /><div className="cc-form-pair"><label>Arrival<input type="date" name="startDate" defaultValue={booking.startDate} required /></label><label>Departure<input type="date" name="endDate" defaultValue={booking.endDate} required /></label></div><div className="cc-form-pair"><label>Guests<input name="guests" type="number" min="1" defaultValue={booking.guests || 1} /></label><label>Vehicles<input name="vehicles" type="number" min="0" defaultValue={booking.vehicles ?? 1} /></label></div>{payment && <section className="cc-square-payment"><StatusPill tone="warning">Additional payment</StatusPill><h4>{money(payment.diffCents)} is due for this change</h4><p>Enter a card below. Square processes the payment securely before the booking is updated.</p><div id="cc-square-card" /></section>}<div><button type="button" className="cc-button cc-button--ghost" onClick={onClose}>Cancel</button><button className="cc-button cc-button--primary" disabled={working || !selected.size || (payment && !card)}>{working ? 'Saving…' : payment ? `Pay ${money(payment.diffCents)} and save` : 'Review and save'}</button></div></form></Modal>;
 }
 
 function StoreSettingsView({ status, api, onRefresh, user, onOpenAssistant }) {
